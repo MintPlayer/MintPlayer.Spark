@@ -30,8 +30,8 @@ public class EnableDependencyUpdatesActionTests : CoverageRavenTest
 
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
         {
-            Checked.AddRange(repositories.Select(r => r.Id!));
-            return Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id!, r => r.Id == RepositoryId ? DependencyOnboardingService.Owner : null));
+            Checked.AddRange(repositories.Select(r => r.Id.Value));
+            return Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id.Value, r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase) ? DependencyOnboardingService.Owner : null));
         }
     }
 
@@ -74,15 +74,15 @@ public class EnableDependencyUpdatesActionTests : CoverageRavenTest
 
         await action.ExecuteAsync(args);
 
-        onboarding.Checked.Should().Equal([RepositoryId, Foreign]);
+        onboarding.Checked.Should().Equal([RepositoryId.ToLowerInvariant(), Foreign.ToLowerInvariant()]);
         manager.Retry.Received(1).Action(Arg.Any<string>(), Arg.Is<string[]>(o => o.SequenceEqual(new[] { "with", "without" })), "with", null, null, true);
         saved.Should().ContainSingle();
-        saved[0].Id.Should().Be(RepositoryId);
+        saved[0].Id.Should().Be(RepositoryId.ToLowerInvariant());
         saved[0][nameof(Repository.DependencyUpdates)].Value.Should().Be("Enabled");
         saved[0][nameof(Repository.DependencyOnboardingMergeQueue)].Value.Should().Be(mergeQueue);
         var result = (DependencyOnboardingResult)args.Result!;
         result.Enabled.Should().Equal(["acme/widget"]);
-        result.NotEnabled.Should().ContainSingle().Which.Should().Be(new DependencyOnboardingRefusal(Foreign, "other-org/tool", "you don't manage this repository"));
+        result.NotEnabled.Should().ContainSingle().Which.Should().Be(new DependencyOnboardingRefusal(Foreign.ToLowerInvariant(), "other-org/tool", "you don't manage this repository"));
 
         // D-O14: the page's report is the framework's notifications, one for the enabled ones (how many, which, with or
         // without the merge queue) and one per repository that was not, with why.

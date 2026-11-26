@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Organizations;
@@ -84,7 +85,7 @@ public partial class SeoToolsTests
             }, user);
             await session.StoreAsync(new Organization { Name = "Budget " + suffix, IsPersonal = false, CreatedBy = user, CreatedAtUtc = DateTime.UtcNow }, organization);
             await session.StoreAsync(new OrganizationMembership { OrganizationId = organization, UserId = user, UserName = name, Role = OrganizationRole.Owner, JoinedAtUtc = DateTime.UtcNow },
-                OrganizationMembership.IdFor(user, organization));
+                OrganizationMembership.IdFor(user, organization).Value);
             await session.SaveChangesAsync();
         }
 
@@ -112,8 +113,8 @@ public partial class SeoToolsTests
                 widest ??= url;
                 await bulk.StoreAsync(new PageResult
                 {
-                    Id = PageResult.IdFor(site.Id!, url),
-                    RunId = run.Id,
+                    Id = Id<PageResult>.FromTrusted(PageResult.IdFor(site.Id.Value, url)),
+                    RunId = run.Id.Value,
                     OrganizationId = organization,
                     Url = url,
                     StatusCode = 200,

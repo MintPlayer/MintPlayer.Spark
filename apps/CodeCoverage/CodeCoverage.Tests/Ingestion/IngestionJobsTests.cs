@@ -28,6 +28,7 @@ public class IngestionJobsTests : CoverageRavenTest
 
     private static string CommitId(string sha) => Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha);
 
+    /// <remarks>A message carries the loaded build's id, which is lower case (#536 D7).</remarks>
     private static string BuildId(string sha) => Build.DocumentId(EForgeProvider.GitHub, RepoId, sha, 1, 1);
 
     private static SingleForgeResolver Forges(IForgeIntegration? forge = null)
@@ -107,7 +108,7 @@ public class IngestionJobsTests : CoverageRavenTest
         build.FinalizeReason.Should().Be("Debounce");
         bus.Of<AssembleCommitMessage>().Should().ContainSingle();
         bus.Of<AssembleCommitMessage>().Single().CommitId.Should().Be(CommitId("quiet"));
-        bus.Of<AssembleCommitMessage>().Single().BuildId.Should().Be(BuildId("quiet"));
+        bus.Of<AssembleCommitMessage>().Single().BuildId.Should().Be(BuildId("quiet").ToLowerInvariant());
     }
 
     /// <summary>A build with no commit has nothing to assemble, so its feedback goes out directly.</summary>
@@ -119,7 +120,7 @@ public class IngestionJobsTests : CoverageRavenTest
 
         var bus = await RunFinalizeSweepAsync(store);
 
-        bus.Of<PublishFeedbackMessage>().Select(m => m.BuildId).Should().Equal(BuildId("orphan"));
+        bus.Of<PublishFeedbackMessage>().Select(m => m.BuildId).Should().Equal(BuildId("orphan").ToLowerInvariant());
         bus.Of<AssembleCommitMessage>().Should().BeEmpty();
     }
 
@@ -182,7 +183,7 @@ public class IngestionJobsTests : CoverageRavenTest
         var bus = await RunFinalizeSweepAsync(store);
 
         (await LoadBuildAsync(store, "parsing")).Status.Should().Be("Open");
-        bus.Of<AssembleCommitMessage>().Select(m => m.BuildId).Should().Equal(BuildId("done"));
+        bus.Of<AssembleCommitMessage>().Select(m => m.BuildId).Should().Equal(BuildId("done").ToLowerInvariant());
         bus.Of<PublishFeedbackMessage>().Should().BeEmpty();
     }
 

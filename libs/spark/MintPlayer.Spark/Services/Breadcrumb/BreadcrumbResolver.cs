@@ -119,9 +119,10 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             return BreadcrumbResult.Empty;
 
         // id → the entity to render that id's breadcrumb from; id → the def driving the render.
-        var renderEntity = new Dictionary<string, object>(StringComparer.Ordinal);
-        var defById = new Dictionary<string, EntityTypeDefinition?>(StringComparer.Ordinal);
-        var denied = new HashSet<string>(StringComparer.Ordinal);
+        // Ids compare ignoring case (#536 D7): a loaded root is lower case, a stored reference may keep its legacy casing.
+        var renderEntity = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var defById = new Dictionary<string, EntityTypeDefinition?>(StringComparer.OrdinalIgnoreCase);
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var rootIds = new List<string>(roots.Count);
         foreach (var root in roots)
@@ -154,8 +155,8 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             // reached them. Batched per declared type rather than in one untyped load — see
             // LoadManyAsync for why the type argument is load-bearing.
             var neededByType = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-            var declaredTypeById = new Dictionary<string, string>(StringComparer.Ordinal);
-            var neededSet = new HashSet<string>(StringComparer.Ordinal);
+            var declaredTypeById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var neededSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var id in frontier)
             {
@@ -236,13 +237,13 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         // Which tokens render empty (contributions M2c-2a): an attribute a static right refuses, and
         // one the per-row hook protects on that row. Decided before rendering because both answers
         // are asynchronous and rendering is not; the static half is one decision per (type, verb).
-        var rootIdSet = new HashSet<string>(rootIds, StringComparer.Ordinal);
+        var rootIdSet = new HashSet<string>(rootIds, StringComparer.OrdinalIgnoreCase);
         var deniedByType = await ResolveDeniedTokensAsync(rootDef, action, defById.Values, ct);
         var blankedById = await ResolveBlankedTokensAsync(
             session, renderEntity, defById, rootIdSet, rootDef, action, deniedByType, ct);
 
         // Render every touched id purely in memory.
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in renderEntity.Keys)
             result[id] = Render(id, renderEntity, defById, denied, allowReferences: true, [], blankedById, deniedByType);
         foreach (var id in denied)
@@ -328,7 +329,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         Dictionary<Guid, IReadOnlySet<string>> deniedByType,
         CancellationToken ct)
     {
-        var result = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        var result = new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase);
 
         // Projected roots whose hook must be asked of the stored document, grouped by entity type.
         var baseLoads = new Dictionary<Type, List<string>>();
@@ -714,24 +715,10 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
 
     private static string FormatScalar(object? value) => value?.ToString() ?? string.Empty;
 
-    /// <summary>A reference property is a single id (string) or an array of ids ([Reference] List&lt;string&gt;).</summary>
+    /// <summary>
+    /// A reference property is a single id (a string or an <c>Id&lt;T&gt;</c>) or a collection of them. A typed id used
+    /// to match neither of the string and list cases here, so its target was never loaded and the form showed the raw id.
+    /// </summary>
     private static IEnumerable<string> ExtractIds(object entity, string propertyName)
-    {
-        var value = ReadValue(entity, propertyName);
-        switch (value)
-        {
-            case null:
-                yield break;
-            case string s:
-                if (!string.IsNullOrEmpty(s)) yield return s;
-                yield break;
-            case IEnumerable enumerable:
-                foreach (var item in enumerable)
-                {
-                    var id = item?.ToString();
-                    if (!string.IsNullOrEmpty(id)) yield return id;
-                }
-                yield break;
-        }
-    }
+        => SparkIdValues.ReferenceTexts(ReadValue(entity, propertyName));
 }

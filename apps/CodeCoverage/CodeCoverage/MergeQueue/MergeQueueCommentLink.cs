@@ -30,7 +30,7 @@ public static class MergeQueueCommentLink
     public static async Task<string?> ResolveAsync(
         IAsyncDocumentSession session, IForgeIntegration forge, Repository repository, int number, string? baseRef, CancellationToken cancellationToken)
     {
-        if (repository.Provider != EForgeProvider.GitHub || repository.Id is null || repository.DefaultBranch is not { } defaultBranch)
+        if (repository.Provider != EForgeProvider.GitHub || repository.Id.IsEmpty || repository.DefaultBranch is not { } defaultBranch)
             return null;
 
         string? yml;
@@ -48,7 +48,7 @@ public static class MergeQueueCommentLink
         if (baseRef is not null && !section.Queues(baseRef)) return null;
 
         var checks = $"https://github.com/{repository.OwnerLogin}/{repository.Name}/pull/{number}/checks";
-        var latest = await session.LoadAsync<MergeQueueLatestCheck>(MergeQueueLatestCheck.DocumentId(repository.Id, number), cancellationToken);
+        var latest = await session.LoadAsync<MergeQueueLatestCheck>(MergeQueueLatestCheck.DocumentId(repository.Id.Value, number), cancellationToken);
         return latest is null ? checks : $"{checks}?check_run_id={latest.CheckRunId}";
     }
 }

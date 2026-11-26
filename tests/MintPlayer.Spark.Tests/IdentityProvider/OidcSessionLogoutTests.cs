@@ -58,7 +58,7 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
         if (backChannelUri is not null)
         {
             using var session = Store.OpenAsyncSession();
-            var stored = await session.LoadAsync<OidcApplication>(app.Id);
+            var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.BackChannelLogoutUri = backChannelUri;
             await session.SaveChangesAsync();
             app.BackChannelLogoutUri = backChannelUri;
@@ -160,7 +160,7 @@ public class OidcSessionLogoutTests(OidcSessionLogoutTests.LogoutHost host)
         record.Should().NotBeNull("a client receiving tokens joins the provider session");
         record!.Type.Should().Be(OidcTokenTypes.Session);
         record.Status.Should().Be("valid");
-        record.Properties["clients"].Split(' ').Should().Contain(app.Id!);
+        record.Properties["clients"].Split(' ').Should().Contain(app.Id.Value);
     }
 
     [Fact]

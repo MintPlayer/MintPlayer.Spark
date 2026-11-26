@@ -50,7 +50,7 @@ internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings,
             // since it was read (or appeared, for a new one), and the use is decided again.
             session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
             var now = timeProvider.GetUtcNow().UtcDateTime;
-            var usage = await session.LoadAsync<SparkQuotaUsage>(id, cancellationToken);
+            var usage = await session.LoadAsync<SparkQuotaUsage>(id.Value, cancellationToken);
             var isNew = usage is null;
             usage ??= new SparkQuotaUsage { Id = id };
             usage.Uses = usage.Uses.Where(u => u > now - window).OrderBy(u => u).ToList();
@@ -64,7 +64,7 @@ internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings,
             usage.Uses.Add(now);
             usage.ExpiresAtUtc = now + window;
             if (isNew)
-                await session.StoreAsync(usage, string.Empty, id, cancellationToken);
+                await session.StoreAsync(usage, string.Empty, id.Value, cancellationToken);
             try
             {
                 await session.SaveChangesAsync(cancellationToken);
@@ -92,7 +92,7 @@ internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings,
         catalog.Require(quota);
         var (_, window) = await LimitsAsync(quota, cancellationToken);
         using var session = store.OpenAsyncSession();
-        var usage = await session.LoadAsync<SparkQuotaUsage>(SparkQuotaUsage.IdFor(quota.Name, key), cancellationToken);
+        var usage = await session.LoadAsync<SparkQuotaUsage>(SparkQuotaUsage.IdFor(quota.Name, key).Value, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         return usage?.Uses.Count(u => u > now - window) ?? 0;
     }

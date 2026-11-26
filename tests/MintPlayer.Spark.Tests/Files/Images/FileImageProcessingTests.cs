@@ -205,7 +205,7 @@ public class FileImageProcessingTests : FilesTestHost
     private async Task<byte[]?> StagedBytesAsync(string token)
     {
         using var session = Store.OpenAsyncSession();
-        using var attachment = await session.Advanced.Attachments.GetAsync(SparkFileUpload.IdFor(token), "original");
+        using var attachment = await session.Advanced.Attachments.GetAsync(SparkFileUpload.IdFor(token).Value, "original");
         if (attachment is null)
             return null;
         using var buffer = new MemoryStream();

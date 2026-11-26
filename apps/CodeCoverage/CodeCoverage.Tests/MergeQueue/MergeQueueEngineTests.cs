@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -298,7 +299,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
             .BeEquivalentTo(new { PullRequest = new { Number }, State = "evicted", Reason = "conflict-outside-allow-list" });
 
         (await h.EntryAsync(8)).State.Should().Be(EMergeQueueEntryState.Preparing, "D11: the lane moves on to the next entry");
-        (await h.QueueDocumentAsync())!.LaneFor("master").Current.Should().Be(MergeQueueEntry.DocumentId(RepositoryId, 8));
+        (await h.QueueDocumentAsync())!.LaneFor("master").Current.Should().Be(MergeQueueEntry.DocumentId(RepositoryId, 8).ToLowerInvariant());
     }
 
     /// <summary>
@@ -1217,7 +1218,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         using var session = h.Store.OpenAsyncSession();
         await session.StoreAsync(new DependencyUpdateRun
         {
-            Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId, PullRequestNumber = Number, RollingSha = Head, RollingBotSha = botSha,
+            Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId, PullRequestNumber = Number, RollingSha = Head, RollingBotSha = botSha,
         }, DependencyUpdateRun.ForRepository(RepositoryId));
         await session.SaveChangesAsync();
         return h;
@@ -1279,7 +1280,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         if (recorded)
         {
             var id = BackportPullRequest.DocumentId(RepositoryId, Number);
-            await session.StoreAsync(new BackportPullRequest { Id = id, Repository = RepositoryId, Number = Number, Source = 12, Branch = "master" }, id);
+            await session.StoreAsync(new BackportPullRequest { Id = Id<BackportPullRequest>.FromTrusted(id), Repository = RepositoryId, Number = Number, Source = 12, Branch = "master" }, id);
         }
         var repository = await session.LoadAsync<Entities.Repository>(RepositoryId);
         repository.MergeQueueApprovalFloor = floor;
@@ -1646,7 +1647,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         if (!recorded) return;
         using var session = h.Store.OpenAsyncSession();
         var id = BackportPullRequest.DocumentId(RepositoryId, number);
-        await session.StoreAsync(new BackportPullRequest { Id = id, Repository = RepositoryId, Number = number, Source = number + 100, SourceSha = sourceSha, Branch = Line }, id);
+        await session.StoreAsync(new BackportPullRequest { Id = Id<BackportPullRequest>.FromTrusted(id), Repository = RepositoryId, Number = number, Source = number + 100, SourceSha = sourceSha, Branch = Line }, id);
         await session.SaveChangesAsync();
     }
 
@@ -1696,7 +1697,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         var held = await h.EntryAsync();
         held.State.Should().Be(EMergeQueueEntryState.Held);
         held.EvictionReason.Should().Be("checks-failed");
-        (await h.QueueDocumentAsync())!.LaneFor(Line).Current.Should().Be(held.Id, "the line waits for it");
+        (await h.QueueDocumentAsync())!.LaneFor(Line).Current.Should().Be(held.Id.Value, "the line waits for it");
         h.Queue.Comments.Should().ContainSingle().Which.Body.Should().StartWith("The merge queue holds this backport: Checks failed")
             .And.Contain("re-run its checks").And.NotContain("Queue it again");
 
@@ -1800,8 +1801,8 @@ public class MergeQueueEngineTests : CoverageRavenTest
         await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 9);
 
         (await h.QueueDocumentAsync())!.LaneFor(Line).Waiting.Should().Equal(earlier
-            ? [MergeQueueEntry.DocumentId(RepositoryId, 9), MergeQueueEntry.DocumentId(RepositoryId, 8)]
-            : [MergeQueueEntry.DocumentId(RepositoryId, 8), MergeQueueEntry.DocumentId(RepositoryId, 9)]);
+            ? [MergeQueueEntry.DocumentId(RepositoryId, 9).ToLowerInvariant(), MergeQueueEntry.DocumentId(RepositoryId, 8).ToLowerInvariant()]
+            : [MergeQueueEntry.DocumentId(RepositoryId, 8).ToLowerInvariant(), MergeQueueEntry.DocumentId(RepositoryId, 9).ToLowerInvariant()]);
     }
 
     [Theory]
@@ -1824,7 +1825,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         await h.EnqueueAsync(BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, label: null, number: 9);
 
         (await h.QueueDocumentAsync())!.LaneFor(Line).Waiting.Should().Equal(
-            [MergeQueueEntry.DocumentId(RepositoryId, 8), MergeQueueEntry.DocumentId(RepositoryId, 9)]);
+            [MergeQueueEntry.DocumentId(RepositoryId, 8).ToLowerInvariant(), MergeQueueEntry.DocumentId(RepositoryId, 9).ToLowerInvariant()]);
     }
 
     [Fact]

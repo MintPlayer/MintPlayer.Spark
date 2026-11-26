@@ -11,10 +11,10 @@ namespace HR.Entities;
 // complex Address column rides the AddressSort breadcrumb companion, and Jobs (a collection of
 // complex elements) is stored-not-indexed (SPARK_INDEX_010 — expected).
 [GenerateIndex]
-public class Person
+public partial class Person
 {
     /// <summary>Unique identifier of the person, assigned automatically on creation.</summary>
-    public string? Id { get; set; }
+    public Id<Person> Id { get; set; }
     /// <summary>Given name of the person.</summary>
     public string FirstName { get; set; } = string.Empty;
     /// <summary>Family name of the person.</summary>

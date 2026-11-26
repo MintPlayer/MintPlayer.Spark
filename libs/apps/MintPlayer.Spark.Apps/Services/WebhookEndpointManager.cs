@@ -74,7 +74,7 @@ internal sealed partial class WebhookEndpointManager
             return WebhookResult<IReadOnlyList<WebhookEndpointView>>.NotFound();
 
         using var session = store.OpenAsyncSession();
-        var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner), cancellationToken);
+        var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
         if (registry is null)
             return WebhookResult<IReadOnlyList<WebhookEndpointView>>.Ok([]);
         var endpoints = await session.LoadAsync<WebhookEndpoint>(registry.EndpointIds, cancellationToken);
@@ -98,11 +98,11 @@ internal sealed partial class WebhookEndpointManager
         using var session = store.OpenAsyncSession();
         session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
         var registryId = WebhookOwnerRegistry.IdFor(owner);
-        var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId, cancellationToken);
+        var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId.Value, cancellationToken);
         if (registry is null)
         {
             registry = new WebhookOwnerRegistry { Id = registryId, OwnerKind = owner.Kind, OwnerKey = owner.Key };
-            await session.StoreAsync(registry, registryId, cancellationToken);
+            await session.StoreAsync(registry, registryId.Value, cancellationToken);
         }
         if (registry.EndpointIds.Count >= options.Value.MaxEndpointsPerOwner)
             return WebhookResult<WebhookEndpointSecret>.Invalid($"An owner has at most {options.Value.MaxEndpointsPerOwner} webhooks.");
@@ -110,7 +110,7 @@ internal sealed partial class WebhookEndpointManager
         var secret = WebhookSecret.Generate();
         var endpoint = new WebhookEndpoint
         {
-            Id = WebhookEndpoint.IdPrefix + "ep_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12)),
+            Id = WebhookEndpoint.IdFor("ep_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12))),
             OwnerKind = owner.Kind,
             OwnerKey = owner.Key,
             Url = input.Url!.Trim(),
@@ -119,8 +119,8 @@ internal sealed partial class WebhookEndpointManager
             ProtectedSecret = secrets.Protect(secret),
             CreatedUtc = time.GetUtcNow().UtcDateTime,
         };
-        await session.StoreAsync(endpoint, endpoint.Id, cancellationToken);
-        registry.EndpointIds.Add(endpoint.Id);
+        await session.StoreAsync(endpoint, endpoint.Id.Value, cancellationToken);
+        registry.EndpointIds.Add(endpoint.Id.Value);
         try
         {
             await session.SaveChangesAsync(cancellationToken);
@@ -164,10 +164,11 @@ internal sealed partial class WebhookEndpointManager
         {
             if (endpoint.AppSlug is not null)
                 return WebhookResult<bool>.Invalid(AppOwned(endpoint));
-            var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(endpoint.Owner), cancellationToken);
-            registry?.EndpointIds.Remove(endpoint.Id!);
+            var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(endpoint.Owner).Value, cancellationToken);
+            // Ignoring case: an endpoint listed before #536 is "WebhookEndpoints/…" there, its loaded id lower case.
+            registry?.EndpointIds.RemoveAll(id => string.Equals(id, endpoint.Id.Value, StringComparison.OrdinalIgnoreCase));
             session.Delete(endpoint);
-            if (await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpoint.PublicId), cancellationToken) is { } chain)
+            if (await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpoint.PublicId).Value, cancellationToken) is { } chain)
                 session.Delete(chain);
             await session.SaveChangesAsync(cancellationToken);
             return WebhookResult<bool>.Ok(true);
@@ -246,8 +247,9 @@ internal sealed partial class WebhookEndpointManager
                 return WebhookResult<IReadOnlyList<WebhookDeliveryView>>.Invalid("after is not a delivery id.");
             var page = await session.Advanced.LoadStartingWithAsync<WebhookDelivery>(
                 WebhookDelivery.PrefixFor(endpoint.PublicId),
+                // Lower case, as every id now is: RavenDB matches a prefix and a start-after ignoring case.
                 pageSize: Math.Clamp(pageSize, 1, 100),
-                startAfter: after is null ? null : WebhookDelivery.IdPrefix + after,
+                startAfter: after is null ? null : WebhookDelivery.IdFor(after).Value,
                 token: cancellationToken);
             return WebhookResult<IReadOnlyList<WebhookDeliveryView>>.Ok(page.Select(View).ToList());
         }, cancellationToken);
@@ -262,7 +264,7 @@ internal sealed partial class WebhookEndpointManager
             return WebhookResult<string>.NotFound();
         return await WithEndpointAsync(deliveryId[..deliveryId.IndexOf('/')], userId, async (session, endpoint) =>
         {
-            if (await session.LoadAsync<WebhookDelivery>(WebhookDelivery.IdPrefix + deliveryId, cancellationToken) is not { } original)
+            if (await session.LoadAsync<WebhookDelivery>(WebhookDelivery.IdFor(deliveryId).Value, cancellationToken) is not { } original)
                 return WebhookResult<string>.NotFound();
             if (!endpoint.Enabled)
                 return WebhookResult<string>.Invalid("The endpoint is disabled; enable it first.");
@@ -292,7 +294,7 @@ internal sealed partial class WebhookEndpointManager
         // The delivery engine patches the same document (failure streak, auto-disable): an edit made on a stale copy
         // must not undo that.
         session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
-        var endpoint = await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdPrefix + id, cancellationToken);
+        var endpoint = await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(id).Value, cancellationToken);
         if (endpoint is null || !await owners.CanManageAsync(endpoint.Owner, userId, cancellationToken))
             return WebhookResult<T>.NotFound();
         try

@@ -20,7 +20,7 @@ public partial class Medium
 /// <summary>The kind of a <see cref="Medium"/>: YouTube, Spotify, official website, …</summary>
 public partial class MediumType : ISoftDeletable, IAuditable
 {
-    public string? Id { get; set; }
+    public Id<MediumType> Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
 

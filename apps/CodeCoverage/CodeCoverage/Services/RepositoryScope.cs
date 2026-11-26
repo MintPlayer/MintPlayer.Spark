@@ -145,7 +145,7 @@ public partial class RepositoryScope : IRepositoryScope
 
     public IRavenQueryable<Indexes.VCommit> Commits(Repository repository)
         => session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true);
+            .Where(c => c.Repository == repository.Id.Value && c.ContributedFromFork != true);
 
     public async Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, CancellationToken cancellationToken = default)
     {

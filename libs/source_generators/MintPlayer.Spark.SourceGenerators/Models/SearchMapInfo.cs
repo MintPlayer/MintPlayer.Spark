@@ -18,11 +18,15 @@ public sealed class SearchMapInfo : System.IEquatable<SearchMapInfo>
     /// <summary>Whether the type has a boolean <c>IsDeleted</c>.</summary>
     public bool HasIsDeleted { get; set; }
 
+    /// <summary>Whether the type's <c>Id</c> is a typed <c>Id&lt;T&gt;</c> (#536 D23): the map then reads its <c>.Value</c>.</summary>
+    public bool HasTypedId { get; set; }
+
     public bool Equals(SearchMapInfo? other)
         => other is not null
             && EntityName == other.EntityName
             && EntityFullName == other.EntityFullName
             && HasIsDeleted == other.HasIsDeleted
+            && HasTypedId == other.HasTypedId
             && Fields.SequenceEqual(other.Fields);
 
     public override bool Equals(object? obj) => Equals(obj as SearchMapInfo);

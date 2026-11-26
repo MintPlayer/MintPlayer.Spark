@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -14,7 +15,8 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// <para>Not a Spark entity: nothing here is edited through the generic UI.</para>
 /// </remarks>
-public class DependencyUpdateRun
+[IdKind(SparkIdKind.Natural)]
+public partial class DependencyUpdateRun
 {
     public const string Prefix = "DependencyUpdateRuns/";
     public const int MaxHistory = 60;
@@ -28,7 +30,7 @@ public class DependencyUpdateRun
     /// <summary>The onboarding pull request's branch (R16).</summary>
     public const string OnboardingBranch = "mintplayer/dependencies-onboarding";
 
-    public string? Id { get; set; }
+    public Id<DependencyUpdateRun> Id { get; set; }
 
     public string Repository { get; set; } = string.Empty;
 
@@ -324,11 +326,12 @@ public class DependencyUpdateRun
 }
 
 /// <summary>The bulky half of a run, loaded only where needed (<c>DependencyUpdateRunData/{provider}/{id}</c>).</summary>
-public class DependencyUpdateRunData
+[IdKind(SparkIdKind.Natural)]
+public partial class DependencyUpdateRunData
 {
     public const string Prefix = "DependencyUpdateRunData/";
 
-    public string? Id { get; set; }
+    public Id<DependencyUpdateRunData> Id { get; set; }
 
     public int Run { get; set; }
 

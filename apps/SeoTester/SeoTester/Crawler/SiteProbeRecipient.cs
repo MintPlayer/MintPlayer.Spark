@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -30,7 +31,7 @@ public partial class SiteProbeRecipient : IRecipient<SiteProbeMessage>
     {
         if (await RunPipeline.LoadActiveAsync(session, message.RunId, cancellationToken) is not { } run)
             return;
-        if (await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken) is not null)
+        if (await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id.Value), cancellationToken) is not null)
             return; // probed already: this is a redelivery
         if (run.CancelRequested)
         {
@@ -43,8 +44,8 @@ public partial class SiteProbeRecipient : IRecipient<SiteProbeMessage>
 
     private async Task ProbeAsync(AuditRun run, CancellationToken cancellationToken)
     {
-        session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.Status, AuditRunStatus.Running);
-        RunPipeline.PatchProgress(session, run.Id!, "probe", 0, 0, run.Origin + "/robots.txt");
+        session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Status, AuditRunStatus.Running);
+        RunPipeline.PatchProgress(session, run.Id.Value, "probe", 0, 0, run.Origin + "/robots.txt");
         await session.SaveChangesAsync(cancellationToken);
 
         var interval = await pipeline.IntervalAsync(run, null, cancellationToken);
@@ -66,8 +67,8 @@ public partial class SiteProbeRecipient : IRecipient<SiteProbeMessage>
         var now = pipeline.NowUtc;
         var frontier = new CrawlFrontier
         {
-            Id = CrawlFrontier.IdFor(run.Id!),
-            RunId = run.Id!,
+            Id = Id<CrawlFrontier>.FromTrusted(CrawlFrontier.IdFor(run.Id.Value)),
+            RunId = run.Id.Value,
             Origin = run.Origin,
             Host = new Uri(run.Origin).IdnHost,
             RobotsRules = outcome.Robots.Rules.ToList(),
@@ -90,9 +91,9 @@ public partial class SiteProbeRecipient : IRecipient<SiteProbeMessage>
             home.Result.InSitemap = true;
 
         await session.StoreAsync(home.Result, cancellationToken);
-        await session.StoreAsync(frontier, string.Empty, frontier.Id, cancellationToken); // "must not exist": one probe wins
-        RunPipeline.PatchProgress(session, run.Id!, "crawl", 1, frontier.Seen.Count, home.Result.Url);
-        await outbox.EnqueueAsync(session, new PageBatchMessage(run.Id!, 0), cancellationToken: cancellationToken);
+        await session.StoreAsync(frontier, string.Empty, frontier.Id.Value, cancellationToken); // "must not exist": one probe wins
+        RunPipeline.PatchProgress(session, run.Id.Value, "crawl", 1, frontier.Seen.Count, home.Result.Url);
+        await outbox.EnqueueAsync(session, new PageBatchMessage(run.Id.Value, 0), cancellationToken: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 }

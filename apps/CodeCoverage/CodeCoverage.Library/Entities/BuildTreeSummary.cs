@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -7,10 +8,11 @@ namespace CodeCoverage.Entities;
 /// {buildId}/tree; re-finalizing overwrites it. Not exposed through Spark's
 /// generic UI.
 /// </summary>
-public class BuildTreeSummary
+[IdKind(SparkIdKind.Natural)]
+public partial class BuildTreeSummary
 {
     /// <summary>Document id of this summary, <c>{buildId}/tree</c>.</summary>
-    public string? Id { get; set; }
+    public Id<BuildTreeSummary> Id { get; set; }
 
     /// <summary>Document id of the build whose per-file totals this summary materializes.</summary>
     public string BuildId { get; set; } = string.Empty;

@@ -251,7 +251,7 @@ internal sealed class AgentConsent(
             await grants
                 .GrantAsync(user.Id!, user.SecurityStamp, app, request.AuthorizationId, permissions, types, ct);
         }
-        await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, user.Id, app.Id, user.Id, context.Connection.RemoteIpAddress?.ToString(),
+        await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, user.Id, app.Id.Value, user.Id, context.Connection.RemoteIpAddress?.ToString(),
             new Dictionary<string, string>
             {
                 ["scopes"] = string.Join(' ', scopes),

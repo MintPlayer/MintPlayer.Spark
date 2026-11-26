@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.SoftDelete;
 
@@ -9,7 +10,7 @@ namespace MintPlayer.Entities;
 /// </summary>
 public partial class BlogPost : ISoftDeletable, IAuditable
 {
-    public string? Id { get; set; }
+    public Id<BlogPost> Id { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Headline { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -36,7 +37,7 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             return Results.Json(new { error = "unauthorized_client" }, statusCode: 400);
 
         var device = await session.LoadAsync<OidcToken>(OidcDeviceCodes.DeviceDocumentId(deviceCode), ct);
-        if (device is not { Type: OidcTokenTypes.DeviceCode } || device.ApplicationId != app.Id)
+        if (device is not { Type: OidcTokenTypes.DeviceCode } || !string.Equals(device.ApplicationId, app.Id.Value, StringComparison.OrdinalIgnoreCase))
             return Results.Json(new { error = "invalid_grant" }, statusCode: 400);
         if (device.ExpiresAt < DateTime.UtcNow)
             return Results.Json(new { error = "expired_token" }, statusCode: 400);
@@ -89,8 +90,8 @@ internal sealed partial class OidcTokenEndpoint<TUser>
 
         var accessTokenDoc = new OidcToken
         {
-            Id = OidcTokenReference.DocumentId(jti),
-            ApplicationId = app.Id!,
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(jti)),
+            ApplicationId = app.Id.Value,
             AuthorizationId = device.AuthorizationId,
             Subject = device.Subject,
             Type = OidcTokenTypes.AccessToken,
@@ -108,8 +109,8 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             refreshToken = tokenGenerator.GenerateRefreshToken();
             var refreshTokenDoc = new OidcToken
             {
-                Id = OidcTokenReference.DocumentId(refreshToken),
-                ApplicationId = app.Id!,
+                Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(refreshToken)),
+                ApplicationId = app.Id.Value,
                 AuthorizationId = device.AuthorizationId,
                 Subject = device.Subject,
                 Type = OidcTokenTypes.RefreshToken,
@@ -182,8 +183,8 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             // The actor is the caller: its token must have been issued to this client, and it cannot be
             // the subject token over again. Otherwise any client could pass the user's own token as the
             // actor and get a delegation it was never given, bypassing AllowImpersonation.
-            if (!string.Equals(actorRecord.ApplicationId, app.Id, StringComparison.Ordinal)
-                || string.Equals(actorRecord.Id, record.Id, StringComparison.Ordinal))
+            if (!string.Equals(actorRecord.ApplicationId, app.Id.Value, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actorRecord.Id.Value, record.Id.Value, StringComparison.OrdinalIgnoreCase))
                 return Results.Json(new { error = "invalid_grant", error_description = "The actor token must be this client's own token." }, statusCode: 400);
             actorSubject = actor.Subject ?? actor.ClientId ?? app.ClientId;
         }
@@ -213,8 +214,8 @@ internal sealed partial class OidcTokenEndpoint<TUser>
 
         await session.StoreExpiringAsync(new OidcToken
         {
-            Id = OidcTokenReference.DocumentId(jti),
-            ApplicationId = app.Id!,
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(jti)),
+            ApplicationId = app.Id.Value,
             AuthorizationId = record.AuthorizationId,
             // Derived from the subject token, so it dies with that token's refresh-token family.
             FamilyId = record.FamilyId,

@@ -19,7 +19,7 @@ namespace QnA.Entities;
 public partial class Question : IModeratable, ISoftDeletable, IAuditable
 {
     /// <summary>Unique identifier of the question, assigned automatically when it is posted.</summary>
-    public string? Id { get; set; }
+    public Id<Question> Id { get; set; }
 
     /// <summary>One line that states the question.</summary>
     public string Title { get; set; } = string.Empty;

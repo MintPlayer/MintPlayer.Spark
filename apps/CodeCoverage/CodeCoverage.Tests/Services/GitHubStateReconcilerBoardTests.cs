@@ -31,6 +31,9 @@ public class GitHubStateReconcilerBoardTests : CoverageRavenTest
 
     private static string AccountId => Account.DocumentId(EForgeProvider.GitHub, AccountGitHubId);
 
+    /// <summary>A reference written from the loaded account carries its id in lower case (#536 D7).</summary>
+    private static string LoadedAccountId => AccountId.ToLowerInvariant();
+
     private sealed class ScriptedRepositories(params InstallationRepository[] live) : IInstallationRepositories
     {
         public Exception? Throws { get; init; }
@@ -122,7 +125,7 @@ public class GitHubStateReconcilerBoardTests : CoverageRavenTest
         await ReconcileAsync(store, new ScriptedRepositories(Live(501, "acme/brand-new", isPrivate: true)), new ScriptedProjects());
 
         var created = await LoadAsync<Repository>(store, Repository.DocumentId(EForgeProvider.GitHub, 501));
-        created.Account.Should().Be(AccountId);
+        created.Account.Should().Be(LoadedAccountId);
         created.FullName.Should().Be("acme/brand-new");
         created.IsPrivate.Should().BeTrue();
         created.DefaultBranch.Should().Be("main");
@@ -150,7 +153,7 @@ public class GitHubStateReconcilerBoardTests : CoverageRavenTest
         await ReconcileAsync(store, new ScriptedRepositories(Live(502, "acme/tool")), new ScriptedProjects());
 
         var adopted = await LoadAsync<Repository>(store, Repository.DocumentId(EForgeProvider.GitHub, 502));
-        adopted.Account.Should().Be(AccountId);
+        adopted.Account.Should().Be(LoadedAccountId);
         adopted.FullName.Should().Be("acme/tool");
         adopted.OwnerLogin.Should().Be("acme");
         adopted.PreviousFullNames.Should().Equal("previous-owner/tool");
@@ -234,7 +237,7 @@ public class GitHubStateReconcilerBoardTests : CoverageRavenTest
         known.InstallationId.Should().Be(InstallationId);
         known.EventMappings.Should().ContainSingle("discovery never touches the user's rules");
         var fresh = await LoadAsync<GitHubProject>(store, GitHubProject.DocumentId("PVT_new"));
-        fresh.Account.Should().Be(AccountId);
+        fresh.Account.Should().Be(LoadedAccountId);
         fresh.Number.Should().Be(3);
         fresh.AutomationEnabled.Should().BeFalse();
         (await LoadAsync<GitHubProject>(store, GitHubProject.DocumentId("PVT_removed"))).Connection

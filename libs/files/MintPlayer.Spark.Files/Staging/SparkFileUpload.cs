@@ -18,17 +18,19 @@ public enum SparkFileUploadState
 }
 
 /// <summary>
-/// A staged upload: the document behind an upload token (<c>SparkFileUploads/{token}</c>). It is bound to the user, the
+/// A staged upload: the document behind an upload token (<c>sparkfileuploads/{token}</c>). It is bound to the user, the
 /// entity type, the attribute and (for an edit) the object, and it expires (<see cref="IExpiring"/>), taking its bytes
 /// with it on every store (the RavenDB store keeps them as its attachment; the others are reconciled).
 /// </summary>
-public sealed class SparkFileUpload : IExpiring
+/// <remarks>The id is lower-cased (#536 D7); <see cref="Token"/> keeps the token exactly.</remarks>
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class SparkFileUpload : IExpiring
 {
-    public const string CollectionPrefix = "SparkFileUploads/";
+    public const string CollectionPrefix = "sparkfileuploads/";
 
-    public static string IdFor(string token) => CollectionPrefix + token;
+    public static Id<SparkFileUpload> IdFor(string token) => Id<SparkFileUpload>.FromTrusted(CollectionPrefix + token);
 
-    public string? Id { get; set; }
+    public Id<SparkFileUpload> Id { get; set; }
 
     public string Token { get; set; } = string.Empty;
 

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 
@@ -47,7 +48,7 @@ internal static class SparkMigrationRunner
         {
             foreach (var migration in pending)
             {
-                var markerId = MarkerId(migration.Version);
+                var markerId = MarkerId(migration.Version).Value;
 
                 using (var check = store.OpenAsyncSession())
                 {
@@ -88,7 +89,7 @@ internal static class SparkMigrationRunner
         }
     }
 
-    internal static string MarkerId(long version) => $"SparkMigrationRecords/{version}";
+    internal static Id<SparkMigrationRecord> MarkerId(long version) => Id<SparkMigrationRecord>.FromTrusted($"sparkmigrationrecords/{version}");
 
     /// <summary>
     /// How long to keep waiting for a lock somebody else holds before giving up and failing
@@ -180,7 +181,7 @@ internal static class SparkMigrationRunner
         using var session = store.OpenAsyncSession();
         foreach (var migration in pending)
         {
-            if (!await session.Advanced.ExistsAsync(MarkerId(migration.Version), cancellationToken))
+            if (!await session.Advanced.ExistsAsync(MarkerId(migration.Version).Value, cancellationToken))
                 return false;
         }
 

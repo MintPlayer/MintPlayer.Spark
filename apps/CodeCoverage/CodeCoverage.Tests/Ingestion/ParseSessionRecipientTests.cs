@@ -171,7 +171,7 @@ public class ParseSessionRecipientTests : CoverageRavenTest
         }
 
         var published = webhooks.All.Should().ContainSingle().Which;
-        published.Key.Should().Be($"{BuildId}/{SessionId}");
+        published.Key.Should().Be($"{BuildId}/{SessionId}".ToLowerInvariant(), "the key is built from the loaded build's id, lower case (#536 D7)");
         published.Owner.Should().Be(CodeCoverage.Webhooks.CoverageWebhooks.Account("github:acme"));
         published.Data.Should().BeOfType<CodeCoverage.Webhooks.CoverageReportProcessed>().Which.Should().BeEquivalentTo(new
         {

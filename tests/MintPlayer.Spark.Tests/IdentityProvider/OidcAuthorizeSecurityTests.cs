@@ -88,7 +88,7 @@ public class OidcAuthorizeSecurityTests(OidcSharedHost host) : OidcTestHost(host
         // ["authorization_code"], the assertion below would pass for the wrong reason.
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<OidcApplication>(seeded.Id!);
+            var stored = await session.LoadAsync<OidcApplication>(seeded.Id.Value);
             stored.AllowedGrantTypes.Should().ContainSingle().Which.Should().Be("client_credentials");
         }
 

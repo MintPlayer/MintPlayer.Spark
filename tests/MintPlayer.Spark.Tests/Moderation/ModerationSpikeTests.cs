@@ -68,15 +68,15 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
             for (var n = 0; n < votesPerPair; n++)
             {
                 var castAt = start.AddHours(v + a + n);
-                var voteId = $"ModerationVotes/u{v}/q{a}-{n}";
+                var voteId = $"moderationvotes/u{v}/q{a}-{n}";
                 await bulk.StoreAsync(new ModerationVote
                 {
-                    Id = voteId, VoterId = $"u{v}", AuthorId = $"a{a}", TargetId = $"q{a}-{n}", TargetType = "Q",
+                    Id = Id<ModerationVote>.FromTrusted(voteId), VoterId = $"u{v}", AuthorId = $"a{a}", TargetId = $"q{a}-{n}", TargetType = "Q",
                     Direction = (v + n) % 5 == 0 ? -1 : 1, CastAtUtc = castAt, Day = ModerationIds.Day(castAt),
                 });
                 await bulk.StoreAsync(new ReputationEvent
                 {
-                    Id = voteId + "/e", UserId = $"a{a}", VoterId = $"u{v}", Kind = "UpvoteReceived", Points = 10, VoteWeight = 1,
+                    Id = Id<ReputationEvent>.FromTrusted(voteId + "/e"), UserId = $"a{a}", VoterId = $"u{v}", Kind = "UpvoteReceived", Points = 10, VoteWeight = 1,
                     Day = ModerationIds.Day(castAt), CreatedAtUtc = castAt, CreditableAfterUtc = castAt.AddHours(48),
                     Credited = n == 0,
                 });
@@ -85,13 +85,13 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
             // Reciprocal pair: a0 and u0 as the same people voting for each other.
             await bulk.StoreAsync(new ModerationVote
             {
-                Id = "ModerationVotes/a0/q-u0", VoterId = "a0", AuthorId = "u0", TargetId = "q-u0", TargetType = "Q",
+                Id = Id<ModerationVote>.FromTrusted("moderationvotes/a0/q-u0"), VoterId = "a0", AuthorId = "u0", TargetId = "q-u0", TargetType = "Q",
                 Direction = 1, CastAtUtc = start, Day = ModerationIds.Day(start),
             });
             // Withdrawn vote: must not count.
             await bulk.StoreAsync(new ModerationVote
             {
-                Id = "ModerationVotes/a0/q-u0-2", VoterId = "a0", AuthorId = "u0", TargetId = "q-u0-2", TargetType = "Q",
+                Id = Id<ModerationVote>.FromTrusted("moderationvotes/a0/q-u0-2"), VoterId = "a0", AuthorId = "u0", TargetId = "q-u0-2", TargetType = "Q",
                 Direction = 0, CastAtUtc = start, Day = ModerationIds.Day(start),
             });
             written += 2;
@@ -146,20 +146,20 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
             await session.SaveChangesAsync();
             (session.Advanced.NumberOfRequests - before).Should().Be(1, "one batch");
         }
-        (await ExistsAsync(ModerationIds.Vote("u1", "q1"))).Should().BeTrue();
-        (await ExistsAsync(ModerationIds.VoteEvent(ModerationIds.Vote("u1", "q1"), 1, "recipient"))).Should().BeTrue();
-        (await ExistsAsync(ModerationIds.Tally("q1"))).Should().BeTrue();
+        (await ExistsAsync(ModerationIds.Vote("u1", "q1").Value)).Should().BeTrue();
+        (await ExistsAsync(ModerationIds.VoteEvent(ModerationIds.Vote("u1", "q1").Value, 1, "recipient").Value)).Should().BeTrue();
+        (await ExistsAsync(ModerationIds.Tally("q1").Value)).Should().BeTrue();
 
         // Race: our request decided "no vote yet", then another request stored the same vote first.
         using (var scope = factory.CreateScope())
         {
             var session = scope.ServiceProvider.GetRequiredService<IAsyncDocumentSession>();
-            (await session.LoadAsync<ModerationVote>(ModerationIds.Vote("u2", "q1"))).Should().BeNull();
+            (await session.LoadAsync<ModerationVote>(ModerationIds.Vote("u2", "q1").Value)).Should().BeNull();
             await StoreVoteAsync(session, "u2", "q1", tallyUp: 2);
 
             using (var other = Store.OpenAsyncSession())
             {
-                await other.StoreAsync(new ModerationVote { VoterId = "u2", TargetId = "q1", Direction = 1 }, ModerationIds.Vote("u2", "q1"));
+                await other.StoreAsync(new ModerationVote { VoterId = "u2", TargetId = "q1", Direction = 1 }, ModerationIds.Vote("u2", "q1").Value);
                 await other.SaveChangesAsync();
             }
 
@@ -167,23 +167,23 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
             await act.Should().ThrowAsync<ConcurrencyException>();
         }
 
-        (await ExistsAsync(ModerationIds.VoteEvent(ModerationIds.Vote("u2", "q1"), 1, "recipient")))
+        (await ExistsAsync(ModerationIds.VoteEvent(ModerationIds.Vote("u2", "q1").Value, 1, "recipient").Value))
             .Should().BeFalse("the ledger entry is in the same transaction as the refused vote");
         using (var check = Store.OpenAsyncSession())
-            (await check.LoadAsync<ModerationTally>(ModerationIds.Tally("q1")))!.Up.Should().Be(1, "the tally write was rolled back too");
+            (await check.LoadAsync<ModerationTally>(ModerationIds.Tally("q1").Value))!.Up.Should().Be(1, "the tally write was rolled back too");
     }
 
     private static async Task StoreVoteAsync(IAsyncDocumentSession session, string voter, string target, int tallyUp = 1)
     {
         var voteId = ModerationIds.Vote(voter, target);
         // "" = must not exist yet: the deterministic id plus this check is the double-vote guard.
-        await session.StoreAsync(new ModerationVote { VoterId = voter, TargetId = target, Direction = 1, Revision = 1 }, string.Empty, voteId);
+        await session.StoreAsync(new ModerationVote { VoterId = voter, TargetId = target, Direction = 1, Revision = 1 }, string.Empty, voteId.Value);
         await session.StoreAsync(new ReputationEvent { UserId = "a", VoterId = voter, Kind = "UpvoteReceived", Points = 10 },
-            string.Empty, ModerationIds.VoteEvent(voteId, 1, "recipient"));
-        var tally = await session.LoadAsync<ModerationTally>(ModerationIds.Tally(target))
+            string.Empty, ModerationIds.VoteEvent(voteId.Value, 1, "recipient").Value);
+        var tally = await session.LoadAsync<ModerationTally>(ModerationIds.Tally(target).Value)
                     ?? new ModerationTally { TargetId = target };
         tally.Up = tallyUp;
-        await session.StoreAsync(tally, ModerationIds.Tally(target));
+        await session.StoreAsync(tally, ModerationIds.Tally(target).Value);
     }
 
     private async Task<bool> ExistsAsync(string id)

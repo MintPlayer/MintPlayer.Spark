@@ -170,7 +170,7 @@ public class CrossCollectionBindingTests : SparkTestDriver
         create.AddAttribute(new PersistentObjectAttribute { Name = "Code", DataType = "string", Value = "ABC", IsValueChanged = true });
         create.AddAttribute(new PersistentObjectAttribute { Name = "Payload", DataType = "string", Value = "original", IsValueChanged = true });
         var saved = await _dbAccess.SavePersistentObjectAsync(create);
-        saved.Id.Should().Be(GuardedCoded.GetId("ABC"));
+        saved.Id.Should().Be(GuardedCoded.GetId("ABC").ToLowerInvariant(), "Spark creates every id lower case (#536 D7)");
 
         // A second "create" replaying the same Code derives the same id. Without the H2 fix this
         // takes the New path (GuardedCodedActions permits New) and silently overwrites. With it,

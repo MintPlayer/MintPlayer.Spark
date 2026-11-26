@@ -80,8 +80,8 @@ public class OidcTokenEndpointGuardTests(OidcSharedHost host) : OidcTestHost(hos
         var value = OidcTokenReference.GenerateValue();
         await SeedAsync(session => StoreInFamilyAsync(session, new OidcToken
         {
-            Id = OidcTokenReference.DocumentId(value),
-            ApplicationId = app.Id!,
+            Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(value)),
+            ApplicationId = app.Id.Value,
             // No authorization id: a token minted before grants were threaded through, which
             // OidcGrants deliberately permits.
             AuthorizationId = "",

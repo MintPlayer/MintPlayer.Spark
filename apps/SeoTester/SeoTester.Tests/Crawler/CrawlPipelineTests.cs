@@ -22,7 +22,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
     {
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
         await SetSettingAsync(host, SeoQuotas.VerifiedAudits.Limit.Key, "-1");
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, user);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, user);
         status.Should().Be(HttpStatusCode.OK, raw);
         return body.GetProperty("result").GetProperty("runId").GetString()!;
     }
@@ -90,12 +90,12 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         host.Web.RequestsTo("external.example.org").Should().BeEmpty("external links are checked for verified sites only");
 
         using var session = host.Database.OpenAsyncSession();
-        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id!), pageSize: 100);
+        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id.Value), pageSize: 100);
         pages.Should().HaveCount(6);
         pages.Should().OnlyContain(p => p.OrganizationId == Acme && p.ExpiresAtUtc > DateTime.UtcNow.AddDays(6));
         pages.Single(p => p.Url == site.Origin + "/").Findings.Should().Contain(f => f.CheckId == "seo.title-present" && f.Status == "Pass");
         (await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(runId))).Should().BeNull("the frontier is deleted on completion");
-        var stored = await session.LoadAsync<Site>(site.Id);
+        var stored = await session.LoadAsync<Site>(site.Id.Value);
         stored.LatestRunId.Should().Be(runId);
         stored.LatestScore.Should().Be(run.Score);
         (await session.Query<Notification>().Customize(c => c.WaitForNonStaleResults()).Where(n => n.UserId == Max && n.Url!.EndsWith(Uri.EscapeDataString(runId))).ToListAsync())
@@ -220,7 +220,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         busy.Should().HaveCount(3, "asked once and retried twice, then recorded as it is");
         busy.Zip(busy.Skip(1), (a, b) => (b - a).TotalMilliseconds).Should().OnlyContain(gap => gap >= 950, "Retry-After: 1 is waited for");
         using var session = host.Database.OpenAsyncSession();
-        (await session.LoadAsync<PageResult>(PageResult.IdFor(site.Id!, origin + "/busy"))).StatusCode.Should().Be(429);
+        (await session.LoadAsync<PageResult>(PageResult.IdFor(site.Id.Value, origin + "/busy"))).StatusCode.Should().Be(429);
     }
 
     [Fact]
@@ -277,11 +277,11 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         second.PagesDone.Should().Be(3, "/, /a and /old");
 
         using var session = host.Database.OpenAsyncSession();
-        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id!), pageSize: 100);
+        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id.Value), pageSize: 100);
         pages.Select(p => p.Url).Should().OnlyHaveUniqueItems().And.HaveCount(6, "one result per page of the site");
-        pages.Where(p => p.RunId == second.Id).Select(p => p.Url).Should().BeEquivalentTo(
+        pages.Where(p => p.RunId == second.Id.Value).Select(p => p.Url).Should().BeEquivalentTo(
             [origin + "/", origin + "/a", origin + "/old"], because: "the second scan's fetches replaced the first scan's results");
-        pages.Where(p => p.RunId == first.Id).Select(p => p.Url).Should().BeEquivalentTo(
+        pages.Where(p => p.RunId == first.Id.Value).Select(p => p.Url).Should().BeEquivalentTo(
             [origin + "/b", origin + "/missing", origin + "/orphan"], because: "a page the second scan did not reach keeps its latest result");
         pages.Should().OnlyContain(p => p.ExpiresAtUtc > DateTime.UtcNow.AddDays(6), "7 days from the fetch that wrote it");
         (await session.Advanced.LoadStartingWithAsync<PageResult>(first.Id + "/pages/", pageSize: 10)).Should().BeEmpty("no copy per scan");
@@ -290,7 +290,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         var results = second.CheckResults.ToDictionary(r => r.CheckId);
         results["seo.duplicate-titles"].Status.Should().Be("Pass");
         results["seo.duplicate-titles"].Delta.Should().Be("Fixed", "compared with the first scan's totals, kept on its run");
-        (await session.LoadAsync<AuditRun>(first.Id)).CheckResults.Select(r => (r.CheckId, r.Status, r.Affected, string.Join(' ', r.SampleUrls)))
+        (await session.LoadAsync<AuditRun>(first.Id.Value)).CheckResults.Select(r => (r.CheckId, r.Status, r.Affected, string.Join(' ', r.SampleUrls)))
             .Should().Equal(first.CheckResults.Select(r => (r.CheckId, r.Status, r.Affected, string.Join(' ', r.SampleUrls))), "a scan keeps what it measured");
     }
 }

@@ -494,7 +494,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
                 UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             }, ContributionId("en", "Latn", Alice));
             await session.StoreAsync(new CoSongLyricsCurrent { TargetId = SongId, Language = "en", Script = "Latn", Text = "stale" }, CurrentId("en", "Latn"));
-            await session.StoreAsync(new ContributionShapeMarker { Shape = "0000000000000000" }, ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance));
+            await session.StoreAsync(new ContributionShapeMarker { Shape = "0000000000000000" }, ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance).Value);
         });
 
         await StartAsync(seedSong: false);
@@ -503,7 +503,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         current!.Text.Should().Be("truth", "the startup check rebuilt the current documents of the changed declaration");
         current.ContributionCount.Should().Be(1);
         current.ContributionId.Should().Be(ContributionId("en", "Latn", Alice));
-        (await ReadAsync<ContributionShapeMarker>(ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance)))!
+        (await ReadAsync<ContributionShapeMarker>(ContributionShapeMarker.IdFor(CoSongLyricsContributionMetadata.Instance).Value))!
             .Shape.Should().Be(CoSongLyricsContributionMetadata.Shape);
 
         // The marker now matches: a second start rebuilds nothing.
@@ -677,12 +677,12 @@ public sealed class CoRace(IDocumentStore store)
         using var session = store.OpenAsyncSession();
         var contribution = CoSongLyricsContributionMetadata.Instance.CreateContribution(targetId,
             new CoLyrics { Language = "en", Script = "Latn", Text = "bob's concurrent text" }, "users/bob", DateTime.UtcNow);
-        await session.StoreAsync(contribution, contribution.Id);
+        await session.StoreAsync(contribution, contribution.Id.Value);
         var current = CoSongLyricsContributionMetadata.Instance.CreateCurrent(contribution, 1);
-        var existing = await session.LoadAsync<CoSongLyricsCurrent>(current.Id);
+        var existing = await session.LoadAsync<CoSongLyricsCurrent>(current.Id.Value);
         if (existing is not null)
             session.Advanced.Evict(existing);
-        await session.StoreAsync(current, current.Id);
+        await session.StoreAsync(current, current.Id.Value);
         await session.SaveChangesAsync();
         Fired = true;
     }

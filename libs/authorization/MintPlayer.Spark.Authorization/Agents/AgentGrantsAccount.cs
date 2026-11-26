@@ -119,7 +119,7 @@ internal sealed partial class AgentGrantsAccount(
             SecurityStamp = user.SecurityStamp ?? string.Empty,
         };
         await grants.SaveAsync(grant, cancellationToken);
-        LogTokenCreated(logger, userId, grant.Id, grant.ExpiresAt.Value);
+        LogTokenCreated(logger, userId, grant.Id.Value, grant.ExpiresAt.Value);
 
         return AgentResult<AgentTokenCreated>.Ok(new AgentTokenCreated(token, AgentGrantIds.KeyOf(grant), grant.ExpiresAt.Value));
     }
@@ -127,7 +127,7 @@ internal sealed partial class AgentGrantsAccount(
     /// <summary>Changes a grant's types and read/changes; the agent's next call uses them.</summary>
     public async Task<AgentResult<bool>> UpdateAsync(ClaimsPrincipal principal, string userId, AgentGrantUpdateRequest request, CancellationToken cancellationToken)
     {
-        if (AgentGrantIds.FromKey(userId, request.Key) is not { } id || await grants.GetOwnAsync(userId, id, cancellationToken) is not { } grant)
+        if (AgentGrantIds.FromKey(userId, request.Key) is not { } id || await grants.GetOwnAsync(userId, id.Value, cancellationToken) is not { } grant)
             return AgentResult<bool>.NotFound();
 
         var exposure = Exposure;
@@ -151,7 +151,7 @@ internal sealed partial class AgentGrantsAccount(
             grant.SecurityStamp = user.SecurityStamp ?? string.Empty;
         }
         await grants.SaveAsync(grant, cancellationToken);
-        LogGrantChanged(logger, userId, grant.Id!, grant.Permissions.ToString(), grant.Types is null ? "all" : string.Join(",", grant.Types.Select(t => t.Name)));
+        LogGrantChanged(logger, userId, grant.Id.Value, grant.Permissions.ToString(), grant.Types is null ? "all" : string.Join(",", grant.Types.Select(t => t.Name)));
         return AgentResult<bool>.Ok(true);
     }
 
@@ -162,7 +162,7 @@ internal sealed partial class AgentGrantsAccount(
     /// </summary>
     public async Task<bool> RevokeAsync(string userId, string? key, CancellationToken cancellationToken)
     {
-        if (AgentGrantIds.FromKey(userId, key) is not { } id || await grants.GetOwnAsync(userId, id, cancellationToken) is not { } grant)
+        if (AgentGrantIds.FromKey(userId, key) is not { } id || await grants.GetOwnAsync(userId, id.Value, cancellationToken) is not { } grant)
             return false;
 
         if (grant.Kind == EAgentKind.ExternalAuthorizationServer)
@@ -170,12 +170,12 @@ internal sealed partial class AgentGrantsAccount(
             grant.RevokedAt ??= time.GetUtcNow();
             await grants.SaveAsync(grant, cancellationToken);
         }
-        else if (!await grants.DeleteAsync(userId, id, cancellationToken))
+        else if (!await grants.DeleteAsync(userId, id.Value, cancellationToken))
         {
             return false;
         }
 
-        LogGrantRevoked(logger, userId, id);
+        LogGrantRevoked(logger, userId, id.Value);
 
         // D12: an embedded-server grant is linked with its OAuth grant; revoking one revokes the other, so the agent's
         // refresh token stops working too, not only its next call.
@@ -226,7 +226,7 @@ internal sealed partial class AgentGrantsAccount(
         => new(EAgentKind.PersonalAccessToken, tokenId, null, name, principal);
 
     private static AgentInformation AgentOf(AgentGrant grant, ClaimsPrincipal principal)
-        => new(grant.Kind, grant.ClientId, grant.VerifiedHost, grant.Name, principal) { GrantId = grant.Id };
+        => new(grant.Kind, grant.ClientId, grant.VerifiedHost, grant.Name, principal) { GrantId = grant.Id.Value };
 
     private static string StatusOf(AgentGrant grant, Identity.SparkUser? user, DateTimeOffset now)
     {

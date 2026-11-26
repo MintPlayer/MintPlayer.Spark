@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -17,7 +18,7 @@ public class GitHubForgeVersioningTests
 
     private static readonly Repository Target = new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 910040), GitHubId = 910040, Name = "widget", FullName = "acme/widget",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 910040)), GitHubId = 910040, Name = "widget", FullName = "acme/widget",
         OwnerLogin = "acme", Account = AccountId,
     };
 

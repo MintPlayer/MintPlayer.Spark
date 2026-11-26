@@ -75,7 +75,9 @@ public abstract class ContributionDescriptor
         var slots = descriptor.IsCollection && descriptor.SlotNames.Count > 0
             ? "(" + string.Join("/", Enumerable.Repeat("[^/]+", descriptor.SlotNames.Count)) + ")/"
             : "";
-        var pattern = "^(.+?)/" + System.Text.RegularExpressions.Regex.Escape(descriptor.PropertyName) + "Contributions/" + slots + "User/.+$";
+        // The literal segments match either case: ids written since #536 are lower case (D7), older ones are not. The
+        // pattern runs as a JavaScript RegExp with no flags, which has no portable inline (?i), so each letter is a class.
+        var pattern = "^(.+?)/" + AnyCase(descriptor.PropertyName + "Contributions") + "/" + slots + AnyCase("User") + "/.+$";
         var options = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["compareType"] = descriptor.TargetType.Name,
@@ -91,6 +93,20 @@ public abstract class ContributionDescriptor
             options["compareRowKeyReplacement"] = slots.Length > 0 ? "$2" : "";
         }
         return options;
+    }
+
+    /// <summary><paramref name="literal"/> as a pattern matching it in either case (<c>User</c> → <c>[Uu][Ss][Ee][Rr]</c>).</summary>
+    private static string AnyCase(string literal)
+    {
+        var pattern = new System.Text.StringBuilder(literal.Length * 4);
+        foreach (var c in literal)
+        {
+            if (char.IsAsciiLetter(c))
+                pattern.Append('[').Append(char.ToUpperInvariant(c)).Append(char.ToLowerInvariant(c)).Append(']');
+            else
+                pattern.Append(System.Text.RegularExpressions.Regex.Escape(c.ToString()));
+        }
+        return pattern.ToString();
     }
 
     /// <summary>The entity that declares the property (<c>Song</c>).</summary>

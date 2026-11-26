@@ -104,6 +104,10 @@ public static class SparkExtensions
         services.AddOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>()
             .PostConfigure(options => Services.SparkPresentation.Install(options.SerializerOptions));
 
+        // Id<T> controller parameters bind through the app model (#536 D7): any casing, or the key alone.
+        services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
+            options.ModelBinderProviders.Insert(0, new Services.SparkIdModelBinderProvider()));
+
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.

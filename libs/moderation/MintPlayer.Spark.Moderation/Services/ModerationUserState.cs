@@ -79,9 +79,9 @@ internal sealed partial class ModerationUserState
     public async Task<ModerationUserSnapshot> ReadAsync(string userId)
     {
         using var session = documentStore.OpenAsyncSession();
-        var summary = session.Advanced.Lazily.LoadAsync<ReputationSummary>(ModerationIds.Summary(userId));
-        var profile = session.Advanced.Lazily.LoadAsync<ModerationProfile>(ModerationIds.Profile(userId));
-        var suspension = session.Advanced.Lazily.LoadAsync<ModerationSuspension>(ModerationIds.Suspension(userId));
+        var summary = session.Advanced.Lazily.LoadAsync<ReputationSummary>(ModerationIds.Summary(userId).Value);
+        var profile = session.Advanced.Lazily.LoadAsync<ModerationProfile>(ModerationIds.Profile(userId).Value);
+        var suspension = session.Advanced.Lazily.LoadAsync<ModerationSuspension>(ModerationIds.Suspension(userId).Value);
         await session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync();
         var account = (await accounts.GetAsync([userId])).GetValueOrDefault(userId);
 
@@ -107,13 +107,13 @@ internal sealed partial class ModerationUserState
             {
                 using var session = documentStore.OpenAsyncSession();
                 session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-                var profile = await session.LoadAsync<ModerationProfile>(ModerationIds.Profile(snapshot.UserId))
+                var profile = await session.LoadAsync<ModerationProfile>(ModerationIds.Profile(snapshot.UserId).Value)
                               ?? new ModerationProfile { UserId = snapshot.UserId };
                 if (profile.LastActiveDay != day)
                 {
                     profile.ActiveDays++;
                     profile.LastActiveDay = day;
-                    await session.StoreAsync(profile, ModerationIds.Profile(snapshot.UserId));
+                    await session.StoreAsync(profile, ModerationIds.Profile(snapshot.UserId).Value);
                     await session.SaveChangesAsync();
                 }
                 result = profile;
@@ -140,10 +140,10 @@ internal sealed partial class ModerationUserState
             if (!Recorded.TryAdd($"{documentStore.Database}|{observationId}", 0))
                 return;
             using var ipSession = documentStore.OpenAsyncSession();
-            if (await ipSession.Advanced.ExistsAsync(observationId))
+            if (await ipSession.Advanced.ExistsAsync(observationId.Value))
                 return;
             var observation = new ModerationIpObservation { UserId = snapshot.UserId, KeyId = keyId, Hash = hash, Day = day };
-            await ipSession.StoreAsync(observation, observationId);
+            await ipSession.StoreAsync(observation, observationId.Value);
             ipSession.Advanced.GetMetadataFor(observation)["@expires"] =
                 snapshot.NowUtc.AddDays(options.Value.Fraud.IpObservationRetentionDays).ToString("O");
             await ipSession.SaveChangesAsync();

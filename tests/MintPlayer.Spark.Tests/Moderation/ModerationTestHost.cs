@@ -357,7 +357,7 @@ public sealed class MoHost : IAsyncDisposable
         using var scope = Factory.CreateScope();
         var ledger = scope.ServiceProvider.GetRequiredService<ReputationLedger>();
         await ledger.RecomputeAsync([userId]);
-        return (await LoadAsync<ReputationSummary>(ModerationIds.Summary(userId)))!;
+        return (await LoadAsync<ReputationSummary>(ModerationIds.Summary(userId).Value))!;
     }
 
     internal async Task<FraudDetectionReport> DetectAsync()

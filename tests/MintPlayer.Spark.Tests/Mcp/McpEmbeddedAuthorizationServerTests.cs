@@ -113,7 +113,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
         whoami.ToolText.Should().Contain($"id={user.Id}").And.Contain("authenticated=True");
 
         using var session = Store.OpenAsyncSession();
-        var grant = await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId));
+        var grant = await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId).Value);
         grant.Should().NotBeNull("the consent writes the agent grant (D12)");
         grant!.Kind.Should().Be(EAgentKind.MetadataDocument);
         grant.VerifiedHost.Should().Be("agent.example");
@@ -234,7 +234,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
             var (token, jti) = generator.GenerateAccessToken(user, app!, McpEmbeddedHost.Issuer, [fleet], 5);
             await session.StoreAsync(new OidcToken
             {
-                Id = OidcTokenReference.DocumentId(jti), ApplicationId = app!.Id!, AuthorizationId = authorizationId, Subject = user.Id!,
+                Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(jti)), ApplicationId = app.Id.Value, AuthorizationId = authorizationId, Subject = user.Id!,
                 Type = OidcTokenTypes.AccessToken, Scopes = ["fleet.read"], Status = "valid", CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddMinutes(5),
             });
             await session.SaveChangesAsync();
@@ -287,7 +287,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
         (await factory.GetService<OidcGrantWithdrawal>().WithdrawAsync(user.Id!, appId, null, null, CancellationToken.None)).Should().BeTrue();
 
         using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId))).Should().BeNull("revoking either revokes both");
+        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId).Value)).Should().BeNull("revoking either revokes both");
         (await WhoAmIAsync(factory.CreateClient(), access)).Status.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -326,7 +326,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
         var forged = await agent.PostConsentAsync(html, requestId, permission: "write");
         forged.StatusCode.Should().Be(HttpStatusCode.BadRequest, "a forged POST cannot widen the choice");
         using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId))).Should().BeNull();
+        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId).Value)).Should().BeNull();
     }
 
     [Fact]
@@ -338,7 +338,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
 
         Payload(tokens["access_token"]!.GetValue<string>())["scope"]!.GetValue<string>().Split(' ').Should().Contain("mcp:write");
         using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId)))!.Permissions
+        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, agent.ClientId).Value))!.Permissions
             .Should().Be(EAgentPermission.Read | EAgentPermission.Write);
     }
 
@@ -470,7 +470,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
 
         using var session = Store.OpenAsyncSession();
         (await session.LoadAsync<OidcApplication>(OidcAgentClients.ApplicationId(clientId))).Should().BeNull();
-        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, clientId))).Should().BeNull();
+        (await session.LoadAsync<AgentGrant>(AgentGrantIds.Application(user.Id!, clientId).Value)).Should().BeNull();
         (await WhoAmIAsync(client, access)).Status.Should().Be(HttpStatusCode.Unauthorized);
     }
 

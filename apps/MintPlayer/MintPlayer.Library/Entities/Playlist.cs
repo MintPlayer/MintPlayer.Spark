@@ -10,7 +10,7 @@ namespace MintPlayer.Entities;
 /// </summary>
 public partial class Playlist : ISoftDeletable, IAuditable
 {
-    public string? Id { get; set; }
+    public Id<Playlist> Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public bool IsPublic { get; set; }
@@ -35,9 +35,10 @@ public partial class PlaylistTrack
 /// One user's likes and dislikes, one document per user (<c>UserLikes/{userId}</c>), so toggling is a
 /// single-document write. Per-subject totals come from the <c>Likes_Count</c> index.
 /// </summary>
-public class UserLike
+[IdKind(SparkIdKind.Natural)]
+public partial class UserLike
 {
-    public string? Id { get; set; }
+    public Id<UserLike> Id { get; set; }
     public string UserId { get; set; } = string.Empty;
     public List<string> Likes { get; set; } = [];
     public List<string> Dislikes { get; set; } = [];

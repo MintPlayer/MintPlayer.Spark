@@ -340,7 +340,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         using (var session = Store.OpenAsyncSession())
         {
-            var app = await session.LoadAsync<OidcApplication>(issuing.Id!);
+            var app = await session.LoadAsync<OidcApplication>(issuing.Id.Value);
             app.AllowedGrantTypes = ["authorization_code"];
             await session.SaveChangesAsync();
         }
@@ -445,7 +445,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<OidcApplication>(app.Id!);
+            var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.Secrets[0].ExpiresAt = DateTime.UtcNow.AddDays(-1);
             await session.SaveChangesAsync();
         }
@@ -470,7 +470,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<OidcApplication>(app.Id!);
+            var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.Secrets.Add(new ClientSecret
             {
                 Hash = MintPlayer.Spark.IdentityProvider.Services.ClientSecretHasher.Hash("the-new-secret"),

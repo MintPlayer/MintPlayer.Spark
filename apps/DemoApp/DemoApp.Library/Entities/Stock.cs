@@ -1,9 +1,10 @@
+using MintPlayer.Spark.Abstractions;
 namespace DemoApp.Library.Entities;
 
-public class Stock
+public partial class Stock
 {
     /// <summary>Unique identifier of this stock, derived from its ticker symbol.</summary>
-    public string? Id { get; set; }
+    public Id<Stock> Id { get; set; }
     /// <summary>Ticker symbol under which the stock trades, for example <c>MSFT</c>.</summary>
     public string Symbol { get; set; } = string.Empty;
     /// <summary>Name of the company whose shares this stock represents.</summary>

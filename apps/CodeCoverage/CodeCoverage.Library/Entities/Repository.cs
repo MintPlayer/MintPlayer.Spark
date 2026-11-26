@@ -9,10 +9,11 @@ namespace CodeCoverage.Entities;
 /// Document id is Repositories/{GitHubId} so webhook upserts are idempotent.
 /// </summary>
 [GenerateIndex]
-public class Repository : IForgeConnectable
+[IdKind(SparkIdKind.Natural)]
+public partial class Repository : IForgeConnectable
 {
     /// <summary>Document id of this repository, <c>Repositories/{GitHubId}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<Repository> Id { get; set; }
 
     /// <summary>The GitHub user or organization that owns this repository.</summary>
     [Reference(typeof(Account))]

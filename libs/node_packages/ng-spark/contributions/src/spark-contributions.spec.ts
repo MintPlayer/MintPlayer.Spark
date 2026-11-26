@@ -27,13 +27,14 @@ const attributionOptions = {
 };
 
 /** The options it seeds on a contribution's text (ContributionDescriptor.LineDiffRendererOptions). */
+// The pattern as the server writes it: either case, since ids are lower case from #536 on (D7).
 const diffOptions = {
   compareType: 'Song',
-  compareIdPattern: '^(.+?)/LyricsContributions/([^/]+/[^/]+)/User/.+$',
+  compareIdPattern: '^(.+?)/[Ll][Yy][Rr][Ii][Cc][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/([^/]+/[^/]+)/[Uu][Ss][Ee][Rr]/.+$',
   compareIdReplacement: '$1',
   compareAttribute: 'Lyrics',
   compareRowAttribute: 'Text',
-  compareRowKeyPattern: '^(.+?)/LyricsContributions/([^/]+/[^/]+)/User/.+$',
+  compareRowKeyPattern: '^(.+?)/[Ll][Yy][Rr][Ii][Cc][Ss][Cc][Oo][Nn][Tt][Rr][Ii][Bb][Uu][Tt][Ii][Oo][Nn][Ss]/([^/]+/[^/]+)/[Uu][Ss][Ee][Rr]/.+$',
   compareRowKeyReplacement: '$2',
 };
 
@@ -90,6 +91,19 @@ describe('lineDiff renderer source', () => {
     expect(lineDiffTextOf(song, source)).toBe('current\ntext');
     expect(lineDiffTextOf(song, { ...source, rowKey: 'ko/Kore' })).toBe('');
     expect(lineDiffTextOf({ ...song, attributes: [] }, source)).toBeNull();
+  });
+
+  it('matches the row of a lower-case contribution id (#536 D7) to the slot ignoring case', () => {
+    const song = {
+      id: 'Songs/1', attributes: [{
+        name: 'Lyrics', dataType: 'AsDetail', isArray: true,
+        objects: [{ id: 'en/Latn', attributes: [{ name: 'Text', value: 'current\ntext' }] }],
+      }],
+    } as unknown as PersistentObject;
+    const lowered = { ...item, id: contributionId.toLowerCase() } as PersistentObject;
+    const source = lineDiffSourceOf(diffOptions, lowered)!;
+    expect(source.rowKey).toBe('en/latn');
+    expect(lineDiffTextOf(song, source)).toBe('current\ntext');
   });
 });
 

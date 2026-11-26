@@ -117,7 +117,7 @@ public partial class Commits_ByRepository : SparkIndexCreationTask<Commit>
         Map = commits => from commit in commits
                          select new VCommit
                          {
-                             Id = commit.Id,
+                             Id = commit.Id.Value,
                              Repository = commit.Repository,
                              Sha = commit.Sha,
                              Branch = commit.Branch,

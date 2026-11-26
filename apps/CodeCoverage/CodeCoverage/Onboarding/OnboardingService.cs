@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
@@ -144,7 +145,7 @@ public partial class OnboardingService : IOnboardingService
         var features = OnboardingFeatureDetection.Detect(repository, account, yml, formatting).ToHashSet();
 
         // An open onboarding pull request's features are chosen already, though not applied yet. A closed one's are not.
-        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value), cancellationToken);
         if (state is { Features.Count: > 0, PullRequestNumber: { } number, MergeHandledAt: null }
             && updates.FirstOrDefault(u => u.Provider == repository.Provider) is { } pulls
             && await pulls.GetPullRequestAsync(repository, number, cancellationToken) is { IsOpen: true })
@@ -162,7 +163,7 @@ public partial class OnboardingService : IOnboardingService
 
     public async Task<VersioningOnboardingOutcome> RebuildAsync(Repository repository, CancellationToken cancellationToken = default)
     {
-        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value), cancellationToken);
         if (state is not { Features.Count: > 0, PullRequestNumber: { } number, MergeHandledAt: null }
             || updates.FirstOrDefault(u => u.Provider == repository.Provider) is not { } pulls
             || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
@@ -188,11 +189,11 @@ public partial class OnboardingService : IOnboardingService
         var forge = forges.FirstOrDefault(f => f.Provider == repository.Provider);
         var defaultBranch = repository.DefaultBranch!;
 
-        var id = VersioningOnboardingState.ForRepository(repository.Id!);
+        var id = VersioningOnboardingState.ForRepository(repository.Id.Value);
         var state = await session.LoadAsync<VersioningOnboardingState>(id, cancellationToken);
         if (state is null)
         {
-            state = new VersioningOnboardingState { Id = id };
+            state = new VersioningOnboardingState { Id = Id<VersioningOnboardingState>.FromTrusted(id) };
             await session.StoreAsync(state, id, cancellationToken);
         }
 
@@ -294,7 +295,7 @@ public partial class OnboardingService : IOnboardingService
         // The seeds (with the history backfill, #638) come after the line cuts (D7), so a version goes on the line of its major. A
         // #153 pull request (no features) carries seeds too, so every early return pushes them. A refusal is noted on the state
         // and retried by the next versioning run, so it does not hold back the rest.
-        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value), cancellationToken);
         if (state is not { Features.Count: > 0, PullRequestNumber: { } number, MergeHandledAt: null }
             || forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
             || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
@@ -350,7 +351,7 @@ public partial class OnboardingService : IOnboardingService
         if (settings.Contains(EOnboardingFeature.DependencyUpdates) && repository.DependencyUpdates != EDependencyUpdatesPolicy.Enabled)
         {
             repository.DependencyUpdates = EDependencyUpdatesPolicy.Enabled;
-            await DependencyUpdateSwitch.SignalAsync(messageBus, repository.Id!, DependencyUpdateSwitch.On, time.GetUtcNow(), expedite: false, cancellationToken);
+            await DependencyUpdateSwitch.SignalAsync(messageBus, repository.Id.Value, DependencyUpdateSwitch.On, time.GetUtcNow(), expedite: false, cancellationToken);
             done.Add("dependency updates are on");
         }
         if (settings.Contains(EOnboardingFeature.SizeLabels) && repository.PrSizeLabels != EPrSizeLabelPolicy.Enabled)

@@ -11,10 +11,11 @@ namespace SeoTester.Entities;
 /// is never overwritten, and <c>ResetCheckDefinition</c> restores one entry. The C# implementation is keyed by
 /// <see cref="CheckId"/>; an entry without one shows as unavailable (M9).
 /// </summary>
-public class CheckDefinition
+[IdKind(SparkIdKind.Natural)]
+public partial class CheckDefinition
 {
     /// <summary><c>CheckDefinitions/{CheckId}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<CheckDefinition> Id { get; set; }
 
     /// <summary><c>{category}.{kebab-case}</c>, permanent.</summary>
     public string CheckId { get; set; } = string.Empty;

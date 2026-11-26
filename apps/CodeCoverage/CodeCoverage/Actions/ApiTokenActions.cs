@@ -122,9 +122,9 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
 
         var ids = await session.Query<Account, Indexes.Accounts_Overview>()
             .Where(a => a.OwnerKey.In(owners))
-            .Select(a => a.Id)
+            .ProjectInto<IdRow>()
             .ToListAsync();
-        return [.. ids.OfType<string>()];
+        return [.. ids.Select(r => r.Id).OfType<string>()];
     }
 
     /// <summary>
@@ -202,7 +202,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
             return;
 
         // Distinct, because a duplicated id would otherwise mean a repeated claim on the wire.
-        entity.RepositoryIds = [.. entity.RepositoryIds.Distinct(StringComparer.Ordinal)];
+        entity.RepositoryIds = [.. entity.RepositoryIds.Distinct(StringComparer.OrdinalIgnoreCase)];
 
         var repositories = await session.LoadAsync<Repository>(entity.RepositoryIds);
 
@@ -212,7 +212,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
 
             // Unknown and foreign are refused identically — a caller must not be able to discover
             // which repository ids exist by comparing error messages.
-            if (repository is null || !string.Equals(repository.Account, account.Id, StringComparison.Ordinal))
+            if (repository is null || !string.Equals(repository.Account, account.Id.Value, StringComparison.OrdinalIgnoreCase))
             {
                 throw new SparkValidationException(
                     nameof(ApiToken.RepositoryIds),
@@ -267,4 +267,10 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
             .Where(t => t.Account == args.Parent!.Id)
             .OfType<ApiToken>();
     }
+}
+
+/// <summary>A projected document key (#536): a raw session can't project an entity's typed <c>Id</c>.</summary>
+file sealed class IdRow
+{
+    public string? Id { get; set; }
 }

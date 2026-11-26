@@ -108,7 +108,7 @@ public sealed partial class RavenAttachmentFileStore(IDocumentStore store) : ISe
             yield return item;
     }
 
-    public string StagingKey(string token) => SparkFileUpload.IdFor(token) + "/" + OriginalName;
+    public string StagingKey(string token) => SparkFileUpload.IdFor(token).Value + "/" + OriginalName;
 
     public string StagingVariantKey(string token, string variant)
         => SparkFileKeys.IsVariantName(variant) ? StagingKey(token) + "." + variant : throw new ArgumentException("Not a variant name.", nameof(variant));

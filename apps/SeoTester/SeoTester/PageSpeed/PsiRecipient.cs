@@ -45,7 +45,7 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
     {
         var pages = new Dictionary<string, List<PageFinding>>(StringComparer.Ordinal);
         var site = new List<StoredFinding>();
-        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
+        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id.Value), cancellationToken);
         if (frontier is not null)
             session.Advanced.Evict(frontier);
         var sample = await RenderSample.PickAsync(session, run, frontier, run.PsiSample, cancellationToken);
@@ -64,7 +64,7 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
                     {
                         // Nothing of this attempt is stored: measured pages are cached, so the next attempt does not ask again.
                         logger.LogWarning("PageSpeed Insights quota exhausted for {RunId}; asking again later (attempt {Attempt})", run.Id, attempt + 1);
-                        await outbox.EnqueueAsync(session, new PsiMessage(run.Id!, attempt + 1),
+                        await outbox.EnqueueAsync(session, new PsiMessage(run.Id.Value, attempt + 1),
                             new BroadcastOptions { Delay = client.Options.QuotaRetryDelay * (attempt + 1) }, cancellationToken);
                         await session.SaveChangesAsync(cancellationToken);
                         return;
@@ -79,7 +79,7 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
         }
 
         RunPipeline.AddFindings(session, run, pages, site);
-        await pipeline.FinishStageAsync(session, outbox, run.Id!, PipelineStages.Psi, cancellationToken);
+        await pipeline.FinishStageAsync(session, outbox, run.Id.Value, PipelineStages.Psi, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 

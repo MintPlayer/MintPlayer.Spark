@@ -38,13 +38,13 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
                 "An identity resource is itself one scope; it has no scopes of its own.", nameof(entity.Scopes));
 
         var naturalId = OidcScopeCatalog.ResourceId(entity.Name);
-        if (context.IsNew || string.IsNullOrEmpty(entity.Id))
+        if (context.IsNew || string.IsNullOrEmpty(entity.Id.Value))
         {
             // Not a session only when the interceptor is called by hand (unit tests of the rules above).
             if (context.Session is IAsyncDocumentSession session && await session.Advanced.ExistsAsync(naturalId))
                 throw new SparkValidationException($"A resource named '{entity.Name}' already exists.", nameof(entity.Name));
 
-            entity.Id = naturalId;
+            entity.Id = Id<OidcResource>.FromTrusted(naturalId);
             if (entity.CreatedBy is null && context.User?.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId)
             {
                 entity.CreatedBy = userId;
@@ -54,7 +54,7 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
                     entity.Owners.Add(userId);
             }
         }
-        else if (!string.Equals(entity.Id, naturalId, StringComparison.OrdinalIgnoreCase))
+        else if (!string.Equals(entity.Id.Value, naturalId, StringComparison.OrdinalIgnoreCase))
         {
             throw new SparkValidationException(
                 "A resource cannot be renamed: its name is its id, and for an API the audience every issued token carries. Create a new resource instead.",

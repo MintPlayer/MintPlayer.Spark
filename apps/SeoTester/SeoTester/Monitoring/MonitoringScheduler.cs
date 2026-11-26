@@ -44,9 +44,9 @@ public sealed class MonitoringScheduler(
         foreach (var site in due)
         {
             var slot = site.NextMonitoringRunAtUtc!.Value;
-            await bus.BroadcastOnceAsync(new MonitoredAuditMessage(site.Id!, slot), MonitoringPlan.SlotKey(site.Id!, slot), cancellationToken);
+            await bus.BroadcastOnceAsync(new MonitoredAuditMessage(site.Id.Value, slot), MonitoringPlan.SlotKey(site.Id.Value, slot), cancellationToken);
             // A patch of the one field: the sweep never writes back a profile edit or a verification it did not read.
-            session.Advanced.Patch<Site, DateTime?>(site.Id!, s => s.NextMonitoringRunAtUtc, MonitoringPlan.NextAfter(site.Monitoring, slot, now));
+            session.Advanced.Patch<Site, DateTime?>(site.Id.Value, s => s.NextMonitoringRunAtUtc, MonitoringPlan.NextAfter(site.Monitoring, slot, now));
         }
         if (due.Count > 0)
         {

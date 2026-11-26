@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text;
 using System.Text.Json.Nodes;
 using CodeCoverage.Dependencies;
@@ -29,7 +30,7 @@ public class DependencySagaTests : CoverageRavenTest
             // Past onboarding: the first pull request already happened, so the next one is not a draft (R16).
             await harness.StoreAsync(new DependencyUpdateRun
             {
-                Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId, FirstPullRequestOpened = true, Onboarding = EDependencyOnboarding.Done,
+                Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId, FirstPullRequestOpened = true, Onboarding = EDependencyOnboarding.Done,
             }, DependencyUpdateRun.ForRepository(RepositoryId));
         }
         return harness;
@@ -575,7 +576,7 @@ public class DependencySagaTests : CoverageRavenTest
         var h = await HarnessAsync();
         await h.StoreAsync(new DependencyUpdateState
         {
-            Id = DependencyUpdateState.ForRepository(RepositoryId), Repository = RepositoryId,
+            Id = Id<DependencyUpdateState>.FromTrusted(DependencyUpdateState.ForRepository(RepositoryId)), Repository = RepositoryId,
             Approvals = [new DependencyApproval { Group = "nx", DepNames = ["nx"], TargetMajors = ["nx@23"], ConfigBlob = string.Empty, ApprovedBy = "maintainer" }],
         }, DependencyUpdateState.ForRepository(RepositoryId));
         await h.RunToApplyAsync(ChalkAndNxMajor());
@@ -655,7 +656,7 @@ public class DependencySagaTests : CoverageRavenTest
         var h = await HarnessAsync();
         await h.StoreAsync(new DependencyUpdateRun
         {
-            Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId, Run = 3, State = EDependencyRunState.Bisecting,
+            Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId, Run = 3, State = EDependencyRunState.Bisecting,
         }, DependencyUpdateRun.ForRepository(RepositoryId));
 
         await h.TriggerAsync(EDependencyRunTrigger.Security, [new DependencySecurityFixRecord { Ecosystem = "npm", DepName = "chalk" }]);
@@ -753,7 +754,7 @@ public class DependencySagaTests : CoverageRavenTest
         await h.ReleaseAsync(EDependencyStep.PollChecks);
 
         (await h.StateAsync()).Holds.Should().ContainSingle(x => x.Id == "red:lodash");
-        (await h.FleetAsync())!.RedVersions.Should().ContainSingle(r => r.DepName == "lodash" && r.Version == "4.17.21" && r.Repository == RepositoryId);
+        (await h.FleetAsync())!.RedVersions.Should().ContainSingle(r => r.DepName == "lodash" && r.Version == "4.17.21" && string.Equals(r.Repository, RepositoryId, StringComparison.OrdinalIgnoreCase));
         h.Queue.Comments.Should().Contain(c => c.Body.Contains("Bisect: `lodash` broke CI"));
         var after = await h.RunAsync();
         after.Trigger.Should().Be(EDependencyRunTrigger.Refresh, "everything but the culprit is rebuilt");

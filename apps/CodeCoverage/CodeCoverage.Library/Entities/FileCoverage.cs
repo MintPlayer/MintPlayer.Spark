@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -8,10 +9,11 @@ namespace CodeCoverage.Entities;
 /// Document id is {buildId}/files/{pathHash} so re-parsing a session
 /// overwrites deterministically. Not exposed through Spark's generic UI.
 /// </summary>
-public class FileCoverage
+[IdKind(SparkIdKind.Natural)]
+public partial class FileCoverage
 {
     /// <summary>Document id of this file's coverage, <c>{buildId}/files/{pathHash}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<FileCoverage> Id { get; set; }
 
     /// <summary>Document id of the build this file's coverage was merged for.</summary>
     public string BuildId { get; set; } = string.Empty;

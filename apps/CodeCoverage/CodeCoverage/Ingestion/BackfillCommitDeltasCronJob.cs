@@ -51,9 +51,9 @@ public partial class BackfillCommitDeltasCronJob : ISparkCronJob
 
         foreach (var commit in pending)
         {
-            if (commit.Id is null)
+            if (commit.Id.IsEmpty)
                 continue;
-            await assembler.RestampDeltasAsync(commit.Id, cancellationToken);
+            await assembler.RestampDeltasAsync(commit.Id.Value, cancellationToken);
             // A commit with no repository has no API path; mark it so it is not
             // picked up again.
             commit.ParentLookupAttemptedAtUtc ??= DateTime.UtcNow;

@@ -19,7 +19,7 @@ namespace Fleet.Entities;
 public partial class Car : IAuditCreated
 {
     /// <summary>Unique identifier of this vehicle record, assigned automatically when it is created.</summary>
-    public string? Id { get; set; }
+    public Id<Car> Id { get; set; }
 
     /// <summary>
     /// <see cref="SearchAttribute"/> makes this full-text searchable AND gives it a <c>LicensePlateSort</c>

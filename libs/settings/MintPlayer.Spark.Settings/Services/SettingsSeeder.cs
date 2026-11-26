@@ -62,13 +62,13 @@ internal sealed class SettingsSeeder(
         session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
 
         var declared = catalog.All.ToList();
-        var existing = await session.LoadAsync<Setting>(declared.Select(s => Setting.IdFor(s.Key)), cancellationToken);
+        var existing = await session.LoadAsync<Setting>(declared.Select(s => Setting.IdFor(s.Key).Value), cancellationToken);
         var written = 0;
         foreach (var declaration in declared)
         {
             var id = Setting.IdFor(declaration.Key);
             var type = SparkSettingValues.TypeName(declaration.ValueType);
-            if (existing.TryGetValue(id, out var setting) && setting is not null)
+            if (existing.TryGetValue(id.Value, out var setting) && setting is not null)
             {
                 if (setting.Key == declaration.Key && setting.Type == type && setting.Default == declaration.DefaultText && setting.Description == declaration.Description)
                     continue;
@@ -87,7 +87,7 @@ internal sealed class SettingsSeeder(
                     Type = type,
                     Default = declaration.DefaultText,
                     Description = declaration.Description,
-                }, string.Empty, id, cancellationToken);
+                }, string.Empty, id.Value, cancellationToken);
             }
             written++;
         }

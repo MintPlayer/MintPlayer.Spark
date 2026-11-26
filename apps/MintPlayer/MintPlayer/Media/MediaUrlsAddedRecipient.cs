@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents.Session;
@@ -42,7 +43,7 @@ public partial class MediaUrlsAddedRecipient : IRecipient<MediaUrlsAdded>
                 var thumbnail = await byPlatform[media.Platform].ResolveAsync(media, cancellationToken);
                 resolved.Add(new MediaThumbnail
                 {
-                    Id = id,
+                    Id = Id<MediaThumbnail>.FromTrusted(id),
                     Platform = media.Platform,
                     PlatformId = media.Id,
                     ThumbnailUrl = thumbnail,
@@ -55,7 +56,7 @@ public partial class MediaUrlsAddedRecipient : IRecipient<MediaUrlsAdded>
             if (resolved.Count > 0)
             {
                 foreach (var document in resolved)
-                    await session.StoreAsync(document, document.Id, CancellationToken.None);
+                    await session.StoreAsync(document, document.Id.Value, CancellationToken.None);
                 await session.SaveChangesAsync(CancellationToken.None);
             }
         }

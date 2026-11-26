@@ -23,7 +23,8 @@ public class MergeQueueWebhookTests : CoverageRavenTest
 {
     private const long AppId = 4242;
     private const string Sha = "3333333333333333333333333333333333333333";
-    internal static readonly string RepositoryId = Entities.Repository.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId);
+    /// <summary>The canonical (lower-case) id: what an event carries, read off the loaded repository (#536 D7).</summary>
+    internal static readonly string RepositoryId = Entities.Repository.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId).ToLowerInvariant();
 
     internal static async Task SeedAsync(IDocumentStore store, bool busy)
     {

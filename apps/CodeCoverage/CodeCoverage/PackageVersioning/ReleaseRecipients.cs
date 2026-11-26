@@ -166,7 +166,7 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
             }
             versions.Add(tag);
         }
-        var pending = (await session.Advanced.LoadStartingWithAsync<ReleaseVersion>(ReleaseVersion.Prefix(repository.Id!), pageSize: 256, token: cancellationToken))
+        var pending = (await session.Advanced.LoadStartingWithAsync<ReleaseVersion>(ReleaseVersion.Prefix(repository.Id.Value), pageSize: 256, token: cancellationToken))
             .Where(r => r.PlacedCommit is null).ToList();
         var recorded = new Dictionary<string, ReleaseVersion>(StringComparer.Ordinal);
         foreach (var record in pending.OrderBy(r => r.RecordedUtc))
@@ -215,13 +215,13 @@ public partial class ReleaseRecipient : IRecipient<ReleaseMessage>
         // One request for every tag's record: a line promotes every package at once, far past the session's request cap.
         // The loads below then come from the session, which also remembers the ids it did not find.
         await session.LoadAsync<ReleaseVersion>(promoted.SelectMany(l => l.Tags ?? []).Distinct(StringComparer.Ordinal)
-            .Select(name => ReleaseVersion.DocumentId(repository.Id!, name)), cancellationToken);
+            .Select(name => ReleaseVersion.DocumentId(repository.Id.Value, name)), cancellationToken);
         foreach (var line in promoted)
             foreach (var name in line.Tags ?? [])
             {
                 if (!VersionTag.TryParse(name, out var tag)) continue;
-                await HandTagRecipient.RecordAsync(session, repository.Id!, tag, message.ActorLogin, ReleaseVersion.FromComment, now, cancellationToken);
-                if (await session.LoadAsync<ReleaseVersion>(ReleaseVersion.DocumentId(repository.Id!, name), cancellationToken) is { } record)
+                await HandTagRecipient.RecordAsync(session, repository.Id.Value, tag, message.ActorLogin, ReleaseVersion.FromComment, now, cancellationToken);
+                if (await session.LoadAsync<ReleaseVersion>(ReleaseVersion.DocumentId(repository.Id.Value, name), cancellationToken) is { } record)
                     (record.PlacedCommit, record.PlacedUtc) = (line.Commit, now);
             }
         // A recorded version the writer could not place no longer fits (no package, or its line released past it):

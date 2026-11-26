@@ -70,7 +70,7 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
 
         var app = new OidcApplication
         {
-            Id = "OidcApplications/" + Guid.NewGuid().ToString("N"),
+            Id = Id<OidcApplication>.FromTrusted("oidcapplications/" + Guid.NewGuid().ToString("N")),
             ClientId = OidcClientIdReservation.GenerateClientId(),
             Mode = OidcApplicationModes.Development,
             CreatedAt = DateTime.UtcNow,
@@ -100,16 +100,16 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
         var registrationToken = OidcTokenReference.GenerateValue();
         await session.StoreExpiringAsync(new OidcToken
         {
-            Id = OidcTokenReference.DocumentId("rat:" + registrationToken),
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId("rat:" + registrationToken)),
             Type = OidcTokenTypes.RegistrationAccessToken,
-            ApplicationId = app.Id,
+            ApplicationId = app.Id.Value,
             Subject = initial.Subject,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddYears(10),
             Properties = { ["kind"] = "client" },
         }, ct);
-        await audit.RecordAsync(session, OidcAuditKinds.DynamicRegistration, initial.Subject, app.Id, ipAddress: http.Connection.RemoteIpAddress?.ToString(), ct: ct);
+        await audit.RecordAsync(session, OidcAuditKinds.DynamicRegistration, initial.Subject, app.Id.Value, ipAddress: http.Connection.RemoteIpAddress?.ToString(), ct: ct);
         await session.SaveChangesAsync(ct);
 
         var response = OidcClientRegistration.Describe(app, oidcIssuer.Resolve(http.Request));
@@ -177,7 +177,7 @@ internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcCl
         catch (SparkValidationException ex) { return OidcRegisterClient.Invalid(ex.Message); }
         await Interceptors.OidcApplicationInterceptors.MarkCrossOwnerScopesAsync(session, app, app.Scopes.Where(s => !before.Contains(s.Name)), app.CreatedBy);
 
-        await audit.RecordAsync(session, OidcAuditKinds.ApplicationChanged, app.CreatedBy, app.Id, ipAddress: http.Connection.RemoteIpAddress?.ToString(),
+        await audit.RecordAsync(session, OidcAuditKinds.ApplicationChanged, app.CreatedBy, app.Id.Value, ipAddress: http.Connection.RemoteIpAddress?.ToString(),
             details: new Dictionary<string, string> { ["via"] = "registration" }, ct: ct);
         await session.SaveChangesAsync(ct);
         return Results.Json(OidcClientRegistration.Describe(app, oidcIssuer.Resolve(http.Request)));
@@ -205,7 +205,7 @@ internal sealed partial class OidcDeleteClientRegistration : IDeleteEndpoint
             return OidcRegistrationAccess.Unauthorized(httpContext);
 
         session.Delete(app);
-        await audit.RecordAsync(session, OidcAuditKinds.ApplicationDeleted, app.CreatedBy, app.Id, ipAddress: httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+        await audit.RecordAsync(session, OidcAuditKinds.ApplicationDeleted, app.CreatedBy, app.Id.Value, ipAddress: httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
         await session.SaveChangesAsync(ct);
         await OidcClientIdReservation.ReleaseAsync(session, app);
         return Results.NoContent();

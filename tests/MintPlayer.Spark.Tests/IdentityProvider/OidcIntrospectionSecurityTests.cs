@@ -17,8 +17,8 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
         using var session = Store.OpenAsyncSession();
         await StoreInFamilyAsync(session, new OidcToken
         {
-            Id = OidcTokenReference.DocumentId(value),
-            ApplicationId = app.Id!,
+            Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(value)),
+            ApplicationId = app.Id.Value,
             Subject = subject,
             Type = "refresh_token",
             Scopes = [.. scopes ?? ["openid", "profile"]],
@@ -138,7 +138,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
 
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<OidcApplication>(gateway.Id!);
+            var stored = await session.LoadAsync<OidcApplication>(gateway.Id.Value);
             stored.MayIntrospectAnyAudience = true;
             await session.SaveChangesAsync();
         }

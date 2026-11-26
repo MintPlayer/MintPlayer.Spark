@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
@@ -97,7 +98,7 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
             // Changelog × release lines R1: with lines on the default branch releases nothing (#568 D15), so it is not planned
             // and gets no row; its document only caches the patterns the push filter matches line pushes against.
             var cache = await LoadOrStoreAsync(repository, defaultBranch, cancellationToken);
-            Apply(cache, repository.Id!, defaultBranch, message.Sha, at, []);
+            Apply(cache, repository.Id.Value, defaultBranch, message.Sha, at, []);
             Cache(cache, config);
             if (config.Lines?.PromotesCurrent == true)
             {
@@ -111,7 +112,7 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
                     var promoted = await VersioningPlans.PlanAsync(writer, git, repository, branch, message.Sha, defaultBranch, lineMajor, settings, true,
                         logger, "Upcoming changelog", cancellationToken, promoted: true);
                     if (promoted is null) continue;
-                    Apply(await LoadOrStoreAsync(repository, branch, cancellationToken), repository.Id!, branch, message.Sha, at, promoted.Upcoming ?? []);
+                    Apply(await LoadOrStoreAsync(repository, branch, cancellationToken), repository.Id.Value, branch, message.Sha, at, promoted.Upcoming ?? []);
                 }
             }
             await session.SaveChangesAsync(cancellationToken);
@@ -123,7 +124,7 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
         if (plan is null) return;
 
         var upcoming = await LoadOrStoreAsync(repository, message.Branch, cancellationToken);
-        Apply(upcoming, repository.Id!, message.Branch, message.Sha, at, plan.Upcoming ?? []);
+        Apply(upcoming, repository.Id.Value, message.Branch, message.Sha, at, plan.Upcoming ?? []);
         if (message.Branch == defaultBranch) Cache(upcoming, config);
         await session.SaveChangesAsync(cancellationToken);
     }
@@ -132,7 +133,7 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
     {
         var id = UpcomingChangelog.DocumentId(repository.Provider, repository.GitHubId, branch);
         var upcoming = await session.LoadAsync<UpcomingChangelog>(id, cancellationToken);
-        if (upcoming is null) await session.StoreAsync(upcoming = new UpcomingChangelog { Id = id }, id, cancellationToken);
+        if (upcoming is null) await session.StoreAsync(upcoming = new UpcomingChangelog { Id = Id<UpcomingChangelog>.FromTrusted(id) }, id, cancellationToken);
         return upcoming;
     }
 
@@ -161,7 +162,7 @@ public partial class UpcomingChangelogRecipient : IRecipient<UpcomingChangelogMe
         // A repository has a handful of lines; one page of the prefix holds them all.
         var lines = await session.LoadStartingWithAsync<UpcomingChangelog>(UpcomingChangelog.ForRepository(repository.Provider, repository.GitHubId), 0, 1024,
             cancellationToken);
-        return [.. lines.Where(l => l.Repository == repository.Id && !(l.Branch == repository.DefaultBranch && l.LinePattern is not null))
+        return [.. lines.Where(l => string.Equals(l.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase) && !(l.Branch == repository.DefaultBranch && l.LinePattern is not null))
             .OrderBy(l => l.Branch == repository.DefaultBranch ? 0 : 1).ThenByDescending(l => l.Branch, StringComparer.Ordinal)];
     }
 }

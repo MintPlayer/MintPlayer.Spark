@@ -20,7 +20,7 @@ public class OidcParJarTests(OidcSharedHost host) : OidcTestHost(host), IClassFi
         => SeedApplicationAsync(ClientId(name), consentType: "implicit");
 
     private async Task UpdateAppAsync(OidcApplication app, Action<OidcApplication> change)
-        => await SeedAsync(async session => change((await session.LoadAsync<OidcApplication>(app.Id))!));
+        => await SeedAsync(async session => change((await session.LoadAsync<OidcApplication>(app.Id.Value))!));
 
     private Task<HttpResponseMessage> PushAsync(OidcApplication app, Dictionary<string, string>? parameters = null, string secret = Secret)
     {

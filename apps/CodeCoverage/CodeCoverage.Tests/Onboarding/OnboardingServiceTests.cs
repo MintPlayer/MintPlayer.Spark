@@ -91,7 +91,7 @@ public class OnboardingServiceTests : CoverageRavenTest
     private static async Task<VersioningOnboardingState> StateAsync(IDocumentStore store, Repository repository)
     {
         using var read = store.OpenAsyncSession();
-        return (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!)))!;
+        return (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value)))!;
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public class OnboardingServiceTests : CoverageRavenTest
 
         using (var read = store.OpenAsyncSession())
         {
-            var saved = (await read.LoadAsync<Repository>(repository.Id))!;
+            var saved = (await read.LoadAsync<Repository>(repository.Id.Value))!;
             (saved.DependencyUpdates, saved.PrSizeLabels).Should().Be((EDependencyUpdatesPolicy.Enabled, EPrSizeLabelPolicy.Enabled));
         }
         h.Bus.Of<CodeCoverage.Dependencies.Lifecycle.DependencyUpdateSignalMessage>().Should().ContainSingle();
@@ -341,7 +341,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         await h.Session.StoreAsync(new VersioningOnboardingState
         {
             PullRequestNumber = 7, Features = [EOnboardingFeature.ReleaseLines, EOnboardingFeature.Versioning], BaseSha = Head,
-        }, VersioningOnboardingState.ForRepository(repository.Id!));
+        }, VersioningOnboardingState.ForRepository(repository.Id.Value));
         await h.Session.SaveChangesAsync();
         h.Versioning.PullRequest = new ForgePullRequestText(7, OnboardingPlanner.Title, null, OnboardingPlanner.Branch, Head, "main",
             false, true, true, "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd", []);
@@ -400,7 +400,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         outcome.Outcome.Should().Be(VersioningOnboardingOutcome.Merged, outcome.Note);
         h.Pulls.Created.Should().BeEmpty();
         using var read = store.OpenAsyncSession();
-        (await read.LoadAsync<Repository>(repository.Id))!.PrSizeLabels.Should().Be(EPrSizeLabelPolicy.Enabled);
+        (await read.LoadAsync<Repository>(repository.Id.Value))!.PrSizeLabels.Should().Be(EPrSizeLabelPolicy.Enabled);
     }
 
     private const string MultiTarget = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>\n"
@@ -700,7 +700,7 @@ public class OnboardingServiceTests : CoverageRavenTest
         h.Writer.DependencyJobs.Should().BeEmpty();
         h.Pulls.Created.Should().BeEmpty();
         using var read = store.OpenAsyncSession();
-        (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!))).Should().BeNull();
+        (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value))).Should().BeNull();
     }
 
     [Fact]

@@ -59,7 +59,7 @@ public class DependencyLineRunTests : CoverageRavenTest
         pull.Title.Should().StartWith("[dotnet-10.x] ");
 
         var run = await h.RunAsync();
-        run.Id.Should().Be(DependencyUpdateRun.ForRepository(RepositoryId, Line));
+        run.Id.Value.Should().Be(DependencyUpdateRun.ForRepository(RepositoryId, Line).ToLowerInvariant());
         run.Line.Should().Be(Line);
         run.DefaultBranch.Should().Be(LineBranch);
         run.Onboarding.Should().Be(EDependencyOnboarding.None, "onboarding belongs to the default branch's run");

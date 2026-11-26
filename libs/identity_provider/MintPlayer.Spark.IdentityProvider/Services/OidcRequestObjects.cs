@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -161,9 +162,9 @@ internal sealed class OidcRequestObjects(IDocumentStore store, OidcClientKeys cl
 
         var pushed = new OidcToken
         {
-            Id = OidcTokenReference.DocumentId("par:" + handle),
+            Id = Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId("par:" + handle)),
             Type = OidcTokenTypes.PushedRequest,
-            ApplicationId = app.Id!,
+            ApplicationId = app.Id.Value,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.Add(PushedRequestLifetime),

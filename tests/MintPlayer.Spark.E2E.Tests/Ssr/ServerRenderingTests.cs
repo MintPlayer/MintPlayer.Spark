@@ -15,7 +15,7 @@ public class ServerRenderingTests
 {
     private const int Timeout = 30_000;
 
-    private static readonly string SongPath = $"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.SongId)}/{MintPlayerTestHost.SongSlug}";
+    private static readonly string SongPath = $"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.CanonicalSongId)}/{MintPlayerTestHost.SongSlug}";
 
     private readonly MintPlayerE2ECollectionFixture _fixture;
     public ServerRenderingTests(MintPlayerE2ECollectionFixture fixture) => _fixture = fixture;
@@ -53,7 +53,7 @@ public class ServerRenderingTests
 
         using var response = await client.GetAsync($"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.SongId)}/wrong-slug");
 
-        response.StatusCode.Should().Be(HttpStatusCode.MovedPermanently);
+        response.StatusCode.Should().Be(HttpStatusCode.MovedPermanently, "the slug is stale. Host log:\n{0}", _fixture.Host.RecentLog(120));
         response.Headers.Location!.OriginalString.Should().EndWith($"/{MintPlayerTestHost.SongSlug}");
     }
 

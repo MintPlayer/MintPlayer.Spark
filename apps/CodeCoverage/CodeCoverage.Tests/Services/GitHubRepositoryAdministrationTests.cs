@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using System.Text.Json;
 using CodeCoverage.Entities;
@@ -22,11 +23,11 @@ public class GitHubRepositoryAdministrationTests
 {
     private const long InstallationId = 4242;
 
-    private static Account Acme() => new() { Id = Account.DocumentId(EForgeProvider.GitHub, 77), GitHubId = 77, Login = "acme", InstallationId = InstallationId };
+    private static Account Acme() => new() { Id = Id<Account>.FromTrusted(Account.DocumentId(EForgeProvider.GitHub, 77)), GitHubId = 77, Login = "acme", InstallationId = InstallationId };
 
     private static Repository Repo(long id, string name) => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, id), GitHubId = id, Name = name, FullName = $"acme/{name}", OwnerLogin = "acme",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, id)), GitHubId = id, Name = name, FullName = $"acme/{name}", OwnerLogin = "acme",
     };
 
     private static GitHubRepositoryAdministration Administration(StubGitHub github, string? login = "octocat", string? userId = "users/1",
@@ -58,8 +59,8 @@ public class GitHubRepositoryAdministrationTests
 
         var answer = await Administration(github).CheckAdministratorAsync(Acme(), [Repo(1, "widget"), Repo(2, "kernel")], "octocat");
 
-        answer[Repo(1, "widget").Id!].Should().BeTrue("r0's edge says ADMIN");
-        answer[Repo(2, "kernel").Id!].Should().BeTrue("r1 was FORBIDDEN in GraphQL and REST says admin");
+        answer[Repo(1, "widget").Id.Value].Should().BeTrue("r0's edge says ADMIN");
+        answer[Repo(2, "kernel").Id.Value].Should().BeTrue("r1 was FORBIDDEN in GraphQL and REST says admin");
         github.Calls.Should().Equal(["POST /graphql", "GET /repos/acme/kernel/collaborators/octocat/permission"]);
 
         // Every value is a variable: no owner, name or login is spliced into the query text.
@@ -78,8 +79,8 @@ public class GitHubRepositoryAdministrationTests
 
         var answer = await Administration(github).CheckAdministratorAsync(Acme(), [Repo(1, "widget"), Repo(2, "kernel")], "octocat");
 
-        answer[Repo(1, "widget").Id!].Should().BeTrue();
-        answer[Repo(2, "kernel").Id!].Should().BeFalse("REST answered 404: not a collaborator, fail closed");
+        answer[Repo(1, "widget").Id.Value].Should().BeTrue();
+        answer[Repo(2, "kernel").Id.Value].Should().BeFalse("REST answered 404: not a collaborator, fail closed");
     }
 
     [Theory]
@@ -90,7 +91,7 @@ public class GitHubRepositoryAdministrationTests
         var github = new StubGitHub().On(HttpMethod.Post, "/graphql", HttpStatusCode.OK,
             """{"data":{"r0":{"collaborators":{"edges":[{"permission":"PERMISSION"}]}}}}""".Replace("PERMISSION", permission, StringComparison.Ordinal));
 
-        (await Administration(github).CheckAdministratorAsync(Acme(), [Repo(1, "widget")], "octocat"))[Repo(1, "widget").Id!].Should().BeFalse("R33");
+        (await Administration(github).CheckAdministratorAsync(Acme(), [Repo(1, "widget")], "octocat"))[Repo(1, "widget").Id.Value].Should().BeFalse("R33");
     }
 
     [Fact]
@@ -109,8 +110,8 @@ public class GitHubRepositoryAdministrationTests
     {
         var github = new StubGitHub();
 
-        (await Administration(github).CheckAdministratorAsync(Acme(), [Repo(1, "widget")], "x\" } evil"))[Repo(1, "widget").Id!].Should().BeFalse();
-        (await Administration(github).CheckAdministratorAsync(new Account { Login = "acme" }, [Repo(1, "widget")], "octocat"))[Repo(1, "widget").Id!].Should().BeFalse();
+        (await Administration(github).CheckAdministratorAsync(Acme(), [Repo(1, "widget")], "x\" } evil"))[Repo(1, "widget").Id.Value].Should().BeFalse();
+        (await Administration(github).CheckAdministratorAsync(new Account { Login = "acme" }, [Repo(1, "widget")], "octocat"))[Repo(1, "widget").Id.Value].Should().BeFalse();
         github.Calls.Should().BeEmpty();
     }
 

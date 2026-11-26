@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
@@ -22,7 +23,7 @@ public class BaseResolverTests : CoverageRavenTest
     private static Repository Repo(string? defaultBranch = "master") => new()
     {
         // A production Repository always arrives loaded from the session, id set.
-        Id = Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId),
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId)),
         GitHubId = RepoGitHubId,
         Name = "repo",
         FullName = "acme/repo",

@@ -40,7 +40,7 @@ public partial class BackportAttemptActions : DefaultPersistentObjectActions<Bac
         await using (var stream = await session.Advanced.StreamAsync<BackportAttempt>(BackportAttempt.ForRepository(repository.Provider, repository.GitHubId)))
         {
             while (await stream.MoveNextAsync())
-                if (stream.Current.Document is { } attempt && attempt.Repository == repository.Id) attempts.Add(attempt);
+                if (stream.Current.Document is { } attempt && string.Equals(attempt.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)) attempts.Add(attempt);
         }
         return attempts.OrderByDescending(a => a.AttemptedAtUtc).AsQueryable();
     }
@@ -57,7 +57,7 @@ public partial class BackportAttemptActions : DefaultPersistentObjectActions<Bac
     /// </remarks>
     public async Task<IQueryable<BackportAttempt>> BackportAttempts_Held(CustomQueryArgs args)
     {
-        var visible = new HashSet<string>(await visibility.GetVisibleRepositoryIdsAsync(), StringComparer.Ordinal);
+        var visible = new HashSet<string>(await visibility.GetVisibleRepositoryIdsAsync(), StringComparer.OrdinalIgnoreCase);
         if (visible.Count == 0) return Enumerable.Empty<BackportAttempt>().AsQueryable();
 
         var held = new List<BackportAttempt>();
@@ -68,7 +68,7 @@ public partial class BackportAttemptActions : DefaultPersistentObjectActions<Bac
         }
         if (held.Count == 0) return Enumerable.Empty<BackportAttempt>().AsQueryable();
 
-        var administered = new HashSet<string>(await visibility.GetAdministeredRepositoryIdsAsync(), StringComparer.Ordinal);
+        var administered = new HashSet<string>(await visibility.GetAdministeredRepositoryIdsAsync(), StringComparer.OrdinalIgnoreCase);
         var managed = new HashSet<string>(await visibility.GetManagedOwnersAsync(), StringComparer.OrdinalIgnoreCase);
         var repositories = await session.LoadAsync<Repository>(held.Select(a => a.Repository).Distinct());
         var logins = new Dictionary<CodeCoverage.Forge.EForgeProvider, string?>();

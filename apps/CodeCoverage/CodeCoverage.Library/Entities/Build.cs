@@ -9,10 +9,11 @@ namespace CodeCoverage.Entities;
 /// Document id is Commits/{repoGitHubId}/{sha}/builds/{runId}-{runAttempt}.
 /// </summary>
 [GenerateIndex]
-public class Build
+[IdKind(SparkIdKind.Natural)]
+public partial class Build
 {
     /// <summary>Document id of this build, <c>Commits/{repoGitHubId}/{sha}/builds/{runId}-{runAttempt}</c>.</summary>
-    public string? Id { get; set; }
+    public Id<Build> Id { get; set; }
 
     /// <summary>The commit this CI run measured coverage for.</summary>
     [Reference(typeof(Commit))]

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CodeCoverage.Commands;
@@ -319,7 +320,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         string? invocation = null)
     {
         var repository = context.Repository;
-        var id = MergeQueueEntry.DocumentId(repository.Id!, number);
+        var id = MergeQueueEntry.DocumentId(repository.Id.Value, number);
         var entry = await session.LoadAsync<MergeQueueEntry>(id, ct);
 
         // A replayed label or a second /queue for a pull request already in the queue changes nothing.
@@ -341,7 +342,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var parsed = MergeQueueYml.Parse(yml, defaultBranch ?? "main");
         // D-O16: every read of the default branch's coverage.yml records what it says about the queue for the repository page.
         if (defaultBranch is not null)
-            Dependencies.Lifecycle.DependencyFileMergeQueue.Record(session, repository.Id!, yml, defaultBranch);
+            Dependencies.Lifecycle.DependencyFileMergeQueue.Record(session, repository.Id.Value, yml, defaultBranch);
 
         // A label speaks only when it is the configured one, on a repository that turned the queue on. Anything else is
         // somebody else's label and is ignored without a word; a comment or the button always gets an answer.
@@ -356,7 +357,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         if (entry is null)
         {
-            entry = new MergeQueueEntry { Id = id, Repository = repository.Id!, Number = number };
+            entry = new MergeQueueEntry { Id = Id<MergeQueueEntry>.FromTrusted(id), Repository = repository.Id.Value, Number = number };
             await session.StoreAsync(entry, id, ct);
         }
         BeginRun(entry, pull, actor, source);
@@ -364,10 +365,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // #660 G11: every run has a log, whatever queued it; a /queue command's record points at it (G7).
         entry.CommandInvocation = invocation;
         var logKey = RunLogKey(repository, entry);
-        entry.LogId = LogIds.ForKey(logKey);
+        entry.LogId = LogIds.ForKey(logKey).Value;
         // Related to the repository, not the entry: a merge-queue entry is no persistent object, so only the repository's
         // own gate can open the log (G15, ISparkReadAccess).
-        await using var runLog = commands.OpenLog(null, logKey, repository.Id);
+        await using var runLog = commands.OpenLog(null, logKey, repository.Id.Value);
         logger.LogInformation("Merge queue: @{Actor} queued #{Number} in {Repository} ({Source}), run {Run}", actor, number, repository.FullName, source, entry.Run);
         var runId = entry.Run.ToString(CultureInfo.InvariantCulture);
         var runLogId = entry.LogId;
@@ -395,9 +396,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             context.Repository, $"{entry.Id}/{entry.Run}/queued", session, ct);
         var waiting = context.Document.LaneFor(entry.BaseBranch).Waiting;
         if (await SourceOrderPositionAsync(context, entry, waiting, ct) is { } before)
-            waiting.Insert(before, entry.Id!);
+            waiting.Insert(before, entry.Id.Value);
         else
-            waiting.Add(entry.Id!);
+            waiting.Add(entry.Id.Value);
         // Its turn first: on an idle lane it starts at once, and its first check run is the one in progress. A pull request
         // that waits gets its "Queued" check, with "Remove from queue" (§0 O32), from the line's refresh, or here when it is
         // further back than the refresh reaches.
@@ -632,7 +633,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task<bool> IsBotsOwnRollingHeadAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
     {
         // #568 D13: a release line's rolling branch is the line's run's.
-        if (!DependencyUpdateRun.IsRollingBranch(entry.HeadBranch, out var line) || context.Repository.Id is not { } repositoryId)
+        if (!DependencyUpdateRun.IsRollingBranch(entry.HeadBranch, out var line) || context.Repository.Id.Value is not { Length: > 0 } repositoryId)
             return false;
         var run = await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId, line), ct);
         return run is { PullRequestNumber: { } number, RollingSha: { } rolling, RollingBotSha: { } bot }
@@ -647,7 +648,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private async Task<bool> IsAppsOwnBackportAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
         => !entry.IsFork && context.Repository.Id is { } repositoryId
-           && await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not null;
+           && await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId.Value, entry.Number), ct) is not null;
 
     /// <summary>
     /// A ruleset on the pull request's <c>backport/*</c> head restricts its creation, updates and deletion, and the App is
@@ -807,13 +808,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     {
         if (waiting.Count == 0 || !await HoldsAsync(context, entry, ct)) return null;
         var repositoryId = context.Repository.Id!;
-        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, entry.Number), ct) is not { SourceSha: { } source })
+        if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId.Value, entry.Number), ct) is not { SourceSha: { } source })
             return null;
 
         for (var i = 0; i < waiting.Count; i++)
         {
             if (await session.LoadAsync<MergeQueueEntry>(waiting[i], ct) is not { IsFork: false } other) continue;
-            if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, other.Number), ct) is not { SourceSha: { } otherSource }
+            if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId.Value, other.Number), ct) is not { SourceSha: { } otherSource }
                 || string.Equals(source, otherSource, StringComparison.OrdinalIgnoreCase))
                 continue;
             try
@@ -840,7 +841,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task QueueApprovedBackportAsync(Context context, int number, CancellationToken ct)
     {
         var repository = context.Repository;
-        if (repository.Id is not { } repositoryId || repository.DefaultBranch is not { } defaultBranch) return;
+        if (repository.Id.Value is not { Length: > 0 } repositoryId || repository.DefaultBranch is not { } defaultBranch) return;
         if (await session.LoadAsync<BackportPullRequest>(BackportPullRequest.DocumentId(repositoryId, number), ct) is not { } backport) return;
 
         // Like a fresh backport (#570 M7, D12): only where the default branch's backport.enqueue and mergeQueue.branches
@@ -863,7 +864,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
         if (!approved) return;
         // The context may hold an unsaved queue document (a repository whose queue never held anything); enqueueing needs it.
-        await session.StoreAsync(context.Document, context.Document.Id, ct);
+        await session.StoreAsync(context.Document, context.Document.Id.Value, ct);
         await EnqueueAsync(context, number, PackageVersioning.BackportRegenerationEngine.QueueActor, EMergeQueueCommandSource.Backports, null, ct);
     }
 
@@ -985,7 +986,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task DequeueAsync(Context context, int number, string actor, EMergeQueueCommandSource source, string? label, CancellationToken ct,
         string? invocation = null)
     {
-        if (await LoadActiveAsync(context.Repository.Id!, number, ct) is not { } entry)
+        if (await LoadActiveAsync(context.Repository.Id.Value, number, ct) is not { } entry)
         {
             afterSave.Add(token => commands.FinishAsync(invocation, ECommandOutcome.NoChange, $"#{number} is not in the queue.", token));
             return;
@@ -1031,7 +1032,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var repository = context.Repository;
         if (!HasCheckButtons(context) || repository.DefaultBranch is not { } defaultBranch) return;
         // A queued pull request's check is its run's own.
-        if (await LoadActiveAsync(repository.Id!, number, ct) is not null) return;
+        if (await LoadActiveAsync(repository.Id.Value, number, ct) is not null) return;
 
         try
         {
@@ -1926,7 +1927,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // before the save leaves the entry merging, and whichever of the poll or the merged event completes it queues it.
         await outbox.EnqueueAsync(session, new MergeQueueStepMessage
         {
-            EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CloseIssues,
+            EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CloseIssues,
         }, new BroadcastOptions { Delay = CloseIssuesDelay }, ct);
     }
 
@@ -2031,15 +2032,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         await webhooks.PublishAsync(ended, context.Repository, $"{entry.Id}/{entry.Run}/ended", session, ct);
 
         var lane = context.Document.LaneFor(entry.BaseBranch);
-        if (lane.Current == entry.Id) lane.Current = null;
-        lane.Waiting.Remove(entry.Id!);
+        if (string.Equals(lane.Current, entry.Id.Value, StringComparison.OrdinalIgnoreCase)) lane.Current = null;
+        lane.Waiting.Remove(entry.Id.Value);
 
         // D5: the queue branch goes once the run is over, under a lease on the commit we left there. Only a run that
         // dispatched ever pushed one (§0 D65), so a run that did not has nothing to delete.
         if (entry.QueueBranchSha is { } pushed)
             await outbox.EnqueueAsync(session, new MergeQueueStepMessage
             {
-                EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.Cleanup,
+                EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.Cleanup,
                 QueueBranch = entry.QueueBranch, ExpectedSha = pushed,
             }, null, ct);
 
@@ -2248,7 +2249,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             // §0 D53: not gated on the entry (CancelRunAsync), so it carries the run.
             EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session, new MergeQueueStepMessage
             {
-                EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
+                EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
             }, null, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(step), step, null),
         };
@@ -2414,7 +2415,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     /// <summary>A scope on the run's log, for a handler that works on <paramref name="entry"/>; null for a run without one.</summary>
     private ILoggerScope? OpenRunLog(MergeQueueEntry? entry)
-        => entry?.LogId is { } logId && logId.StartsWith(LogIds.Prefix, StringComparison.Ordinal)
+        => entry?.LogId is { } logId && logId.StartsWith(LogIds.Prefix, StringComparison.OrdinalIgnoreCase)
             ? commands.OpenLog(null, logId[LogIds.Prefix.Length..], entry.Repository)
             : null;
 
@@ -2455,14 +2456,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var repository = context.Repository;
         foreach (var due in ForgeCheck.Due(repository.KnownChecks, reported, Now))
             await outbox.EnqueueAsync(session,
-                new ForgeWebhookMessage<CheckReported>(repository.Provider, new CheckReported(repository.Id!, due.Name, due.Kind, due.AppSlug)),
+                new ForgeWebhookMessage<CheckReported>(repository.Provider, new CheckReported(repository.Id.Value, due.Name, due.Kind, due.AppSlug)),
                 cancellationToken: ct);
     }
 
     private Task ScheduleAsync(MergeQueueEntry entry, EMergeQueueStep step, TimeSpan? delay, CancellationToken ct)
         => outbox.EnqueueAsync(session, new MergeQueueStepMessage
         {
-            EntryId = entry.Id!,
+            EntryId = entry.Id.Value,
             Run = entry.Run,
             Generation = entry.Generation,
             Step = step,
@@ -2481,12 +2482,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return null;
         }
 
-        var id = QueueDocument.DocumentId(repository.Id);
+        var id = QueueDocument.DocumentId(repository.Id.Value);
         var document = await session.LoadAsync<QueueDocument>(id, ct);
         if (document is null)
         {
             if (!create && !orUnsaved) return null;
-            document = new QueueDocument { Id = id, Repository = repository.Id };
+            document = new QueueDocument { Id = Id<QueueDocument>.FromTrusted(id), Repository = repository.Id.Value };
             if (create) await session.StoreAsync(document, id, ct);
         }
         var account = repository.Account is null ? null : await session.LoadAsync<Account>(repository.Account, ct);
@@ -2517,7 +2518,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     {
         var sha = entry.ExpectedHeadSha;
         if (string.IsNullOrEmpty(sha)) return;
-        var position = context.Document.Lanes.FirstOrDefault(l => l.BaseBranch == entry.BaseBranch)?.PositionOf(entry.Id!);
+        var position = context.Document.Lanes.FirstOrDefault(l => l.BaseBranch == entry.BaseBranch)?.PositionOf(entry.Id.Value);
         var check = MergeQueueCheckRenderer.Render(entry, position, DetailsUrl(context.Repository), offer: offer, buttons: HasCheckButtons(context));
         var existing = string.Equals(entry.QueueCheckSha, sha, StringComparison.OrdinalIgnoreCase) ? entry.QueueCheckId : null;
         // §0 D92: the run moved to a new head (the queue's own publish). Its run on the commit left behind is completed first,
@@ -2563,11 +2564,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private async Task RecordLatestCheckAsync(Context context, int number, string sha, long checkRunId, CancellationToken ct)
     {
-        var id = MergeQueueLatestCheck.DocumentId(context.Repository.Id!, number);
+        var id = MergeQueueLatestCheck.DocumentId(context.Repository.Id.Value, number);
         var latest = await session.LoadAsync<MergeQueueLatestCheck>(id, ct);
         if (latest is null)
         {
-            latest = new MergeQueueLatestCheck { Id = id, Repository = context.Repository.Id!, Number = number };
+            latest = new MergeQueueLatestCheck { Id = Id<MergeQueueLatestCheck>.FromTrusted(id), Repository = context.Repository.Id.Value, Number = number };
             await session.StoreAsync(latest, id, ct);
         }
         latest.Sha = sha;

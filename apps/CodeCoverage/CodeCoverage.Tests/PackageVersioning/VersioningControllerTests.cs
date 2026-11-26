@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Claims;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -131,7 +132,7 @@ public class VersioningControllerTests : CoverageRavenTest
         run.Releases.Single().Tag.Should().Be("Acme.Widget/1.2.0");
         // #691 D41: the account's webhooks hear the run's result, keyed by the run.
         var published = h.Webhooks.All.Should().ContainSingle().Which;
-        published.Key.Should().Be(run.Id);
+        published.Key.Should().Be(run.Id.Value);
         published.Data.Should().BeOfType<VersioningRunResult>().Which.Should().BeEquivalentTo(new
         {
             Repository = "acme/widget", Forge = "github", Branch = "main", Commit = Sha, Run = "77.2", Outcome = GitWriterVersioningResult.Versioned,
@@ -645,7 +646,7 @@ public class VersioningControllerTests : CoverageRavenTest
             var id = ReleaseVersion.DocumentId(repositoryId, tag);
             await seed.StoreAsync(new ReleaseVersion
             {
-                Id = id, Repository = repositoryId, PackageId = parsed.PackageId, Version = parsed.Version.ToString(), Tag = tag, Actor = "octo",
+                Id = Id<ReleaseVersion>.FromTrusted(id), Repository = repositoryId, PackageId = parsed.PackageId, Version = parsed.Version.ToString(), Tag = tag, Actor = "octo",
                 Source = ReleaseVersion.FromComment, RecordedUtc = DateTime.UtcNow, PlacedCommit = placed,
             }, id);
         }

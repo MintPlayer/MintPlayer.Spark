@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
@@ -82,15 +83,15 @@ public partial class CommandLifecycle : ICommandLifecycle
     public async Task<string?> BeginAsync(Repository repository, int number, long? commentId, string command, string actor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(repository);
-        if (commentId is not { } comment || repository.Id is null) return null;
+        if (commentId is not { } comment || repository.Id.IsEmpty) return null;
         var id = CommandInvocation.DocumentId(repository.Provider, repository.GitHubId, comment);
         var text = FirstLine(command);
         try
         {
             var record = await UpdateAsync(id, create: () => new CommandInvocation
             {
-                Id = id, Repository = repository.Id, Number = number, CommentId = comment, Command = text, Actor = actor,
-                ReceivedAtUtc = Now, Outcome = ECommandOutcome.Received, LogId = LogIds.ForKey(CommandInvocation.LogKeyOf(id)),
+                Id = Id<CommandInvocation>.FromTrusted(id), Repository = repository.Id.Value, Number = number, CommentId = comment, Command = text, Actor = actor,
+                ReceivedAtUtc = Now, Outcome = ECommandOutcome.Received, LogId = LogIds.ForKey(CommandInvocation.LogKeyOf(id)).Value,
             }, mutate: (_, isNew) => isNew, cancellationToken);
             if (record is null) return null;
             // The record says who wrote what and when; the log holds what the handler did with it.
@@ -133,7 +134,8 @@ public partial class CommandLifecycle : ICommandLifecycle
         {
             await UpdateAsync(invocationId, create: null, mutate: (record, _) =>
             {
-                if (record.LogId == logId) return false;
+                // Ignoring case: a record from an older build holds Logs/… (#536 D7, O15).
+                if (string.Equals(record.LogId, logId, StringComparison.OrdinalIgnoreCase)) return false;
                 record.LogId = logId;
                 return true;
             }, cancellationToken);
@@ -176,7 +178,8 @@ public partial class CommandLifecycle : ICommandLifecycle
             if (!changed || record is null) return;
 
             // To the log the record points at (G7): its own, or the engine's it was linked to, which keeps its own relation.
-            var own = record.LogId is null || record.LogId == LogIds.ForKey(CommandInvocation.LogKeyOf(invocationId));
+            var own = record.LogId is null
+                || string.Equals(record.LogId, LogIds.ForKey(CommandInvocation.LogKeyOf(invocationId)).Value, StringComparison.OrdinalIgnoreCase);
             var key = own ? CommandInvocation.LogKeyOf(invocationId) : record.LogId![LogIds.Prefix.Length..];
             await logs.LogAsync(key, outcome is ECommandOutcome.Failed ? LogLevel.Warning : LogLevel.Information,
                 $"{record.Command} by @{record.Actor}: {Describe(outcome)}: {message}", relatedPersistentObjectId: own ? invocationId : null,

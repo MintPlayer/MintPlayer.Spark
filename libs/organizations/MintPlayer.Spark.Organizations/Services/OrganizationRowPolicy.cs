@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Security.Claims;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents.Linq;
@@ -71,7 +72,10 @@ internal sealed class OrganizationRowPolicy(OrganizationMembershipReader members
 
         if (isOrganization)
         {
-            Expression<Func<Organization, bool>> organization = ids.Length == 0 ? o => false : o => o.Id.In(ids);
+            // Typed, so the store matches the document key ignoring case (id()), where a legacy organization keeps
+            // "Organizations/…"; the RavenDB query rewriter turns Contains into an In over the identity.
+            var typed = ids.Select(Id<Organization>.FromTrusted).ToArray();
+            Expression<Func<Organization, bool>> organization = ids.Length == 0 ? o => false : o => typed.Contains(o.Id);
             return organization;
         }
 

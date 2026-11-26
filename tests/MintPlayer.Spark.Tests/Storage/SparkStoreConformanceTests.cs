@@ -211,12 +211,12 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         using (var session = Store.OpenSession())
         {
-            session.Delete("ConfDocs/delete");
+            session.Delete(typeof(ConfDoc), "ConfDocs/delete");
             await session.SaveChangesAsync();
         }
 
         using var verify = Store.OpenSession();
-        (await verify.ExistsAsync("ConfDocs/delete")).Should().BeFalse();
+        (await verify.ExistsAsync(typeof(ConfDoc), "ConfDocs/delete")).Should().BeFalse();
         (await verify.LoadAsync<ConfDoc>("ConfDocs/delete")).Should().BeNull();
     }
 
@@ -235,7 +235,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
         }
 
         using var verify = Store.OpenSession();
-        (await verify.ExistsAsync("ConfDocs/bystander")).Should().BeFalse("a commit is all or nothing");
+        (await verify.ExistsAsync(typeof(ConfDoc), "ConfDocs/bystander")).Should().BeFalse("a commit is all or nothing");
     }
 
     [Fact]
@@ -255,7 +255,7 @@ public abstract class SparkStoreConformanceTests : IAsyncLifetime
 
         using (var session = Store.OpenSession())
         {
-            (await session.GetVersionsAsync(["ConfDocs/versioned"]))["ConfDocs/versioned"].Should().NotBe(staleVersion);
+            (await session.GetVersionsAsync(typeof(ConfDoc), ["ConfDocs/versioned"]))["ConfDocs/versioned"].Should().NotBe(staleVersion);
         }
 
         using var writer = Store.OpenSession();

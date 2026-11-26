@@ -58,7 +58,7 @@ public partial class VerifySiteAction : SparkCustomAction
     {
         var site = await SiteActionSupport.SiteAsync(args, session, cancellationToken);
         var userId = SiteActionSupport.UserId(currentUser);
-        var result = await verification.VerifyAsync(site.Id!, userId, cancellationToken);
+        var result = await verification.VerifyAsync(site.Id.Value, userId, cancellationToken);
         args.SetResult(new { outcome = result.Outcome.ToString(), method = result.Method });
 
         var token = site.VerificationToken ?? string.Empty;

@@ -65,9 +65,9 @@ public class NaturalIdConventionTests : SparkTestDriver
         await session.StoreAsync(trailer);
         await session.SaveChangesAsync();
 
-        trailer.Id.Should().StartWith("Trailers/",
-            "installing the natural-id convention must not disturb the default for everything else");
-        Guid.TryParse(trailer.Id!["Trailers/".Length..], out _).Should().BeTrue();
+        trailer.Id.Should().StartWith("trailers/",
+            "installing the natural-id convention must not disturb the default (lower case since #536 D7) for everything else");
+        Guid.TryParse(trailer.Id!["trailers/".Length..], out _).Should().BeTrue();
     }
 
     /// <summary>

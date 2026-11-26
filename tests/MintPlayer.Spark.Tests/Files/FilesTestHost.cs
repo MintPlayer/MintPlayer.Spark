@@ -222,13 +222,13 @@ public abstract class FilesTestHost : SparkTestDriver
     internal async Task<SparkFileUpload?> StagedAsync(string token)
     {
         using var session = Store.OpenAsyncSession();
-        return await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token));
+        return await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value);
     }
 
     internal async Task<int> StagedAttachmentCountAsync(string token)
     {
         using var session = Store.OpenAsyncSession();
-        var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token));
+        var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value);
         return upload is null ? 0 : session.Advanced.Attachments.GetNames(upload).Length;
     }
 

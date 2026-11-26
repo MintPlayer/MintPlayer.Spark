@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
@@ -5,9 +7,9 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// (<c>docs/identity_provider_platform_PRD.md</c> D1, D6), one document per user × application with a
 /// natural id (<c>OidcGrantReference</c>). Replaces <c>OidcAuthorizations</c>.
 /// </summary>
-public class OidcGrant
+public partial class OidcGrant
 {
-    public string? Id { get; set; }
+    public Id<OidcGrant> Id { get; set; }
     public string ApplicationId { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     /// <summary><c>valid</c> while the grant is live, <c>revoked</c> once the user withdrew it.</summary>

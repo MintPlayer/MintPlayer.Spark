@@ -67,7 +67,7 @@ public class SparkAppTests : AppsTestHost
             .Should().BeTrue("the ping is signed with the App's webhook secret");
 
         using var session = Store.OpenAsyncSession();
-        var stored = await session.LoadAsync<SparkApp>(SparkApp.IdFor("shipping-bot"));
+        var stored = await session.LoadAsync<SparkApp>(SparkApp.IdFor("shipping-bot").Value);
         var client = await session.LoadAsync<OidcApplication>(stored!.OidcApplicationId);
         client!.ClientId.Should().Be(app.GetProperty("clientId").GetString(), "the App's client id is its identity provider client's");
         client.AllowedGrantTypes.Should().Equal(["client_credentials"], "an App only ever gets machine tokens");
@@ -103,7 +103,7 @@ public class SparkAppTests : AppsTestHost
         async Task<bool> ValidatesAsync(string token)
         {
             using var session = Store.OpenAsyncSession();
-            var app = await session.LoadAsync<SparkApp>(SparkApp.IdFor("keyed"));
+            var app = await session.LoadAsync<SparkApp>(SparkApp.IdFor("keyed").Value);
             var client = await session.LoadAsync<OidcApplication>(app!.OidcApplicationId);
             if (client!.Jwks is null)
                 return false;
@@ -177,13 +177,13 @@ public class SparkAppTests : AppsTestHost
 
         string clientDocumentId;
         using (var before = Store.OpenAsyncSession())
-            clientDocumentId = (await before.LoadAsync<SparkApp>(SparkApp.IdFor("mover")))!.OidcApplicationId;
+            clientDocumentId = (await before.LoadAsync<SparkApp>(SparkApp.IdFor("mover").Value))!.OidcApplicationId;
 
         (await SendAsync("/spark/apps/apps/delete", new { slug = "mover" }, ann.Id)).Status.Should().Be(HttpStatusCode.NoContent);
         using var session = Store.OpenAsyncSession();
         (await session.Advanced.ExistsAsync(WebhookEndpoint.IdPrefix + endpointId)).Should().BeFalse("the webhook goes with the App");
         (await session.Advanced.ExistsAsync(clientDocumentId)).Should().BeFalse("so does its identity provider client");
-        (await session.Advanced.ExistsAsync(SparkApp.IdFor("mover"))).Should().BeFalse();
+        (await session.Advanced.ExistsAsync(SparkApp.IdFor("mover").Value)).Should().BeFalse();
     }
 
     [Fact]

@@ -10,10 +10,10 @@ namespace HR.Entities;
 // SPARK009 no longer calls this a clash). So Profession.json is shaped by VProfessionLookup and
 // GetProfessions — the query Person.Professions' picker uses — runs on Professions_Lookup.
 [GenerateIndex]
-public class Profession
+public partial class Profession
 {
     /// <summary>Unique identifier of the profession, assigned automatically on creation.</summary>
-    public string? Id { get; set; }
+    public Id<Profession> Id { get; set; }
     /// <summary>Name of the profession as shown to users, e.g. <c>Software engineer</c>.</summary>
     public string Description { get; set; } = string.Empty;
     /// <summary>Employment regime under which the profession is exercised, e.g. <c>Employee</c> or <c>Freelance</c>.</summary>

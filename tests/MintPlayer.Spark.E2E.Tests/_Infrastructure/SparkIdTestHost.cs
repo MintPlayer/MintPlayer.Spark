@@ -71,7 +71,7 @@ public sealed class SparkIdTestHost : SparkAppTestHost
             return;
         await session.StoreAsync(new OidcResource
         {
-            Id = id,
+            Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(id),
             Kind = OidcResourceKinds.Identity,
             Name = name,
             ClaimTypes = claimTypes,
@@ -94,7 +94,7 @@ public sealed class SparkIdTestHost : SparkAppTestHost
         var api = await session.LoadAsync<OidcResource>(resourceId);
         if (api is null)
         {
-            api = new OidcResource { Id = resourceId, Kind = OidcResourceKinds.Api, Name = audience, AutoApprove = autoApprove };
+            api = new OidcResource { Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(resourceId), Kind = OidcResourceKinds.Api, Name = audience, AutoApprove = autoApprove };
             await session.StoreAsync(api);
         }
         api.Scopes.Add(new OidcApiScope { Name = scopeName });
@@ -146,7 +146,7 @@ public sealed class SparkIdTestHost : SparkAppTestHost
         var api = await session.LoadAsync<OidcResource>(resourceId);
         if (api is null)
         {
-            api = new OidcResource { Id = resourceId, Kind = OidcResourceKinds.Api, Name = audience };
+            api = new OidcResource { Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(resourceId), Kind = OidcResourceKinds.Api, Name = audience };
             await session.StoreAsync(api);
         }
         api.Scopes.Add(new OidcApiScope { Name = scopeName });

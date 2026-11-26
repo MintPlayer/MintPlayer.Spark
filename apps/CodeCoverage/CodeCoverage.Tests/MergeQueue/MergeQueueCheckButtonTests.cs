@@ -334,7 +334,8 @@ public class MergeQueueCheckButtonTests : CoverageRavenTest
         existing.Should().Be(waitingRun, "the waiting run ends, completed as it was");
         ended.Title.Should().Be("Dequeued");
         ShouldOfferTheButton(ended, number: Second);
-        (await h.QueueDocumentAsync())!.LaneFor("master").Waiting.Should().Equal([MergeQueueEntry.DocumentId(RepositoryId, Third)]);
+        // The entry's id as loaded, lower case (#536 D7).
+        (await h.QueueDocumentAsync())!.LaneFor("master").Waiting.Should().Equal([MergeQueueEntry.DocumentId(RepositoryId, Third).ToLowerInvariant()]);
     }
 
     /// <summary>Who may click it is who may <c>/dequeue</c>: the author or a writer. Anyone else is noted and ignored, as there.</summary>

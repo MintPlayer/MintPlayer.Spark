@@ -45,13 +45,15 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
     /// </summary>
     public async Task<string> DefaultForNewAsync(Type entityType, string userId, CancellationToken cancellationToken = default)
     {
-        if (await GetIdAsync(cancellationToken) is { } chosen)
-        {
-            var roles = await memberships.GetAsync(userId, cancellationToken);
-            if (roles.TryGetValue(chosen, out var role) && role >= RequiresOrganizationRoleAttribute.For(entityType, "New"))
-                return chosen;
-        }
-        return Organization.PersonalIdFor(userId);
+        var roles = await memberships.GetAsync(userId, cancellationToken);
+        if (await GetIdAsync(cancellationToken) is { } chosen
+            && roles.TryGetValue(chosen, out var role) && role >= RequiresOrganizationRoleAttribute.For(entityType, "New"))
+            return chosen;
+
+        // The membership's own OrganizationId where there is one: a personal organization created before #536 keeps
+        // "Organizations/personal/…" there, and the row policy's in-memory check of a new row compares ordinally.
+        var personal = Organization.PersonalIdFor(userId).Value;
+        return roles.Keys.FirstOrDefault(id => string.Equals(id, personal, StringComparison.OrdinalIgnoreCase)) ?? personal;
     }
 
     /// <summary>What the switcher shows: the choice and every organization the caller belongs to, personal first, then by name.</summary>
@@ -63,9 +65,11 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
             ? new Dictionary<string, Organization>()
             : await session.LoadAsync<Organization>(roles.Keys, cancellationToken);
 
-        var choices = organizations.Values
-            .Where(o => o?.Id is not null)
-            .Select(o => new OrganizationChoice(o!.Id!, o.Name, o.IsPersonal, roles[o.Id!]))
+        // Keyed by the membership's own OrganizationId, as GetIdAsync answers: an organization created before #536
+        // keeps "Organizations/…" there while its loaded Id is lower case, and the switcher compares the two.
+        var choices = organizations
+            .Where(p => p.Value is not null)
+            .Select(p => new OrganizationChoice(p.Key, p.Value!.Name, p.Value.IsPersonal, roles[p.Key]))
             .OrderByDescending(o => o.IsPersonal)
             .ThenBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();

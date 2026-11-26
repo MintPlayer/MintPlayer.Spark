@@ -691,7 +691,7 @@ public class MailManagerTests : SparkTestDriver
         reports.Single().FeedbackType.Should().Be("abuse");
         (await sp.GetRequiredService<ISparkMailSuppressions>().IsSuppressedAsync("ann@app.example", "news")).Should().BeTrue();
         using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<SparkMailSuppression>(SparkMailSuppression.IdFor("ann@app.example")))!.Reason.Should().Be(SparkMailSuppressionReason.Complaint);
+        (await session.LoadAsync<SparkMailSuppression>(SparkMailSuppression.IdFor("ann@app.example").Value))!.Reason.Should().Be(SparkMailSuppressionReason.Complaint);
         var delivery = (await sp.GetRequiredService<SparkMailDeliveryStore>().LoadAsync(deliveryId, default))!;
         delivery.Status.Should().Be(SparkMailDeliveryStatus.Complained);
         delivery.Detail.Should().Be("feedback-report: abuse");

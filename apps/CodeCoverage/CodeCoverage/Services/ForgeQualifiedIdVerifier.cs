@@ -245,13 +245,13 @@ public static class ForgeQualifiedIdVerifier
         while (await stream.MoveNextAsync())
         {
             var build = stream.Current.Document;
-            if (build.Id is null || build.Sessions.Count == 0)
+            if (build.Id.IsEmpty || build.Sessions.Count == 0)
                 continue;
 
             foreach (var name in build.Sessions.SelectMany(s => s.RawFileNames))
             {
                 checkedCount++;
-                if (!await session.Advanced.Attachments.ExistsAsync(build.Id, name, cancellationToken))
+                if (!await session.Advanced.Attachments.ExistsAsync(build.Id.Value, name, cancellationToken))
                     missing.Add($"{build.Id}#{name}");
             }
         }

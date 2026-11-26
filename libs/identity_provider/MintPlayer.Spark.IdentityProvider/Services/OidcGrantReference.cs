@@ -29,7 +29,12 @@ internal static class OidcGrantReference
         // Length-prefixed so the pair maps into the hash injectively. A bare separator would
         // not: under "a|b", the pairs ("x|y", "z") and ("x", "y|z") hash identically — one
         // user's grant answering for another's.
-        var key = Encoding.UTF8.GetBytes($"{subject.Length}:{subject}|{applicationId}");
+        // The application id enters the hash in its pre-#536 casing, "OidcApplications/{key}". Every application id
+        // was that prefix and a lower-case key (a Guid, or agent-{hex}); since ids went lower case (D7) a loaded
+        // application answers "oidcapplications/{key}". Hashing one fixed form keeps every grant written before at its
+        // document id, so none is orphaned and none is re-keyed (O15).
+        var applicationKey = "OidcApplications/" + applicationId[(applicationId.IndexOf('/') + 1)..];
+        var key = Encoding.UTF8.GetBytes($"{subject.Length}:{subject}|{applicationKey}");
         return CollectionPrefix + Convert.ToHexStringLower(SHA256.HashData(key));
     }
 }

@@ -3,10 +3,10 @@ using MintPlayer.Spark.Abstractions;
 
 namespace DemoApp.Library.Entities;
 
-public class Car
+public partial class Car
 {
     /// <summary>Unique identifier of this car, assigned automatically when it is saved.</summary>
-    public string? Id { get; set; }
+    public Id<Car> Id { get; set; }
     /// <summary>Registration number shown on the car's licence plate.</summary>
     public string LicensePlate { get; set; } = string.Empty;
     /// <summary>Model name of the car, for example <c>Golf</c> or <c>Model 3</c>.</summary>

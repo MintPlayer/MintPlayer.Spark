@@ -19,7 +19,8 @@ namespace CodeCoverage.Entities;
 /// streams this repository's id prefix, so no index is built.
 /// </para>
 /// </remarks>
-public class BackportAttempt
+[IdKind(SparkIdKind.Natural)]
+public partial class BackportAttempt
 {
     public const string Prefix = "BackportAttempts/";
     public const int MaxDetail = 2000;
@@ -50,7 +51,7 @@ public class BackportAttempt
     public static string ForRepository(EForgeProvider provider, long repositoryId)
         => $"{Prefix}{provider.ToString().ToLowerInvariant()}/{repositoryId}/";
 
-    public string? Id { get; set; }
+    public Id<BackportAttempt> Id { get; set; }
 
     [Reference(typeof(Repository))]
     public string Repository { get; set; } = string.Empty;

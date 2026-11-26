@@ -203,10 +203,11 @@ public class ContributionsGeneratorTests
         var lyricsType = assembly.GetType("TestApp.Lyrics", throwOnError: true)!;
         var songType = assembly.GetType("TestApp.Song", throwOnError: true)!;
 
+        // A generated id is lower case (#536 D7): ids never told case apart, and a new one is written canonical.
         contributionType.GetMethod("GetId")!.Invoke(null, ["Songs/1234", "ko", "Kore", "MintPlayerUsers/abc"])
-            .Should().Be("Songs/1234/LyricsContributions/ko/Kore/User/MintPlayerUsers/abc");
+            .Should().Be("songs/1234/lyricscontributions/ko/kore/user/mintplayerusers/abc");
         currentType.GetMethod("GetId")!.Invoke(null, ["Songs/1234", "ko", "Kore"])
-            .Should().Be("Songs/1234/Lyrics/ko/Kore");
+            .Should().Be("songs/1234/lyrics/ko/kore");
 
         var lyrics = Activator.CreateInstance(lyricsType)!;
         lyricsType.GetProperty("Language")!.SetValue(lyrics, "ko");
@@ -239,16 +240,16 @@ public class ContributionsGeneratorTests
         var d = descriptor.GetType();
         var updatedAt = new DateTime(2026, 9, 30, 12, 0, 0, DateTimeKind.Utc);
         var contribution = d.GetMethod("CreateContribution")!.Invoke(descriptor, ["Songs/1234", lyrics, "MintPlayerUsers/abc", updatedAt])!;
-        contributionType.GetProperty("Id")!.GetValue(contribution).Should().Be("Songs/1234/LyricsContributions/ko/Kore/User/MintPlayerUsers/abc");
-        ((IHasNaturalId)contribution).GetId().Should().Be("Songs/1234/LyricsContributions/ko/Kore/User/MintPlayerUsers/abc");
+        contributionType.GetProperty("Id")!.GetValue(contribution)!.ToString().Should().Be("songs/1234/lyricscontributions/ko/kore/user/mintplayerusers/abc");
+        ((IHasNaturalId)contribution).GetId().Should().Be("songs/1234/lyricscontributions/ko/kore/user/mintplayerusers/abc");
         contribution.Should().BeAssignableTo<ISoftDeletable>();
         d.GetMethod("SlotContributionPrefix")!.Invoke(descriptor, ["Songs/1234", lyrics])
             .Should().Be("Songs/1234/LyricsContributions/ko/Kore/User/");
 
         var current = d.GetMethod("CreateCurrent")!.Invoke(descriptor, [contribution, 4])!;
-        currentType.GetProperty("Id")!.GetValue(current).Should().Be("Songs/1234/Lyrics/ko/Kore");
-        ((IHasNaturalId)current).GetId().Should().Be("Songs/1234/Lyrics/ko/Kore");
-        ((ICurrentContribution)current).ContributionId.Should().Be("Songs/1234/LyricsContributions/ko/Kore/User/MintPlayerUsers/abc");
+        currentType.GetProperty("Id")!.GetValue(current)!.ToString().Should().Be("songs/1234/lyrics/ko/kore");
+        ((IHasNaturalId)current).GetId().Should().Be("songs/1234/lyrics/ko/kore");
+        ((ICurrentContribution)current).ContributionId.Should().Be("songs/1234/lyricscontributions/ko/kore/user/mintplayerusers/abc");
         currentType.GetProperty("ContributionCount")!.GetValue(current).Should().Be(4);
 
         var row = d.GetMethod("CreateRow")!.Invoke(descriptor, [current, "Alice"])!;
@@ -283,7 +284,7 @@ public class ContributionsGeneratorTests
             // sv-SE formats negative numbers with U+2212 under ICU; the id must not.
             CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
             contributionType.GetMethod("GetId")!.Invoke(null, ["Charts/1", -5, region, edition, true, "Users/1"])
-                .Should().Be("Charts/1/RankingsContributions/-5/Europe/0f8fad5bd9cb469fa16570867728950e/true/User/Users/1");
+                .Should().Be("charts/1/rankingscontributions/-5/europe/0f8fad5bd9cb469fa16570867728950e/true/user/users/1");
         }
         finally
         {
@@ -302,9 +303,9 @@ public class ContributionsGeneratorTests
     {
         var assembly = CompileAndLoad(BiographySource, softDelete: false);
         assembly.GetType("TestApp.People.ArtistBiographyContribution", throwOnError: true)!.GetMethod("GetId")!
-            .Invoke(null, ["Artists/7", "Users/1"]).Should().Be("Artists/7/BiographyContributions/User/Users/1");
+            .Invoke(null, ["Artists/7", "Users/1"]).Should().Be("artists/7/biographycontributions/user/users/1");
         assembly.GetType("TestApp.People.ArtistBiographyCurrent", throwOnError: true)!.GetMethod("GetId")!
-            .Invoke(null, ["Artists/7"]).Should().Be("Artists/7/Biography");
+            .Invoke(null, ["Artists/7"]).Should().Be("artists/7/biography");
 
         var biography = assembly.GetType("TestApp.People.Biography", throwOnError: true)!;
         biography.GetProperty("Key").Should().BeNull();

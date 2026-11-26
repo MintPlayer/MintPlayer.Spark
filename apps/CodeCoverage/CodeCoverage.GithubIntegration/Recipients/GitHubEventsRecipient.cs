@@ -188,7 +188,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                     removedId,
                     Connected: false,
                     Reason: DisconnectedReasons.RemovedFromInstallation,
-                    ReportedByAccountId: account.Id), ct);
+                    ReportedByAccountId: account.Id.Value), ct);
             }
         }
 
@@ -250,7 +250,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (evt.Action is "renamed" or "transferred")
         {
             await RaiseAsync(new RepositoryRenamed(
-                repository.Id!,
+                repository.Id.Value,
                 NewName: ghRepo.Name,
                 NewFullName: ghRepo.FullName,
                 NewOwnerLogin: ghRepo.FullName.Split('/')[0],
@@ -324,7 +324,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<OwnerRenamed>(
             EForgeProvider.GitHub,
             new OwnerRenamed(
-                AccountId: account.Id ?? Account.DocumentId(EForgeProvider.GitHub, accountId),
+                AccountId: account.Id.IsEmpty ? Account.DocumentId(EForgeProvider.GitHub, accountId) : account.Id.Value,
                 NewLogin: login,
                 NewAvatarUrl: ghAccount.TryGetProperty("avatar_url", out var avatarElement)
                     ? avatarElement.GetString()
@@ -375,7 +375,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<BranchCommitPushed>(
             EForgeProvider.GitHub,
             new BranchCommitPushed(
-                RepositoryId: repository.Id!,
+                RepositoryId: repository.Id.Value,
                 Branch: branch,
                 Sha: evt.After,
                 Message: evt.HeadCommit.Message,
@@ -406,8 +406,8 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (!ManifestScanTriggers.PushTouchesManifests(commits.Count, changedPaths)) return;
 
         await messageBus.BroadcastOnceAsync(
-            new ScanRepositoryManifestsMessage { RepositoryId = repository.Id! },
-            ManifestScanTriggers.PushKey(repository.Id!, evt.After),
+            new ScanRepositoryManifestsMessage { RepositoryId = repository.Id.Value },
+            ManifestScanTriggers.PushKey(repository.Id.Value, evt.After),
             ct);
     }
 
@@ -456,7 +456,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestMerged>(
                 EForgeProvider.GitHub,
                 new PullRequestMerged(
-                    RepositoryId: mergedRepository.Id!,
+                    RepositoryId: mergedRepository.Id.Value,
                     Number: (int)evt.Number,
                     HeadRef: evt.PullRequest.Head.Ref,
                     // Unknown counts as "from a fork". Declining to delete is recoverable;
@@ -474,7 +474,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (evt.Action == "edited" && TextEditedByHuman(message) && evt.PullRequest.State?.StringValue == "open"
             && await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, evt.Repository.Id), ct) is { } edited)
             await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
-                EForgeProvider.GitHub, new PullRequestDescribed(edited.Id!, (int)evt.Number)), ct);
+                EForgeProvider.GitHub, new PullRequestDescribed(edited.Id.Value, (int)evt.Number)), ct);
 
         if (evt.Action is not ("opened" or "synchronize" or "reopened" or "ready_for_review")
             && !(evt.Action == "edited" && BaseChanged(message))) return;
@@ -489,7 +489,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestUpdated>(
             EForgeProvider.GitHub,
             new PullRequestUpdated(
-                RepositoryId: repository.Id!,
+                RepositoryId: repository.Id.Value,
                 Number: (int)evt.Number,
                 HeadSha: pr.Head.Sha,
                 HeadRef: pr.Head.Ref,
@@ -504,11 +504,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (evt.Action is "opened" or "reopened")
             await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
-                EForgeProvider.GitHub, new PullRequestDescribed(repository.Id!, (int)evt.Number)), ct);
+                EForgeProvider.GitHub, new PullRequestDescribed(repository.Id.Value, (int)evt.Number)), ct);
 
         if (evt.Action == "reopened")
             await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestReopened>(
-                EForgeProvider.GitHub, new PullRequestReopened(repository.Id!, (int)evt.Number, pr.Head.Ref)), ct);
+                EForgeProvider.GitHub, new PullRequestReopened(repository.Id.Value, (int)evt.Number, pr.Head.Ref)), ct);
     }
 
     // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────
@@ -888,7 +888,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     {
         if (Child(root, "repository") is not { } repo || Number(repo, "id") is not { } gitHubId) return null;
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, gitHubId), ct);
-        return repository?.Id;
+        return repository?.Id.Value;
     }
 
     /// <summary>The sender's login, or null when the sender is a bot (D46) or absent.</summary>
@@ -982,7 +982,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
     private static void ApplyRepositoryFields(Repository repository, string name, string fullName, bool isPrivate, Account account)
     {
-        repository.Account = account.Id;
+        repository.Account = account.Id.Value;
         repository.Name = name;
         repository.FullName = fullName;
         repository.OwnerLogin = fullName.Split('/')[0];
@@ -1016,9 +1016,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     {
         foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
         {
-            if (repository.Id is null) continue;
+            if (repository.Id.IsEmpty) continue;
             await RaiseAsync(new RepositoryConnectionChanged(
-                repository.Id, Connected: false, Reason: reason, ReportedByAccountId: account.Id), ct);
+                repository.Id.Value, Connected: false, Reason: reason, ReportedByAccountId: account.Id.Value), ct);
         }
     }
 
@@ -1029,11 +1029,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// </summary>
     private async Task<IReadOnlyList<Repository>> LoadRepositoriesOfAsync(Account account, CancellationToken ct)
     {
-        if (account.Id is null) return [];
+        if (account.Id.IsEmpty) return [];
 
         // One query, not a load per repository — this runs inside a session whose request budget
         // is 30, and a real organization has more repositories than that.
-        return await indexes.RepositoriesOfAccountAsync(session, account.Id, MaxRepositoriesPerAccount, ct);
+        return await indexes.RepositoriesOfAccountAsync(session, account.Id.Value, MaxRepositoriesPerAccount, ct);
     }
 
 }

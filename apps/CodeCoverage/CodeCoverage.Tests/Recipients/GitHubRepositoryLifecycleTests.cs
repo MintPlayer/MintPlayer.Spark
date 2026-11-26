@@ -331,7 +331,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         repository.Should().NotBeNull();
         repository.FullName.Should().Be("acme-archive/widgets");
         repository.OwnerLogin.Should().Be("acme-archive");
-        repository.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId));
+        // Written from the loaded account's id, which is lower case (#536 D7).
+        repository.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId).ToLowerInvariant());
         repository.PreviousFullNames.Should().Contain("acme/widgets");
         repository.Connection.Should().Be(RepositoryConnection.Connected);
         repository.DisconnectedReason.Should().BeNull();
@@ -501,7 +502,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        repository!.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId));
+        repository!.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId).ToLowerInvariant());
         repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 

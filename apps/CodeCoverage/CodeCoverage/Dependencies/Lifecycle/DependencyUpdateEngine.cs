@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -293,7 +294,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         // A producer: packages in its manifests (P12) or a `versioning:` section.
         var versioning = PackageVersioning.VersioningYml.Parse(yml).Config;
         var produces = versioning is not null
-            || (await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id!), ct))?.Produces.Count > 0;
+            || (await session.LoadAsync<RepositoryManifest>(RepositoryManifest.ForRepository(repository.Id.Value), ct))?.Produces.Count > 0;
         run.FileUnlinedSdks = produces && versioning?.Lines is null
             ? [.. DependenciesYml.PlatformSdks.Where(sdk => parsed.Section.Platform(sdk).Strategy == "replace")]
             : [];
@@ -510,11 +511,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         data.LookupJson = json;
 
         // P12: the dependency graph and the fleet view read what the lookup found (every ecosystem it covers, with versions).
-        var manifestId = RepositoryManifest.ForRepository(context.Repository.Id!);
+        var manifestId = RepositoryManifest.ForRepository(context.Repository.Id.Value);
         var manifest = await session.LoadAsync<RepositoryManifest>(manifestId, ct);
         if (manifest is null)
         {
-            manifest = new RepositoryManifest { Repository = context.Repository.Id, OwnerKey = context.Repository.OwnerKey };
+            manifest = new RepositoryManifest { Repository = context.Repository.Id.Value, OwnerKey = context.Repository.OwnerKey };
             await session.StoreAsync(manifest, manifestId, ct);
         }
         DependencyLookupIngest.Apply(manifest, parsed.Document!, time.GetUtcNow());
@@ -532,7 +533,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
         var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(section, repository, context.Account, await AccountPackagesAsync(repository, ct));
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
         var fleet = await FleetAsync(context, ct);
 
         // Gap E: an approval counts only while its approver still has write access, read now, at apply time.
@@ -724,7 +725,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var others = await Raven.Client.Documents.LinqExtensions.ToListAsync(session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerKey == repository.OwnerKey)
             .Take(1024), ct);
-        var ids = others.Where(r => r.Id is not null && r.Id != repository.Id).Select(r => RepositoryManifest.ForRepository(r.Id!)).ToList();
+        var ids = others.Where(r => !r.Id.IsEmpty && r.Id != repository.Id).Select(r => RepositoryManifest.ForRepository(r.Id.Value)).ToList();
         if (ids.Count == 0) return [];
         var manifests = await session.LoadAsync<RepositoryManifest>(ids, ct);
         return [.. manifests.Values.OfType<RepositoryManifest>().SelectMany(m => m.Produces)
@@ -733,7 +734,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     private async Task ConfirmOwnReleasesAsync(Context context, LookupDocument lookup, DependencyFleetState fleet, CancellationToken ct)
     {
-        var producers = fleet.ProducerEvents.Select(e => e.ProducerRepository).Distinct(StringComparer.Ordinal).ToList();
+        var producers = fleet.ProducerEvents.Select(e => e.ProducerRepository).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (producers.Count == 0) return;
         var manifests = await session.LoadAsync<RepositoryManifest>(producers.Select(RepositoryManifest.ForRepository), ct);
         var confirmed = OwnReleaseCheck.Confirm(lookup, [.. manifests.Values.OfType<RepositoryManifest>()], fleet.ProducerEvents, time.GetUtcNow());
@@ -831,7 +832,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return;
         }
 
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
         foreach (var hold in DependencyHolds.RecordApplyResult(state, plan, result, lookup, time.GetUtcNow()))
             run.Note(Now, $"held {hold.Group}: {hold.Reason}");
 
@@ -931,7 +932,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var data = await DataAsync(context, ct);
         var lookupless = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(lookupless, repository, context.Account);
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
         var fleet = await FleetAsync(context, ct);
         var notes = DependencyMigrationNotes.Check(read.Document, config, state, fleet);
         data.Migrations.Add(new DependencyMigrationRecord
@@ -965,7 +966,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var group = pending.Group!;
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
         state.Holds.RemoveAll(h => h.Id == $"migrate:{group}");
         state.Holds.Add(new DependencyHold
         {
@@ -1017,7 +1018,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         GitWriterDependencyResult result, string? botSha, CancellationToken ct)
     {
         var (repository, run) = (context.Repository, context.Run);
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
         var newHolds = 0;
         foreach (var value in result.HumanValues)
         {
@@ -1409,7 +1410,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
         var items = bisect.Items.Where(i => i.Group == culprit).ToList();
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
         state.Holds.RemoveAll(h => h.Id == $"red:{culprit}");
         state.Holds.Add(new DependencyHold
         {
@@ -1425,10 +1426,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             var fleet = await FleetAsync(context, ct);
             foreach (var item in items)
             {
-                fleet.RedVersions.RemoveAll(r => r.Ecosystem == item.Ecosystem && r.DepName == item.DepName && r.Version == item.Version && r.Repository == repository.Id);
+                fleet.RedVersions.RemoveAll(r => r.Ecosystem == item.Ecosystem && r.DepName == item.DepName && r.Version == item.Version && string.Equals(r.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase));
                 fleet.RedVersions.Add(new DependencyFleetRed
                 {
-                    Ecosystem = item.Ecosystem, DepName = item.DepName, Version = item.Version, Repository = repository.Id!,
+                    Ecosystem = item.Ecosystem, DepName = item.DepName, Version = item.Version, Repository = repository.Id.Value,
                     RunUrl = bisect.FailingRunUrl, PullRequestNumber = run.PullRequestNumber, AtUtc = Now,
                 });
             }
@@ -1449,7 +1450,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     {
         if (context.Account?.Id is not { } accountId)
             return new DependencyFleetState();
-        var fleet = await stateStore.LoadFleetAsync(accountId, ct);
+        var fleet = await stateStore.LoadFleetAsync(accountId.Value, ct);
         fleet.PruneExpiredRed(Now);
         return fleet;
     }
@@ -1461,7 +1462,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (context.Account?.Id is null)
             return 0;
         var fleet = await FleetAsync(context, ct);
-        return fleet.RedVersions.RemoveAll(r => r.Repository == context.Repository.Id && match(r));
+        return fleet.RedVersions.RemoveAll(r => string.Equals(r.Repository, context.Repository.Id.Value, StringComparison.OrdinalIgnoreCase) && match(r));
     }
 
     private async Task RedReportAsync(Context context, DependencyBisect bisect, string why, CancellationToken ct)
@@ -1530,7 +1531,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             // R5: auto-merge is the merge queue, only; it re-checks the rules, the approvals and the checks itself.
             await outbox.EnqueueAsync(session, new MergeQueueSignalMessage
             {
-                RepositoryId = repository.Id!, Kind = EMergeQueueSignal.Command, Number = pr, Command = EMergeQueueCommand.Enqueue,
+                RepositoryId = repository.Id.Value, Kind = EMergeQueueSignal.Command, Number = pr, Command = EMergeQueueCommand.Enqueue,
                 Actor = QueueActor, Source = EMergeQueueCommandSource.DependencyUpdates,
             }, null, ct);
             run.Note(Now, $"green: #{pr} handed to the merge queue");
@@ -1589,9 +1590,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             await CommentAsync(context, usage, ct);
             return usage;
         }
-        var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct);
+        var data = await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id.Value, run.Line), ct);
         var report = data?.ReportJson is { } json ? JsonSerializer.Deserialize<DependencyRunReport>(json, JsonSerializerOptions.Web)! : new DependencyRunReport();
-        var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var state = await stateStore.LoadAsync(repository.Id.Value, ct);
 
         switch (command)
         {
@@ -1689,7 +1690,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         else
         {
             // #683 H3 (owner, Q1): a close rejects the pull request, and the red verdicts taken on it go with it.
-            var state = await stateStore.LoadAsync(context.Repository.Id!, ct);
+            var state = await stateStore.LoadAsync(context.Repository.Id.Value, ct);
             var withdrawn = DependencyHolds.WithdrawRedVerdicts(state, number);
             var fleetWithdrawn = await WithdrawFleetRedAsync(context, r => r.PullRequestNumber == number, ct);
             if (withdrawn.Count > 0 || fleetWithdrawn > 0)
@@ -1704,7 +1705,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Pins = [];
         run.ReplayRetried = false;
         // D-N1: a merged or closed pull request takes its human fixes with it; nothing is pinned for them any more.
-        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(context.Repository.Id!, context.Run.Line), ct) is { } data)
+        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(context.Repository.Id.Value, context.Run.Line), ct) is { } data)
             data.RollingPlanJson = null;
         if (run.State is EDependencyRunState.AwaitingChecks or EDependencyRunState.Bisecting)
             await EndAsync(context, wasMerged ? "merged" : "closed", wasMerged ? "The pull request was merged." : "The pull request was closed.", ct);
@@ -1962,7 +1963,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         run.OnboardingBaseSha = run.OnboardingBranchSha = null;
         run.OnboardingStartedAtUtc = null;
-        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!, run.Line), ct) is { } data)
+        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id.Value, run.Line), ct) is { } data)
             data.RollingPlanJson = null;
         if (run.State != EDependencyRunState.Idle)
         {
@@ -2168,11 +2169,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     private async Task<DependencyUpdateRunData> DataAsync(Context context, CancellationToken ct)
     {
-        var id = DependencyUpdateRunData.ForRepository(context.Repository.Id!, context.Run.Line);
+        var id = DependencyUpdateRunData.ForRepository(context.Repository.Id.Value, context.Run.Line);
         var data = await session.LoadAsync<DependencyUpdateRunData>(id, ct);
         if (data is null)
         {
-            data = new DependencyUpdateRunData { Id = id, Run = context.Run.Run };
+            data = new DependencyUpdateRunData { Id = Id<DependencyUpdateRunData>.FromTrusted(id), Run = context.Run.Run };
             await session.StoreAsync(data, id, ct);
         }
         if (data.Run != context.Run.Run)
@@ -2278,12 +2279,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             logger.LogDebug("Dependency updates: {Provider} has no support ({Repository})", repository.Provider, repository.FullName);
             return null;
         }
-        var id = DependencyUpdateRun.ForRepository(repository.Id, line);
+        var id = DependencyUpdateRun.ForRepository(repository.Id.Value, line);
         var run = await session.LoadAsync<DependencyUpdateRun>(id, ct);
         if (run is null)
         {
             if (!create) return null;
-            run = new DependencyUpdateRun { Id = id, Repository = repository.Id, Line = line };
+            run = new DependencyUpdateRun { Id = Id<DependencyUpdateRun>.FromTrusted(id), Repository = repository.Id.Value, Line = line };
             await session.StoreAsync(run, id, ct);
         }
         var account = repository.Account is null ? null : await session.LoadAsync<Account>(repository.Account, ct);

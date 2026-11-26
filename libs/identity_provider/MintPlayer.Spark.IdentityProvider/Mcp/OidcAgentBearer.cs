@@ -49,7 +49,7 @@ internal sealed class OidcAgentCredentialScheme(
         if (grant is null)
             return null;
 
-        var agent = new AgentInformation(grant.Kind, grant.ClientId, grant.VerifiedHost, grant.Name, principal) { GrantId = grant.Id };
+        var agent = new AgentInformation(grant.Kind, grant.ClientId, grant.VerifiedHost, grant.Name, principal) { GrantId = grant.Id.Value };
         return new AgentCredential(agent, grant.ToScope());
     }
 }
@@ -109,7 +109,7 @@ internal sealed partial class OidcAgentBearerHandler(
         if (AgentRequestUser.IsLockedOut(user, time.GetUtcNow()))
             return Refuse("user locked out");
 
-        var grant = await grants.GetAsync(AgentGrantIds.Application(userId, clientId), Context.RequestAborted);
+        var grant = await grants.GetAsync(AgentGrantIds.Application(userId, clientId).Value, Context.RequestAborted);
         if (grant is null || !string.Equals(grant.UserId, userId, StringComparison.Ordinal)
             || !string.Equals(grant.OidcGrantId, resolved.Record?.AuthorizationId, StringComparison.Ordinal))
             return Refuse("no agent grant");
@@ -129,7 +129,7 @@ internal sealed partial class OidcAgentBearerHandler(
                 new Claim("name", user.UserName ?? userId),
                 new Claim("client_id", clientId),
                 new Claim("scope", resolved.Scope ?? string.Empty),
-                new Claim(OidcAgentCredentialScheme.GrantClaim, grant.Id!),
+                new Claim(OidcAgentCredentialScheme.GrantClaim, grant.Id.Value),
                 .. roles.Claims,
             ],
             Scheme.Name, "name", roles.RoleClaimType);

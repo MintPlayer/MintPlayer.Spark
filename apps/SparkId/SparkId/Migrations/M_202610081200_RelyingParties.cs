@@ -70,7 +70,7 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
 
         await session.StoreAsync(new OidcResource
         {
-            Id = id,
+            Id = MintPlayer.Spark.Abstractions.Id<OidcResource>.FromTrusted(id),
             Kind = OidcResourceKinds.Identity,
             Name = name,
             DisplayName = displayName,

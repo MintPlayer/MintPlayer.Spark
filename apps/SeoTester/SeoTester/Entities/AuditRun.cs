@@ -15,9 +15,9 @@ namespace SeoTester.Entities;
 [RequiresOrganizationRole("RevokeShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole(SeoActionNames.CancelAudit, OrganizationRole.Member)]
 [RequiresOrganizationRole(SeoActionNames.ExportReport, OrganizationRole.Viewer)]
-public class AuditRun : IOrganizationOwned, ISparkShareable
+public partial class AuditRun : IOrganizationOwned, ISparkShareable
 {
-    public string? Id { get; set; }
+    public Id<AuditRun> Id { get; set; }
 
     [Reference(typeof(Site))]
     public string? SiteId { get; set; }

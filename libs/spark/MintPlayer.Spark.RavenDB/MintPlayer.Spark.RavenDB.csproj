@@ -37,6 +37,8 @@
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- The document identity of the data-protection key document (#536 D23). -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
 	</ItemGroup>
 
 	<ItemGroup>

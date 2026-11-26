@@ -138,7 +138,7 @@ public partial class BadgeController : ControllerBase
         System.Linq.Expressions.Expression<Func<Indexes.VCommit, bool>> coverage,
         CancellationToken cancellationToken)
         => await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id)
+            .Where(c => c.Repository == repository.Id.Value)
             .Where(selector)
             .Where(coverage)
             .OrderByDescending(c => c.Date)

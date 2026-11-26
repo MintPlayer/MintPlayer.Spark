@@ -157,7 +157,7 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
     /// </para>
     /// </summary>
     private static bool OwnedBy(string applicationId, OidcApplication app)
-        => string.Equals(applicationId, app.Id, StringComparison.Ordinal);
+        => string.Equals(applicationId, app.Id.Value, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Whether this caller may see an access token's claims: it issued the token, or the token

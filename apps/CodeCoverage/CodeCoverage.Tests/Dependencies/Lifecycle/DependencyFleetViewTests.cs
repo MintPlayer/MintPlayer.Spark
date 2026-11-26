@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
@@ -13,7 +14,7 @@ public class DependencyFleetViewTests
 {
     private static Repository Repo(long id, string name) => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, id), GitHubId = id, Name = name, FullName = $"acme/{name}", OwnerLogin = "acme", DefaultBranch = "main",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, id)), GitHubId = id, Name = name, FullName = $"acme/{name}", OwnerLogin = "acme", DefaultBranch = "main",
     };
 
     private static RepositoryManifest Uses(params (string Name, string Version)[] packages) => new()
@@ -64,18 +65,18 @@ public class DependencyFleetViewTests
             Now = DependencyTestKit.Now,
             Manifests = new Dictionary<string, RepositoryManifest>
             {
-                [app.Id!] = Uses(("@angular/core", "21.2.0")),
-                [web.Id!] = Uses(("@angular/core", "21.1.0")),
-                [lib.Id!] = Uses(("@angular/core", "22.0.1")),
+                [app.Id.Value] = Uses(("@angular/core", "21.2.0")),
+                [web.Id.Value] = Uses(("@angular/core", "21.1.0")),
+                [lib.Id.Value] = Uses(("@angular/core", "22.0.1")),
             },
             Reports = new Dictionary<string, DependencyRunReport>
             {
-                [app.Id!] = new() { AwaitingApproval = [Entry("@angular/core", "21.2.0", "22.0.1", EDependencyReportReason.AwaitingApproval)] },
-                [web.Id!] = new() { Held = [Entry("@angular/core", "21.1.0", "22.0.1", EDependencyReportReason.Held)] },
+                [app.Id.Value] = new() { AwaitingApproval = [Entry("@angular/core", "21.2.0", "22.0.1", EDependencyReportReason.AwaitingApproval)] },
+                [web.Id.Value] = new() { Held = [Entry("@angular/core", "21.1.0", "22.0.1", EDependencyReportReason.Held)] },
             },
             States = new Dictionary<string, DependencyUpdateState>
             {
-                [web.Id!] = new()
+                [web.Id.Value] = new()
                 {
                     Holds = [new DependencyHold
                     {
@@ -115,11 +116,11 @@ public class DependencyFleetViewTests
         {
             Repositories = [app, lib, web],
             Now = DependencyTestKit.Now,
-            Manifests = new Dictionary<string, RepositoryManifest> { [app.Id!] = On("10.0", "11.0"), [lib.Id!] = On("10.0", "11.0"), [web.Id!] = On("11.0") },
+            Manifests = new Dictionary<string, RepositoryManifest> { [app.Id.Value] = On("10.0", "11.0"), [lib.Id.Value] = On("10.0", "11.0"), [web.Id.Value] = On("11.0") },
             Reports = new Dictionary<string, DependencyRunReport>
             {
-                [app.Id!] = new() { AwaitingApproval = [Move(EDependencyReportReason.AwaitingApproval, "a major")] },
-                [lib.Id!] = new() { Held = [Move(EDependencyReportReason.Pending, "waiting on Microsoft.Extensions.Hosting to release 11.x")] },
+                [app.Id.Value] = new() { AwaitingApproval = [Move(EDependencyReportReason.AwaitingApproval, "a major")] },
+                [lib.Id.Value] = new() { Held = [Move(EDependencyReportReason.Pending, "waiting on Microsoft.Extensions.Hosting to release 11.x")] },
             },
         };
 
@@ -137,7 +138,7 @@ public class DependencyFleetViewTests
         var input = new DependencyFleetInput
         {
             Repositories = [a], Now = DependencyTestKit.Now,
-            Manifests = new Dictionary<string, RepositoryManifest> { [a.Id!] = Uses(("@angular/core", "22.0.1")) },
+            Manifests = new Dictionary<string, RepositoryManifest> { [a.Id.Value] = Uses(("@angular/core", "22.0.1")) },
         };
 
         DependencyFleetView.Build(input).Readiness.Should().BeEmpty();
@@ -155,13 +156,13 @@ public class DependencyFleetViewTests
             Now = DependencyTestKit.Now,
             Manifests = new Dictionary<string, RepositoryManifest>
             {
-                [app.Id!] = Uses(("chalk", "4.1.0")),
-                [web.Id!] = Uses(("chalk", "4.1.2")),
-                [solo.Id!] = Uses(("left-pad", "1.0.0")),
+                [app.Id.Value] = Uses(("chalk", "4.1.0")),
+                [web.Id.Value] = Uses(("chalk", "4.1.2")),
+                [solo.Id.Value] = Uses(("left-pad", "1.0.0")),
             },
             Reports = new Dictionary<string, DependencyRunReport>
             {
-                [app.Id!] = new() { Groups = [new DependencyReportGroup("chalk", EUpdateLevel.Patch, true, false, false, null, false,
+                [app.Id.Value] = new() { Groups = [new DependencyReportGroup("chalk", EUpdateLevel.Patch, true, false, false, null, false,
                     [new DependencyReportItem("chalk", "package.json", "npm", "npm", "4.1.0", "4.1.2", "4.1.2", null)])] },
             },
         };
@@ -193,13 +194,13 @@ public class DependencyFleetViewTests
     {
         var repo = Repo(910040, "widget");
         var schedule = new DependencySchedule(EDependencyScheduleFrequency.Weekly, EDependencyWeekday.Monday, 6, "UTC");
-        var opened = new DateTimeOffset(2026, 10, 19, 6, DependencySlots.SpreadMinute(repo.Id!), 0, TimeSpan.Zero);
+        var opened = new DateTimeOffset(2026, 10, 19, 6, DependencySlots.SpreadMinute(repo.Id.Value), 0, TimeSpan.Zero);
         var input = new DependencyFleetInput
         {
             Repositories = [repo], Account = new Account { DependencyUpdates = true }, Now = opened.AddMinutes(2),
             Runs = new Dictionary<string, DependencyUpdateRun>
             {
-                [repo.Id!] = new() { Trigger = EDependencyRunTrigger.Scheduled, StartedAtUtc = opened.UtcDateTime, PullRequestNumber = 41, PullRequestIsDraft = true, State = EDependencyRunState.AwaitingChecks },
+                [repo.Id.Value] = new() { Trigger = EDependencyRunTrigger.Scheduled, StartedAtUtc = opened.UtcDateTime, PullRequestNumber = 41, PullRequestIsDraft = true, State = EDependencyRunState.AwaitingChecks },
             },
         };
 

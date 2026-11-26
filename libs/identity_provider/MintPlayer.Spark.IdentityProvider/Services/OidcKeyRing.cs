@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting;
@@ -52,7 +53,7 @@ internal sealed class OidcKeyRing(
         var ring = new OidcKeyRing(null!, null!, null!, new SparkIdentityProviderOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<OidcKeyRing>.Instance);
         var kid = rsa.KeyId ?? "test-rsa";
         var jwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(new RsaSecurityKey(rsa.Rsa?.ExportParameters(true) ?? rsa.Parameters) { KeyId = kid });
-        ring.keys = [new Loaded(new OidcKey { Id = "OidcKeys/" + kid, Kid = kid, Use = "sig", Algorithm = SecurityAlgorithms.RsaSha256, State = OidcKeyStates.Active, CreatedAt = DateTime.UtcNow }, jwk)];
+        ring.keys = [new Loaded(new OidcKey { Id = Id<OidcKey>.FromTrusted("oidckeys/" + kid), Kid = kid, Use = "sig", Algorithm = SecurityAlgorithms.RsaSha256, State = OidcKeyStates.Active, CreatedAt = DateTime.UtcNow }, jwk)];
         ring.loadedAt = DateTime.MaxValue;
         return ring;
     }
@@ -106,7 +107,7 @@ internal sealed class OidcKeyRing(
         {
             salt = new OidcKey
             {
-                Id = SaltId, Kid = "pairwise-salt", Use = "salt", Algorithm = "HMAC", State = OidcKeyStates.Active,
+                Id = Id<OidcKey>.FromTrusted(SaltId), Kid = "pairwise-salt", Use = "salt", Algorithm = "HMAC", State = OidcKeyStates.Active,
                 ProtectedPrivateJwk = Protector.Protect(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))), CreatedAt = DateTime.UtcNow,
             };
             await session.StoreAsync(salt, ct);
@@ -261,7 +262,7 @@ internal sealed class OidcKeyRing(
         var now = DateTime.UtcNow;
         var document = new OidcKey
         {
-            Id = "OidcKeys/" + kid,
+            Id = Id<OidcKey>.FromTrusted("OidcKeys/" + kid),
             Kid = kid,
             Use = "sig",
             Algorithm = kty == "EC" ? SecurityAlgorithms.EcdsaSha256 : SecurityAlgorithms.RsaSha256,

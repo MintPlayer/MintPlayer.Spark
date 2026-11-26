@@ -50,6 +50,8 @@
 		  this project's own compilation carries [Contribution].
 		-->
 		<ProjectReference Include="..\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
+		<!-- The typed-id generator (#536 D23): the shape marker's document id. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
 	</ItemGroup>
 
 	<!--

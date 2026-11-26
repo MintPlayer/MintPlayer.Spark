@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -9,9 +10,10 @@ namespace CodeCoverage.Entities;
 /// A run's own check id stays on its <see cref="MergeQueueEntry"/>, through which the saga updates that check. This one is
 /// only ever a pointer for people, written by the saga each time it starts a new check run.
 /// </remarks>
-public class MergeQueueLatestCheck
+[IdKind(SparkIdKind.Natural)]
+public partial class MergeQueueLatestCheck
 {
-    public string? Id { get; set; }
+    public Id<MergeQueueLatestCheck> Id { get; set; }
 
     /// <summary>The repository document.</summary>
     public string Repository { get; set; } = string.Empty;

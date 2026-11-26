@@ -24,10 +24,10 @@ public class LogAccessEndToEndTests(OwnerPrivacyHostFixture host) : IClassFixtur
 
     /// <summary>A command on acme's private repository, and its log.</summary>
     private static readonly string PrivateCommandId = CommandInvocation.DocumentId(EForgeProvider.GitHub, 4602, 91);
-    private static readonly string PrivateLogId = LogIds.ForKey(CommandInvocation.LogKeyOf(PrivateCommandId));
+    private static readonly string PrivateLogId = LogIds.ForKey(CommandInvocation.LogKeyOf(PrivateCommandId)).Value;
 
     /// <summary>A backport's log on acme's public repository, related to the repository itself.</summary>
-    private static readonly string PublicLogId = LogIds.ForKey("backports/github/4601/7/1");
+    private static readonly string PublicLogId = LogIds.ForKey("backports/github/4601/7/1").Value;
 
     private async Task SeedAsync()
     {

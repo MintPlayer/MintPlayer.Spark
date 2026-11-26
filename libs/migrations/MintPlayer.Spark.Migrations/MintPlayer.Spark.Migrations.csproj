@@ -35,6 +35,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- The typed-id generator (#536 D23): SparkMigrationRecord's Id<SparkMigrationRecord>. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
 	</ItemGroup>
 
 	<ItemGroup>

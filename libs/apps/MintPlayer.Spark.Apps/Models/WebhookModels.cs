@@ -1,14 +1,22 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Apps.Models;
 
 /// <summary>
-/// A direct webhook: an HTTPS URL an owner registered, with the events it wants. Id <c>WebhookEndpoints/ep_…</c>; the
-/// <c>ep_…</c> part is the public endpoint id receivers see (and <c>v2a</c> signs over).
+/// A direct webhook: an HTTPS URL an owner registered, with the events it wants. Id <c>webhookendpoints/ep_…</c>; the
+/// <c>ep_…</c> part is the public endpoint id receivers see (and <c>v2a</c> signs over). It is lower-case hex, so the
+/// lower-cased id of an endpoint created before #536 (<c>WebhookEndpoints/ep_…</c>) keeps the same public id.
 /// </summary>
-public sealed class WebhookEndpoint
+/// <remarks>
+/// The owner registry and an App keep ids as strings in their stored casing (<see cref="WebhookOwnerRegistry.EndpointIds"/>,
+/// <see cref="WebhookChain.InFlight"/>): compare a loaded id with them ignoring case (#536 D7).
+/// </remarks>
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class WebhookEndpoint
 {
-    public const string IdPrefix = "WebhookEndpoints/";
+    public const string IdPrefix = "webhookendpoints/";
 
-    public string? Id { get; set; }
+    public Id<WebhookEndpoint> Id { get; set; }
     public string OwnerKind { get; set; } = string.Empty;
     public string OwnerKey { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
@@ -41,7 +49,10 @@ public sealed class WebhookEndpoint
     /// </summary>
     public string? AppSlug { get; set; }
 
-    public string PublicId => Id is null ? string.Empty : Id[IdPrefix.Length..];
+    public string PublicId => Id.IsEmpty ? string.Empty : Id.Value[IdPrefix.Length..];
+
+    /// <summary>The endpoint with public id <paramref name="publicId"/> (<c>ep_…</c>).</summary>
+    public static Id<WebhookEndpoint> IdFor(string publicId) => Id<WebhookEndpoint>.FromTrusted(IdPrefix + publicId);
 
     public WebhookOwner Owner => new(OwnerKind, OwnerKey);
 
@@ -50,13 +61,19 @@ public sealed class WebhookEndpoint
 
 /// <summary>
 /// The webhook endpoints of one owner, so an event finds its destinations by id, without an index (the libraries
-/// ship none). Id <c>WebhookOwners/{owner token}</c>.
+/// ship none). Id <c>webhookowners/{owner token}</c>.
 /// </summary>
-public sealed class WebhookOwnerRegistry
+/// <remarks>
+/// The token hashes the owner's key as given, so the key must always come from the stored reference
+/// (an entity's <c>OrganizationId</c>, a membership's), never from a loaded id: an organization created
+/// before #536 keeps <c>Organizations/…</c> there while its loaded id is lower case (#536 D7).
+/// </remarks>
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class WebhookOwnerRegistry
 {
-    public const string IdPrefix = "WebhookOwners/";
+    public const string IdPrefix = "webhookowners/";
 
-    public string? Id { get; set; }
+    public Id<WebhookOwnerRegistry> Id { get; set; }
     public string OwnerKind { get; set; } = string.Empty;
     public string OwnerKey { get; set; } = string.Empty;
     public List<string> EndpointIds { get; set; } = [];
@@ -70,22 +87,23 @@ public sealed class WebhookOwnerRegistry
     /// <summary>Whether an event of this owner has anywhere to go.</summary>
     public bool HasDestinations => EndpointIds.Count > 0 || InstallationIds.Count > 0;
 
-    public static string IdFor(WebhookOwner owner) => IdPrefix + owner.IdToken;
+    public static Id<WebhookOwnerRegistry> IdFor(WebhookOwner owner) => Id<WebhookOwnerRegistry>.FromTrusted(IdPrefix + owner.IdToken);
 }
 
 /// <summary>
 /// A fixed <c>webhook-id</c> that was published (D34): created only if absent, in the session of the publish, so a publisher
 /// that runs twice for one event queues it once. Delivery ids carry the publish time, so the fan-out alone cannot see
-/// the repeat. Id <c>WebhookEventKeys/{msg id}</c>; expires with the deliveries.
+/// the repeat. Id <c>webhookeventkeys/{msg id}</c>; expires with the deliveries.
 /// </summary>
-public sealed class WebhookEventKey : MintPlayer.Spark.Abstractions.IExpiring
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class WebhookEventKey : IExpiring
 {
-    public const string IdPrefix = "WebhookEventKeys/";
+    public const string IdPrefix = "webhookeventkeys/";
 
-    public string? Id { get; set; }
+    public Id<WebhookEventKey> Id { get; set; }
     public DateTime? ExpiresAtUtc { get; set; }
 
-    public static string IdFor(string messageId) => IdPrefix + messageId;
+    public static Id<WebhookEventKey> IdFor(string messageId) => Id<WebhookEventKey>.FromTrusted(IdPrefix + messageId);
 }
 
 [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<WebhookDeliveryStatus>))]
@@ -110,14 +128,19 @@ public sealed class WebhookDeliveryAttempt
 
 /// <summary>
 /// One event to one endpoint, with its payload and every attempt (D23). Id
-/// <c>WebhookDeliveries/{ep}/{newest-first key}_{msg id}</c>: listing an endpoint's log is a prefix load, newest first.
+/// <c>webhookdeliveries/{ep}/{newest-first key}_{msg id}</c>: listing an endpoint's log is a prefix load, newest first.
 /// Expires after <see cref="SparkAppsOptions.DeliveryRetention"/>.
 /// </summary>
-public sealed class WebhookDelivery : MintPlayer.Spark.Abstractions.IExpiring
+/// <remarks>
+/// The id is lower-cased (#536 D7), so a caller's mixed-case <c>webhook-id</c> shows lower case in the public delivery id;
+/// <see cref="MessageId"/> keeps it exactly, and that is what is sent.
+/// </remarks>
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class WebhookDelivery : IExpiring
 {
-    public const string IdPrefix = "WebhookDeliveries/";
+    public const string IdPrefix = "webhookdeliveries/";
 
-    public string? Id { get; set; }
+    public Id<WebhookDelivery> Id { get; set; }
 
     /// <summary>Created + <see cref="SparkAppsOptions.DeliveryRetention"/>; Spark's stamper writes <c>@expires</c>.</summary>
     public DateTime? ExpiresAtUtc { get; set; }
@@ -141,29 +164,37 @@ public sealed class WebhookDelivery : MintPlayer.Spark.Abstractions.IExpiring
     /// <summary>True while it waits in an ordered chain (D22).</summary>
     public bool Ordered { get; set; }
 
-    public string PublicId => Id is null ? string.Empty : Id[IdPrefix.Length..];
+    public string PublicId => Id.IsEmpty ? string.Empty : Id.Value[IdPrefix.Length..];
 
     /// <summary>The log id for <paramref name="messageId"/> on <paramref name="endpointPublicId"/>, sorted newest first.</summary>
-    public static string IdFor(string endpointPublicId, DateTime createdUtc, string messageId, string? suffix = null)
-        => $"{IdPrefix}{endpointPublicId}/{long.MaxValue - createdUtc.Ticks:x16}_{messageId}{suffix}";
+    public static Id<WebhookDelivery> IdFor(string endpointPublicId, DateTime createdUtc, string messageId, string? suffix = null)
+        => Id<WebhookDelivery>.FromTrusted($"{IdPrefix}{endpointPublicId}/{long.MaxValue - createdUtc.Ticks:x16}_{messageId}{suffix}");
+
+    /// <summary>The delivery with public id <paramref name="publicId"/>.</summary>
+    public static Id<WebhookDelivery> IdFor(string publicId) => Id<WebhookDelivery>.FromTrusted(IdPrefix + publicId);
 
     public static string PrefixFor(string endpointPublicId) => $"{IdPrefix}{endpointPublicId}/";
 }
 
 /// <summary>
 /// An ordered destination's chain (D22, S9): the delivery in flight and those waiting behind it, under optimistic
-/// concurrency. Id <c>WebhookChains/{ep}</c>.
+/// concurrency. Id <c>webhookchains/{ep}</c>.
 /// </summary>
-public sealed class WebhookChain
+/// <remarks>
+/// <see cref="InFlight"/> and <see cref="Waiting"/> hold delivery ids as stored: one queued before #536 keeps
+/// <c>WebhookDeliveries/…</c>. Compare and order them with a loaded delivery's id ignoring case (#536 D7).
+/// </remarks>
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class WebhookChain
 {
-    public const string IdPrefix = "WebhookChains/";
+    public const string IdPrefix = "webhookchains/";
 
-    public string? Id { get; set; }
+    public Id<WebhookChain> Id { get; set; }
     public string? InFlight { get; set; }
     public List<string> Waiting { get; set; } = [];
 
     /// <summary>Stopped by <see cref="WebhookExhaustedPolicy.Halt"/>: <see cref="InFlight"/> is the failed delivery.</summary>
     public bool Halted { get; set; }
 
-    public static string IdFor(string endpointPublicId) => IdPrefix + endpointPublicId;
+    public static Id<WebhookChain> IdFor(string endpointPublicId) => Id<WebhookChain>.FromTrusted(IdPrefix + endpointPublicId);
 }

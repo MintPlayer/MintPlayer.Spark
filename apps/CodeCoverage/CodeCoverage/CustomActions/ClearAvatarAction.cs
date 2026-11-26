@@ -57,7 +57,7 @@ public partial class ClearAvatarAction : SparkCustomAction
         {
             try
             {
-                await fileStore.EraseAsync(account.Id!, avatar.FileId, cancellationToken);
+                await fileStore.EraseAsync(account.Id.Value, avatar.FileId, cancellationToken);
             }
             catch (Exception ex)
             {

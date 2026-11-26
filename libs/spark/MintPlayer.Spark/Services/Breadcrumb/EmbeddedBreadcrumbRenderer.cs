@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
-using System.Collections;
 using System.Text;
 
 namespace MintPlayer.Spark.Services.Breadcrumb;
@@ -99,22 +98,5 @@ internal static class EmbeddedBreadcrumbRenderer
     }
 
     private static IEnumerable<string> ExtractIds(object entity, string propertyName)
-    {
-        var value = ReadValue(entity, propertyName);
-        switch (value)
-        {
-            case null:
-                yield break;
-            case string s:
-                if (!string.IsNullOrEmpty(s)) yield return s;
-                yield break;
-            case IEnumerable enumerable:
-                foreach (var item in enumerable)
-                {
-                    var id = item?.ToString();
-                    if (!string.IsNullOrEmpty(id)) yield return id;
-                }
-                yield break;
-        }
-    }
+        => SparkIdValues.ReferenceTexts(ReadValue(entity, propertyName));
 }

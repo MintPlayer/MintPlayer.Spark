@@ -149,7 +149,7 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(account);
-        if (currentUser.Id is not { Length: > 0 } userId || account.Id is null || repositories.Count == 0)
+        if (currentUser.Id is not { Length: > 0 } userId || account.Id.IsEmpty || repositories.Count == 0)
             return EmptySet;
 
         var key = $"github-repo-admins/{userId}/{account.Id}";
@@ -185,12 +185,12 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentException.ThrowIfNullOrEmpty(login);
-        var answer = repositories.Where(r => r.Id is not null).ToDictionary(r => r.Id!, _ => false, StringComparer.Ordinal);
+        var answer = repositories.Where(r => !r.Id.IsEmpty).ToDictionary(r => r.Id.Value, _ => false, StringComparer.OrdinalIgnoreCase);
         if (answer.Count == 0 || account.InstallationId is not { } installationId || !GitHubLogin().IsMatch(login))
             return answer;
 
         var token = await installationService.GetInstallationTokenAsync(installationId, cancellationToken);
-        foreach (var chunk in repositories.Where(r => r.Id is not null).Chunk(PageSize))
+        foreach (var chunk in repositories.Where(r => !r.Id.IsEmpty).Chunk(PageSize))
         {
             IReadOnlyDictionary<string, bool>? graph;
             try
@@ -205,7 +205,7 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
             if (graph is null)
             {
                 foreach (var repository in chunk)
-                    answer[repository.Id!] = await CheckWithRestAsync(token, repository, login, cancellationToken);
+                    answer[repository.Id.Value] = await CheckWithRestAsync(token, repository, login, cancellationToken);
                 continue;
             }
             foreach (var (id, admin) in graph)
@@ -263,11 +263,11 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
                 if (failedAliases.Contains($"r{i}"))
                 {
                     // This repository's connection was refused (an installation token may not read collaborators): REST.
-                    answer[chunk[i].Id!] = await CheckWithRestAsync(token, chunk[i], login, cancellationToken);
+                    answer[chunk[i].Id.Value] = await CheckWithRestAsync(token, chunk[i], login, cancellationToken);
                     continue;
                 }
                 var edges = Items(Child(Child(data, $"r{i}"), "collaborators"), "edges");
-                answer[chunk[i].Id!] = edges.Any(e => Str(e, "permission") == "ADMIN");
+                answer[chunk[i].Id.Value] = edges.Any(e => Str(e, "permission") == "ADMIN");
             }
             return answer;
         }

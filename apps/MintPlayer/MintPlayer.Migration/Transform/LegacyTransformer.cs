@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Entities;
 using MintPlayer.Migration.Model;
 using MintPlayer.Spark.Authorization.Identity;
@@ -88,7 +89,7 @@ public static class LegacyTransformer
             var (deleted, _) = Deletion(id, mt.UserDeleteId, null, userIds, o, plan);
             plan.Add(id, "MediumTypes", new MediumType
             {
-                Id = id,
+                Id = Id<MediumType>.FromTrusted(id),
                 Name = mt.Description,
                 Description = null,
                 Visible = mt.Visible,
@@ -112,7 +113,7 @@ public static class LegacyTransformer
                 plan.Issue(IssueSeverity.Info, "color-alpha-dropped", id, $"alpha {(byte)(c.Color >> 24)} → 255 (lost by design)");
             plan.Add(id, "TagCategories", new TagCategory
             {
-                Id = id,
+                Id = Id<TagCategory>.FromTrusted(id),
                 Description = c.Description,
                 Color = color,
                 CreatedAt = created,
@@ -134,7 +135,7 @@ public static class LegacyTransformer
                 plan.Issue(IssueSeverity.Info, "tag-no-category", id, "CategoryId 0 → null");
             plan.Add(id, "Tags", new Tag
             {
-                Id = id,
+                Id = Id<Tag>.FromTrusted(id),
                 Description = t.Description,
                 CategoryId = t.CategoryId == 0 ? null : Ids.TagCategory(t.CategoryId),
                 ParentId = t.ParentId == 0 ? null : Ids.Tag(t.ParentId),
@@ -222,7 +223,7 @@ public static class LegacyTransformer
                     throw new InvalidOperationException($"Unknown subject discriminator '{x.SubjectType}' on subject {x.Id}.");
             }
 
-            subject.Id = id;
+            subject.Id = Id<Subject>.FromTrusted(id);
             subject.Media = subjectMedia;
             subject.TagIds = tagIds;
             subject.CreatedAt = created;
@@ -282,7 +283,7 @@ public static class LegacyTransformer
                 plan.Issue(IssueSeverity.Info, "playlist-duplicate-track", id, $"{duplicates} duplicate track(s) kept");
             plan.Add(id, "Playlists", new Playlist
             {
-                Id = id,
+                Id = Id<Playlist>.FromTrusted(id),
                 Name = p.Description,
                 Description = null,
                 IsPublic = p.Accessibility == 1,
@@ -304,7 +305,7 @@ public static class LegacyTransformer
             var (deleted, deletedAt) = Deletion(id, b.UserDeleteId, b.DateDelete, userIds, o, plan);
             plan.Add(id, "BlogPosts", new BlogPost
             {
-                Id = id,
+                Id = Id<BlogPost>.FromTrusted(id),
                 Title = b.Title,
                 Headline = b.Headline,
                 Body = b.Body,
@@ -403,7 +404,7 @@ public static class LegacyTransformer
             string SubjectId(LegacyLike l) => Ids.Subject(subjectTypes[l.SubjectId], l.SubjectId);
             plan.Add(id, "UserLikes", new UserLike
             {
-                Id = id,
+                Id = Id<UserLike>.FromTrusted(id),
                 UserId = userId,
                 Likes = g.Where(l => l.DoesLike).OrderBy(l => l.SubjectId).Select(SubjectId).ToList(),
                 Dislikes = g.Where(l => !l.DoesLike).OrderBy(l => l.SubjectId).Select(SubjectId).ToList(),

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
@@ -20,7 +21,7 @@ public partial class BrowseController
     {
         var listing = await scope.ListAccountAsync(provider, login, cancellationToken);
         if (listing is null) return Refuse();
-        var visible = listing.Repositories.Where(r => r.Id is not null).ToList();
+        var visible = listing.Repositories.Where(r => !r.Id.IsEmpty).ToList();
         var account = visible.FirstOrDefault(r => r.Account is not null)?.Account is { } accountId
             ? await session.LoadAsync<Account>(accountId, cancellationToken)
             : await session.Query<Account, Indexes.Accounts_Overview>().Where(a => a.OwnerKey == listing.OwnerKey).FirstOrDefaultAsync(cancellationToken);
@@ -41,7 +42,7 @@ public partial class BrowseController
 
     private async Task<DependencyFleetInput> DependencyInputAsync(IReadOnlyList<Repository> visible, Account? account, CancellationToken cancellationToken)
     {
-        var ids = visible.Select(r => r.Id!).ToList();
+        var ids = visible.Select(r => r.Id.Value).ToList();
         if (ids.Count == 0)
             return new DependencyFleetInput { Repositories = [], Account = account, Now = DateTimeOffset.UtcNow };
 
@@ -50,15 +51,17 @@ public partial class BrowseController
         var states = await session.LoadAsync<DependencyUpdateState>(ids.Select(DependencyUpdateState.ForRepository), cancellationToken);
         var manifests = await session.LoadAsync<RepositoryManifest>(ids.Select(RepositoryManifest.ForRepository), cancellationToken);
         // The run data holds the lookup report too (large); only the report is read, as a server-side projection.
-        var dataIds = ids.Select(DependencyUpdateRunData.ForRepository).ToList();
-        var reports = await session.Query<DependencyUpdateRunData>()
-            .Where(d => d.Id.In(dataIds))
-            .Select(d => new ReportOnly { Id = d.Id, ReportJson = d.ReportJson })
+        // RQL, because the LINQ provider can't read a typed Id<T> on a raw session (#536): id() matches the document key
+        // ignoring case, the ids travel as a parameter, and the collection name is a validated identifier.
+        var dataIds = ids.Select(DependencyUpdateRunData.ForRepository).ToArray();
+        var collection = RqlIdentifier.Collection(session.Advanced.DocumentStore.Conventions.FindCollectionName(typeof(DependencyUpdateRunData)));
+        var reports = await session.Advanced.AsyncRawQuery<ReportOnly>($"from '{collection}' where id() in ($ids) select id() as Id, ReportJson")
+            .AddParameter("ids", dataIds)
             .ToListAsync(cancellationToken);
-        var fleet = account?.Id is { } accountId ? await session.LoadAsync<DependencyFleetState>(DependencyFleetState.ForAccount(accountId), cancellationToken) : null;
+        var fleet = account?.Id is { } accountId ? await session.LoadAsync<DependencyFleetState>(DependencyFleetState.ForAccount(accountId.Value), cancellationToken) : null;
 
         var byData = reports.Where(r => r.Id is not null && r.ReportJson is not null).ToDictionary(r => r.Id!, r => r.ReportJson!, StringComparer.OrdinalIgnoreCase);
-        var reportByRepo = new Dictionary<string, DependencyRunReport>(StringComparer.Ordinal);
+        var reportByRepo = new Dictionary<string, DependencyRunReport>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in ids)
         {
             if (!byData.TryGetValue(DependencyUpdateRunData.ForRepository(id), out var json))
@@ -89,7 +92,7 @@ public partial class BrowseController
 
     private static Dictionary<string, T> Pick<T>(IEnumerable<string> ids, Dictionary<string, T> loaded, Func<string, string> idOf) where T : class
     {
-        var result = new Dictionary<string, T>(StringComparer.Ordinal);
+        var result = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in ids)
             if (loaded.GetValueOrDefault(idOf(id)) is { } document)
                 result[id] = document;

@@ -8,5 +8,8 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 internal static class TestQueryResultProjector
 {
     public static QueryResultProjector For(IAsyncDocumentSession session, IModelLoader? modelLoader = null)
-        => new(session.AsSparkSession(), new SparkEntityLinks(modelLoader ?? Substitute.For<IModelLoader>()));
+    {
+        modelLoader ??= Substitute.For<IModelLoader>();
+        return new(session.AsSparkSession(), new SparkEntityLinks(modelLoader), modelLoader);
+    }
 }

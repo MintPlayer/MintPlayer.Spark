@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -38,7 +39,7 @@ public class DependencyUpdatesCronJobTests : CoverageRavenTest
     {
         var run = new DependencyUpdateRun
         {
-            Id = DependencyUpdateRun.ForRepository(RepoId(id)), Repository = RepoId(id), Onboarding = EDependencyOnboarding.Done,
+            Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepoId(id))), Repository = RepoId(id), Onboarding = EDependencyOnboarding.Done,
             FileFrequency = EDependencyScheduleFrequency.Daily, FileHour = 6,
         };
         configure?.Invoke(run);
@@ -56,7 +57,7 @@ public class DependencyUpdatesCronJobTests : CoverageRavenTest
             foreach (var (repository, run) in repositories)
             {
                 await seed.StoreAsync(repository, RepoId(repository.GitHubId));
-                if (run is not null) await seed.StoreAsync(run, run.Id);
+                if (run is not null) await seed.StoreAsync(run, run.Id.Value);
             }
             await seed.SaveChangesAsync();
         }
@@ -86,7 +87,7 @@ public class DependencyUpdatesCronJobTests : CoverageRavenTest
 
         var bus = await TickAsync(store, InSlot);
 
-        var key = $"dependency-slot:{RepoId(1)}:2026-11-09";
+        var key = $"dependency-slot:{RepoId(1).ToLowerInvariant()}:2026-11-09";
         bus.Signals.Should().HaveCount(2);
         bus.Signals.Should().AllSatisfy(s => (s.Signal.Kind, s.Signal.Trigger).Should().Be((EDependencySignal.Trigger, (EDependencyRunTrigger?)EDependencyRunTrigger.Scheduled)));
         bus.Signals.Select(s => (s.Signal.Line, s.Options.DeduplicationKey)).Should().Equal((null, key), ("dotnet-10.x", $"{key}:dotnet-10.x"));
@@ -112,8 +113,8 @@ public class DependencyUpdatesCronJobTests : CoverageRavenTest
         var bus = await TickAsync(store, InSlot.AddHours(2));
 
         var onboard = bus.Signals.Where(s => s.Signal.Kind == EDependencySignal.Onboard).ToList();
-        onboard.Select(s => s.Signal.RepositoryId).Should().BeEquivalentTo([RepoId(1), RepoId(2)]);
-        onboard.Should().Contain(s => s.Options.DeduplicationKey == $"dependency-onboard:{RepoId(1)}:2026-11-09");
+        onboard.Select(s => s.Signal.RepositoryId).Should().BeEquivalentTo([RepoId(1).ToLowerInvariant(), RepoId(2).ToLowerInvariant()]);
+        onboard.Should().Contain(s => s.Options.DeduplicationKey == $"dependency-onboard:{RepoId(1).ToLowerInvariant()}:2026-11-09");
     }
 
     [Fact]

@@ -165,7 +165,8 @@ public class RepositoryManifestScannerTests : CoverageRavenTest
 
         var manifest = await LoadManifestAsync(store, repositoryId);
         manifest.Should().NotBeNull();
-        manifest!.Repository.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, repositoryId));
+        // Written from the loaded repository's id, lower case (#536 D7).
+        manifest!.Repository.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, repositoryId).ToLowerInvariant());
         manifest.OwnerKey.Should().Be("github:acme");
         manifest.TreeSha.Should().Be(TreeSha);
         manifest.ScanError.Should().BeNull();

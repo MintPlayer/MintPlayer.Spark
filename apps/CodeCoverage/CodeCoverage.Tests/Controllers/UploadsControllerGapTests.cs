@@ -204,7 +204,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         repository.FullName.Should().Be("newcomer/lib");
         repository.OwnerLogin.Should().Be("newcomer");
         repository.IsPrivate.Should().BeFalse();
-        repository.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, OwnerId));
+        repository.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, OwnerId).ToLowerInvariant(), "the loaded account's id (#536 D7)");
         (await check.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OwnerId))).Login.Should().Be("newcomer");
     }
 

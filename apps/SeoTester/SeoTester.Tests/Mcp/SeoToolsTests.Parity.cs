@@ -67,15 +67,15 @@ public partial class SeoToolsTests
                 var webIds = webSites!["items"]!.AsArray().Select(i => i!["id"]!.GetValue<string>()).ToHashSet();
                 Same(differences, $"{caller.Name} list_sites total", sites.Data["totalSites"]!.GetValue<int>(), webSites["totalItems"]!.GetValue<int>());
                 foreach (var site in new[] { acme, globex })
-                    Same(differences, $"{caller.Name} list_sites has {site.Host}", agentIds.Contains(site.Id!), webIds.Contains(site.Id!));
-                agentIds.Contains(acme.Id!).Should().Be(seesAcme, caller.Name);
-                agentIds.Contains(globex.Id!).Should().Be(seesGlobex, caller.Name);
+                    Same(differences, $"{caller.Name} list_sites has {site.Host}", agentIds.Contains(site.Id.Value), webIds.Contains(site.Id.Value));
+                agentIds.Contains(acme.Id.Value).Should().Be(seesAcme, caller.Name);
+                agentIds.Contains(globex.Id.Value).Should().Be(seesGlobex, caller.Name);
             }
 
             // run_summary and scan_status ↔ po/load AuditRun.
             var summary = await SeoMcp.CallAsync(client, "seotester_run_summary", new { site = acme.Id }, caller.Token);
             var status = await SeoMcp.CallAsync(client, "seotester_scan_status", new { run = run.Id }, caller.Token);
-            var (runStatus, webRun) = await WebAsync("/spark/po/load", Wire.Typed(AuditRunTypeId, id: run.Id), caller.User);
+            var (runStatus, webRun) = await WebAsync("/spark/po/load", Wire.Typed(AuditRunTypeId, id: run.Id.Value), caller.User);
             if (runStatus != HttpStatusCode.OK)
             {
                 Refused(differences, $"{caller.Name} run_summary", summary, runStatus);
@@ -104,7 +104,7 @@ public partial class SeoToolsTests
 
             // get_page ↔ po/load PageResult; list_findings ↔ run-pages + po/load of each page.
             var page = await SeoMcp.CallAsync(client, "seotester_get_page", new { site = acme.Id, url = acme.Origin + "/a" }, caller.Token);
-            var (pageStatus, webPage) = await WebAsync("/spark/po/load", Wire.Typed(PageResultTypeId, id: PageResult.IdFor(acme.Id!, acme.Origin + "/a")), caller.User);
+            var (pageStatus, webPage) = await WebAsync("/spark/po/load", Wire.Typed(PageResultTypeId, id: PageResult.IdFor(acme.Id.Value, acme.Origin + "/a")), caller.User);
             var findings = await SeoMcp.CallAsync(client, "seotester_list_findings", new { site = acme.Id }, caller.Token);
             var (pagesStatus, webPages) = await WebAsync("/spark/queries/execute", Wire.Query("run-pages", new { parentId = run.Id, parentType = "AuditRun", take = 100 }), caller.User);
             if (pageStatus != HttpStatusCode.OK)
@@ -131,7 +131,7 @@ public partial class SeoToolsTests
             foreach (var site in new[] { acme, globex })
             {
                 var agentSite = await SeoMcp.CallAsync(client, "seotester_get", new { type = "Site", id = site.Id }, caller.Token);
-                var (siteStatus, webSite) = await WebAsync("/spark/po/load", Wire.Typed(SiteTypeId, id: site.Id), caller.User);
+                var (siteStatus, webSite) = await WebAsync("/spark/po/load", Wire.Typed(SiteTypeId, id: site.Id.Value), caller.User);
                 if (siteStatus != HttpStatusCode.OK)
                 {
                     Refused(differences, $"{caller.Name} get Site {site.Host}", agentSite, siteStatus);

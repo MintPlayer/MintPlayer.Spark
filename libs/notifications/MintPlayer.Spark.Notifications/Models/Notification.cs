@@ -7,9 +7,10 @@ namespace MintPlayer.Spark.Notifications.Models;
 /// <see cref="ISparkNotifier"/>, read only by its user (the package's row rule), shown live through the
 /// <c>"live": true</c> type and queries (X4): there is no second channel.
 /// </summary>
-public class Notification : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class Notification : IExpiring
 {
-    public string? Id { get; set; }
+    public Id<Notification> Id { get; set; }
 
     /// <summary>The user it is for (<c>SparkUsers/…</c>); null when it is for a visitor.</summary>
     public string? UserId { get; set; }
@@ -44,5 +45,5 @@ public class Notification : IExpiring
     /// <summary>X1: <c>"expiresAfter"</c> in the library's model (90 days); change it in your own model layer.</summary>
     public DateTime? ExpiresAtUtc { get; set; }
 
-    internal static string NewId() => "Notifications/" + Guid.NewGuid().ToString("N");
+    internal static Id<Notification> NewId() => Id<Notification>.FromTrusted("notifications/" + Guid.NewGuid().ToString("N"));
 }

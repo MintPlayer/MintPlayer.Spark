@@ -18,7 +18,8 @@ namespace CodeCoverage.Entities;
 /// <c>Coverage:Retention:CommandInvocationDays</c> (G5); one still in progress (a <c>/queue</c> waiting its turn) never does.
 /// </para>
 /// </remarks>
-public class CommandInvocation : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class CommandInvocation : IExpiring
 {
     public const string Prefix = "CommandInvocations/";
 
@@ -38,11 +39,11 @@ public class CommandInvocation : IExpiring
 
     /// <summary>The log key of the command whose record id is <paramref name="invocationId"/>.</summary>
     public static string LogKeyOf(string invocationId)
-        => invocationId.StartsWith(Prefix, StringComparison.Ordinal)
+        => invocationId.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)
             ? "commands/" + invocationId[Prefix.Length..]
             : throw new ArgumentException($"'{invocationId}' is not a command id.", nameof(invocationId));
 
-    public string? Id { get; set; }
+    public Id<CommandInvocation> Id { get; set; }
 
     /// <summary>The repository the command was written in.</summary>
     [Reference(typeof(Repository))]

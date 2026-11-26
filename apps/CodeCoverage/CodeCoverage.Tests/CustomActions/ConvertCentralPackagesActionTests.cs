@@ -29,7 +29,7 @@ public class ConvertCentralPackagesActionTests : CoverageRavenTest
 
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyDictionary<string, string?>>(
-                repositories.ToDictionary(r => r.Id!, r => r.Id == RepositoryId ? DependencyOnboardingService.Owner : null));
+                repositories.ToDictionary(r => r.Id.Value, r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase) ? DependencyOnboardingService.Owner : null));
     }
 
     private readonly IManager manager = Substitute.For<IManager>();
@@ -66,13 +66,13 @@ public class ConvertCentralPackagesActionTests : CoverageRavenTest
 
         manager.Retry.Received(1).Action("centralPackages.chooseTitle", Arg.Is<string[]>(o => o.SequenceEqual(new[] { "centralPackages.to", "centralPackages.from" })),
             "centralPackages.to", null, "centralPackages.chooseMessage", true);
-        await onboarding.Received(1).ConvertCentralPackagesAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), direction, Arg.Any<CancellationToken>());
-        await onboarding.DidNotReceive().ConvertCentralPackagesAsync(Arg.Is<Repository>(r => r.Id == Foreign), Arg.Any<ECentralPackageDirection>(), Arg.Any<CancellationToken>());
+        await onboarding.Received(1).ConvertCentralPackagesAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase)), direction, Arg.Any<CancellationToken>());
+        await onboarding.DidNotReceive().ConvertCentralPackagesAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, Foreign, StringComparison.OrdinalIgnoreCase)), Arg.Any<ECentralPackageDirection>(), Arg.Any<CancellationToken>());
 
         var result = (ConvertCentralPackagesResult)args.Result!;
         result.Direction.Should().Be(direction);
-        result.Repositories.Single(r => r.Id == RepositoryId).PullRequestUrl.Should().Be("https://github.com/acme/widget/pull/7");
-        result.Repositories.Single(r => r.Id == Foreign).Note.Should().Be("centralPackages.reason.notManaged");
+        result.Repositories.Single(r => string.Equals(r.Id, RepositoryId, StringComparison.OrdinalIgnoreCase)).PullRequestUrl.Should().Be("https://github.com/acme/widget/pull/7");
+        result.Repositories.Single(r => string.Equals(r.Id, Foreign, StringComparison.OrdinalIgnoreCase)).Note.Should().Be("centralPackages.reason.notManaged");
         manager.Client.Received(1).Notify("centralPackages.opened", NotificationKind.Success);
         manager.Client.Received(1).Notify("centralPackages.notOpened", NotificationKind.Warning);
     }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -11,7 +12,8 @@ namespace CodeCoverage.Entities;
 /// so a repository cannot take over a name another one already releases. A package released before this record existed
 /// is unknown until its next release, and a backport then names the dependency only.
 /// </remarks>
-public class PackageReleaseRecord
+[IdKind(SparkIdKind.Natural)]
+public partial class PackageReleaseRecord
 {
     public const string Prefix = "PackageReleases/";
 
@@ -25,7 +27,7 @@ public class PackageReleaseRecord
     /// ids compare case-insensitively on both registries.</summary>
     public static string DocumentId(string kind, string package) => $"{Prefix}{kind.ToLowerInvariant()}/{package.ToLowerInvariant()}";
 
-    public string? Id { get; set; }
+    public Id<PackageReleaseRecord> Id { get; set; }
 
     /// <summary>The <see cref="Entities.Repository"/> document id that releases the package.</summary>
     public string Repository { get; set; } = string.Empty;

@@ -81,7 +81,7 @@ public partial class VersioningDispatchRecipient : IRecipient<VersioningDispatch
         try
         {
             var config = VersioningYml.Parse(await integrations.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken)).Config;
-            await RememberAsync(repository.Id!, config, cancellationToken);
+            await RememberAsync(repository.Id.Value, config, cancellationToken);
             if (config?.Dispatch is not { } workflow) return;
 
             if (!config.IsVersionedBranch(message.Branch, defaultBranch, out var branchMajor)) return;

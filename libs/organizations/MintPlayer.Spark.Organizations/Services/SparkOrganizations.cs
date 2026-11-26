@@ -54,7 +54,7 @@ internal sealed class SparkOrganizations(
         var id = Organization.PersonalIdFor(userId);
 
         using var session = store.OpenAsyncSession();
-        if (await session.LoadAsync<Organization>(id, cancellationToken) is { } existing)
+        if (await session.LoadAsync<Organization>(id.Value, cancellationToken) is { } existing)
             return existing;
 
         var user = await session.LoadAsync<SparkUser>(userId, cancellationToken)
@@ -70,9 +70,9 @@ internal sealed class SparkOrganizations(
         };
 
         // An empty change vector means "must not exist yet": two first sign-ins racing create it once.
-        await session.StoreAsync(organization, string.Empty, id, cancellationToken);
-        var membership = NewMembership(organization.Id, user, OrganizationRole.Owner, Now);
-        await session.StoreAsync(membership, string.Empty, membership.Id, cancellationToken);
+        await session.StoreAsync(organization, string.Empty, id.Value, cancellationToken);
+        var membership = NewMembership(organization.Id.Value, user, OrganizationRole.Owner, Now);
+        await session.StoreAsync(membership, string.Empty, membership.Id.Value, cancellationToken);
         try
         {
             await session.SaveChangesAsync(cancellationToken);
@@ -80,7 +80,7 @@ internal sealed class SparkOrganizations(
         catch (ConcurrencyException)
         {
             using var again = store.OpenAsyncSession();
-            return await again.LoadAsync<Organization>(id, cancellationToken)
+            return await again.LoadAsync<Organization>(id.Value, cancellationToken)
                 ?? throw new InvalidOperationException($"The personal organization of '{userId}' could not be created.");
         }
 
@@ -98,9 +98,9 @@ internal sealed class SparkOrganizations(
             ?? throw new InvalidOperationException($"User '{ownerUserId}' does not exist.");
 
         var organization = new Organization { Id = Organization.NewId(), Name = name, CreatedBy = ownerUserId, CreatedAtUtc = Now };
-        await session.StoreAsync(organization, organization.Id, cancellationToken);
-        var membership = NewMembership(organization.Id!, user, OrganizationRole.Owner, Now);
-        await session.StoreAsync(membership, membership.Id, cancellationToken);
+        await session.StoreAsync(organization, organization.Id.Value, cancellationToken);
+        var membership = NewMembership(organization.Id.Value, user, OrganizationRole.Owner, Now);
+        await session.StoreAsync(membership, membership.Id.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
         reader.Invalidate(ownerUserId);
@@ -116,21 +116,21 @@ internal sealed class SparkOrganizations(
 
         using var session = store.OpenAsyncSession();
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
-        var inviter = await RequireRoleAsync(session, organization.Id!, inviterUserId, OrganizationRole.Admin, cancellationToken);
+        var inviter = await RequireRoleAsync(session, organization.Id.Value, inviterUserId, OrganizationRole.Admin, cancellationToken);
         // D43 (owner correction 2026-10-10): the mail goes out on the inviter's behalf, so the inviter's
         // address must be confirmed. The invitee may not even have an account yet.
         if (!OrganizationEmail.HasConfirmedAddress(await session.LoadAsync<SparkUser>(inviterUserId, cancellationToken)))
             throw new SparkValidationException(InviterUnconfirmedProblem);
 
         // One live link per address: a new invitation replaces the pending one.
-        foreach (var pending in await PendingAsync(session, organization.Id!, OrganizationInvitationKind.Invitation, i => i.Email == email, cancellationToken))
+        foreach (var pending in await PendingAsync(session, organization.Id.Value, OrganizationInvitationKind.Invitation, i => i.Email == email, cancellationToken))
             session.Delete(pending);
 
         var token = NewToken();
         var invitation = new OrganizationInvitation
         {
             Id = OrganizationInvitation.NewId(),
-            OrganizationId = organization.Id,
+            OrganizationId = organization.Id.Value,
             Kind = OrganizationInvitationKind.Invitation,
             Email = email,
             Role = role,
@@ -139,7 +139,7 @@ internal sealed class SparkOrganizations(
             CreatedAtUtc = Now,
             ExpiresAtUtc = Now + InvitationLifetime,
         };
-        await session.StoreAsync(invitation, invitation.Id, cancellationToken);
+        await session.StoreAsync(invitation, invitation.Id.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
         // Mailed to any address, account or not: the answer and the stored record are the same either
@@ -161,7 +161,7 @@ internal sealed class SparkOrganizations(
         using var session = store.OpenAsyncSession();
         var organization = await session.LoadAsync<Organization>(Require(organizationId, nameof(organizationId)), cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
-        if (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(requesterUserId, organization.Id!), cancellationToken) is not null)
+        if (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(requesterUserId, organization.Id).Value, cancellationToken) is not null)
             return false;
 
         var requester = await session.LoadAsync<SparkUser>(requesterUserId, cancellationToken)
@@ -171,14 +171,14 @@ internal sealed class SparkOrganizations(
         if (!OrganizationEmail.HasConfirmedAddress(requester))
             throw new SparkValidationException(RequesterUnconfirmedProblem);
 
-        foreach (var pending in await PendingAsync(session, organization.Id!, OrganizationInvitationKind.JoinRequest, i => i.UserId == requesterUserId, cancellationToken))
+        foreach (var pending in await PendingAsync(session, organization.Id.Value, OrganizationInvitationKind.JoinRequest, i => i.UserId == requesterUserId, cancellationToken))
             session.Delete(pending);
 
         var token = NewToken();
         var request = new OrganizationInvitation
         {
             Id = OrganizationInvitation.NewId(),
-            OrganizationId = organization.Id,
+            OrganizationId = organization.Id.Value,
             Kind = OrganizationInvitationKind.JoinRequest,
             Email = requester.Email,
             UserId = requesterUserId,
@@ -189,11 +189,11 @@ internal sealed class SparkOrganizations(
             CreatedAtUtc = Now,
             ExpiresAtUtc = Now + InvitationLifetime,
         };
-        await session.StoreAsync(request, request.Id, cancellationToken);
+        await session.StoreAsync(request, request.Id.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
         // Every Owner gets the same link; the first who accepts spends it.
-        foreach (var owner in await OwnersAsync(session, organization.Id!, cancellationToken))
+        foreach (var owner in await OwnersAsync(session, organization.Id.Value, cancellationToken))
         {
             if (await session.LoadAsync<SparkUser>(owner.UserId, cancellationToken) is not { Email: { Length: > 0 } ownerEmail } ownerUser)
                 continue;
@@ -235,7 +235,7 @@ internal sealed class SparkOrganizations(
         {
             // Read from storage, not the request's cache: the decision is about who may let people in now.
             // No address rule here (D43): an Owner or Admin decides, and the requester signed in to ask.
-            var approver = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organization.Id!), cancellationToken);
+            var approver = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organization.Id).Value, cancellationToken);
             if (approver is null || approver.Role < OrganizationRole.Admin || invitation.UserId is null)
                 return OrganizationAcceptance.Invalid;
             memberUserId = invitation.UserId;
@@ -252,12 +252,12 @@ internal sealed class SparkOrganizations(
             memberUserId = userId;
         }
 
-        var membershipId = OrganizationMembership.IdFor(memberUserId, organization.Id!);
+        var membershipId = OrganizationMembership.IdFor(memberUserId, organization.Id).Value;
         if (await session.LoadAsync<OrganizationMembership>(membershipId, cancellationToken) is null)
         {
             if (await session.LoadAsync<SparkUser>(memberUserId, cancellationToken) is not { } member)
                 return OrganizationAcceptance.Invalid;
-            var membership = NewMembership(organization.Id!, member, invitation.Role is OrganizationRole.Owner ? OrganizationRole.Admin : invitation.Role, Now);
+            var membership = NewMembership(organization.Id.Value, member, invitation.Role is OrganizationRole.Owner ? OrganizationRole.Admin : invitation.Role, Now);
             await session.StoreAsync(membership, string.Empty, membershipId, cancellationToken);
         }
 
@@ -273,21 +273,21 @@ internal sealed class SparkOrganizations(
 
         reader.Invalidate(memberUserId);
         logger.LogInformation("{Kind} {InvitationId} accepted by {UserId}: {MemberId} joined {OrganizationId}.",
-            invitation.Kind, invitationId, userId, memberUserId, organization.Id);
-        return new OrganizationAcceptance(true, organization.Id, organization.Name, null);
+            invitation.Kind, invitationId, userId, memberUserId, organization.Id.Value);
+        return new OrganizationAcceptance(true, organization.Id.Value, organization.Name, null);
     }
 
     public async Task LeaveAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
     {
         Require(userId, nameof(userId));
         using var session = store.OpenAsyncSession();
-        var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, Require(organizationId, nameof(organizationId))), cancellationToken)
+        var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, Require(organizationId, nameof(organizationId))).Value, cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
         // Its members may leave a personal organization (D42); its user cannot: it goes with the account.
         if (organization.IsPersonal && membership.Role == OrganizationRole.Owner)
             throw new SparkValidationException("A personal organization cannot be left by its user. It goes with the account.");
-        if (membership.Role == OrganizationRole.Owner && !await HasOtherOwnerAsync(session, organization.Id!, userId, cancellationToken))
+        if (membership.Role == OrganizationRole.Owner && !await HasOtherOwnerAsync(session, organization.Id.Value, userId, cancellationToken))
             throw new SparkValidationException(LastOwnerProblem);
 
         session.Delete(membership);
@@ -305,10 +305,10 @@ internal sealed class SparkOrganizations(
         using var session = store.OpenAsyncSession();
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
-        var from = await RequireRoleAsync(session, organization.Id!, fromUserId, OrganizationRole.Owner, cancellationToken);
+        var from = await RequireRoleAsync(session, organization.Id.Value, fromUserId, OrganizationRole.Owner, cancellationToken);
         if (organization.IsPersonal)
             throw new SparkValidationException(PersonalOwnerProblem);
-        var to = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(toUserId, organization.Id!), cancellationToken)
+        var to = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(toUserId, organization.Id).Value, cancellationToken)
             ?? throw new SparkValidationException("Only a member can be made Owner. Invite them first.");
 
         to.Role = OrganizationRole.Owner;
@@ -323,7 +323,7 @@ internal sealed class SparkOrganizations(
         Require(actingUserId, nameof(actingUserId));
         using var session = store.OpenAsyncSession();
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
-        await RequireRoleAsync(session, organization.Id!, actingUserId, OrganizationRole.Owner, cancellationToken);
+        await RequireRoleAsync(session, organization.Id.Value, actingUserId, OrganizationRole.Owner, cancellationToken);
         if (organization.IsPersonal)
             throw new SparkValidationException("A personal organization is deleted with the account.");
 
@@ -344,9 +344,9 @@ internal sealed class SparkOrganizations(
         foreach (var handler in dataHandlers)
             await handler.DeleteAsync(organization, cancellationToken);
 
-        foreach (var id in await IdsAsync<OrganizationMembership>(session, organization.Id!, cancellationToken))
+        foreach (var id in await IdsAsync<OrganizationMembership>(session, organization.Id.Value, cancellationToken))
             session.Delete(id);
-        foreach (var id in await IdsAsync<OrganizationInvitation>(session, organization.Id!, cancellationToken))
+        foreach (var id in await IdsAsync<OrganizationInvitation>(session, organization.Id.Value, cancellationToken))
             session.Delete(id);
     }
 
@@ -408,7 +408,7 @@ internal sealed class SparkOrganizations(
     /// <summary>The acting user's membership, read from storage, when its role is at least <paramref name="required"/>; else the missing-row refusal.</summary>
     private static async Task<OrganizationMembership> RequireRoleAsync(IAsyncDocumentSession session, string organizationId, string userId, OrganizationRole required, CancellationToken cancellationToken)
     {
-        var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organizationId), cancellationToken);
+        var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organizationId).Value, cancellationToken);
         return membership is not null && membership.Role >= required
             ? membership
             : throw new SparkRowLevelAccessDeniedException("Organization");

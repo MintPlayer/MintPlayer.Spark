@@ -92,7 +92,7 @@ public partial class UploadIngestor : IUploadIngestor
             commit = new Commit
             {
                 Sha = request.CommitSha,
-                Repository = repository.Id,
+                Repository = repository.Id.Value,
                 FirstSeenAtUtc = DateTimeOffset.UtcNow,
                 ContributedFromFork = request.ContributedFromFork,
             };

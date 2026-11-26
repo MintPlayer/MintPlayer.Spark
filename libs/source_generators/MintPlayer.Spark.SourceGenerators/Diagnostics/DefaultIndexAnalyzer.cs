@@ -284,8 +284,10 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
                 var invocation = (IInvocationOperation)operationContext.Operation;
                 var method = invocation.TargetMethod;
                 if (method.Name is not ("AddMap" or "AddMapForAll") || method.TypeArguments.Length != 1) return;
-                if (method.ContainingType?.OriginalDefinition.ContainingNamespace?.ToDisplayString()
-                        != RavenIndexHierarchy.RavenIndexesNamespace) return;
+                // Raven's AddMap, or the typed-id rewriting one SparkMultiMapIndexCreationTask hides it with (#536 S-ID6).
+                if (method.ContainingType?.OriginalDefinition is not { } host
+                    || (host.ContainingNamespace?.ToDisplayString() != RavenIndexHierarchy.RavenIndexesNamespace
+                        && host.ToDisplayString() != SparkMultiMapIndexCreationTaskFullName)) return;
                 if (operationContext.ContainingSymbol.ContainingType is not { } declaringType) return;
 
                 mapCalls.Add(new MapCall(declaringType, method.TypeArguments[0], method.Name == "AddMapForAll"));

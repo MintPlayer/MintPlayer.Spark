@@ -59,7 +59,7 @@ internal static class OidcScopeDecision
             scope.Review.Status = scope.Status;
             scope.Review.DecidedAt = DateTime.UtcNow;
             scope.Review.DecidedBy = access.UserId;
-            await audit.RecordAsync(session, OidcAuditKinds.ScopeApprovalDecided, access.UserId, app.Id, ipAddress: access.IpAddress,
+            await audit.RecordAsync(session, OidcAuditKinds.ScopeApprovalDecided, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
                 details: new Dictionary<string, string> { ["scope"] = scopeName, ["decision"] = scope.Status }, ct: ct);
             notify.Add((app, scopeName, api.Name));
         }
@@ -119,7 +119,7 @@ internal static class OidcGoLiveDecision
             review.DecidedAt = DateTime.UtcNow;
             review.DecidedBy = access.UserId;
             if (approve) app.Mode = OidcApplicationModes.Live;
-            await audit.RecordAsync(session, OidcAuditKinds.GoLiveDecided, access.UserId, app.Id, ipAddress: access.IpAddress,
+            await audit.RecordAsync(session, OidcAuditKinds.GoLiveDecided, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
                 details: new Dictionary<string, string> { ["decision"] = review.Status }, ct: ct);
             decided.Add(app);
         }

@@ -29,9 +29,9 @@ public partial class OnboardingRebuildEventsRecipient : IRecipient<ForgeWebhookM
         if (await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken) is not { DefaultBranch: { } defaultBranch } repository
             || evt.Branch != defaultBranch || repository.Connection == RepositoryConnection.Disconnected || repository.Archived)
             return;
-        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value), cancellationToken);
         if (state is not { Features.Count: > 0, PullRequestNumber: not null, MergeHandledAt: null }) return;
-        await messageBus.BroadcastOnceAsync(new OnboardingRebuildMessage { RepositoryId = repository.Id! },
+        await messageBus.BroadcastOnceAsync(new OnboardingRebuildMessage { RepositoryId = repository.Id.Value },
             $"onboarding-rebuild:{repository.Id}:{evt.Sha}", cancellationToken);
     }
 }

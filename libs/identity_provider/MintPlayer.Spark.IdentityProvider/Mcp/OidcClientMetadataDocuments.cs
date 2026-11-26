@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -111,7 +112,7 @@ internal sealed partial class OidcClientMetadataDocuments(
             return (null, error);
         }
 
-        var app = existing ?? new OidcApplication { Id = id, ClientId = clientId, CreatedAt = DateTime.UtcNow, Enabled = true };
+        var app = existing ?? new OidcApplication { Id = Id<OidcApplication>.FromTrusted(id), ClientId = clientId, CreatedAt = DateTime.UtcNow, Enabled = true };
         OidcAgentClients.ApplyAgentDefaults(app, mcp);
         app.AgentRegistration = OidcAgentRegistrations.MetadataDocument;
         app.DisplayName = OidcAgentClients.NameOf(document.ClientName, new Uri(clientId).Host);
@@ -133,7 +134,7 @@ internal sealed partial class OidcClientMetadataDocuments(
             await session.StoreAsync(app, ct);
         }
 
-        await audit.RecordAsync(session, OidcAuditKinds.MetadataDocumentRegistration, actorId: null, app.Id, ipAddress: address,
+        await audit.RecordAsync(session, OidcAuditKinds.MetadataDocumentRegistration, actorId: null, app.Id.Value, ipAddress: address,
             details: new Dictionary<string, string> { ["clientId"] = clientId, ["created"] = (existing is null).ToString() }, ct: ct);
         await session.SaveChangesAsync(ct);
         return (app, null);

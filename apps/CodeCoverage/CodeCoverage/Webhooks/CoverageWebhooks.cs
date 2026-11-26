@@ -195,7 +195,7 @@ public sealed partial class CoverageWebhookQueue
     /// <summary>A no-op while webhooks are off. Stored in <paramref name="session"/>: it goes out only if the finalize commits.</summary>
     public Task EnqueueCompletedAsync(IAsyncDocumentSession session, Build build, CancellationToken cancellationToken)
         => build.Id is { } id && services.GetService<IWebhookPublisher>() is not null
-            ? services.GetRequiredService<MintPlayer.Spark.Messaging.IMessageOutbox>().EnqueueAsync(session, new CoverageBuildCompletedWebhookMessage { BuildId = id }, cancellationToken: cancellationToken)
+            ? services.GetRequiredService<MintPlayer.Spark.Messaging.IMessageOutbox>().EnqueueAsync(session, new CoverageBuildCompletedWebhookMessage { BuildId = id.Value }, cancellationToken: cancellationToken)
             : Task.CompletedTask;
 }
 
@@ -220,7 +220,7 @@ public sealed partial class CoverageBuildCompletedRecipient : IRecipient<Coverag
         if (commit?.Repository is null || await session.LoadAsync<Repository>(commit.Repository, cancellationToken) is not { } repository)
             return;
 
-        await webhooks.PublishAsync(CoverageWebhooks.Describe(build, commit, repository), CoverageWebhooks.Account(repository.OwnerKey), build.Id!, session, cancellationToken);
+        await webhooks.PublishAsync(CoverageWebhooks.Describe(build, commit, repository), CoverageWebhooks.Account(repository.OwnerKey), build.Id.Value, session, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 
 namespace MintPlayer.Spark.Storage.InMemory;
 
@@ -16,17 +17,24 @@ internal static class InMemoryConventions
 
     public static string GetCollectionName(Type type) => Collections.GetOrAdd(type, static t => Pluralize(BaseName(t)));
 
+    /// <summary>A new id, lower case (#536 D7), as RavenDB's conventions make it.</summary>
     public static string NewId(object entity)
-        => entity is IHasNaturalId natural ? natural.GetId() : $"{GetCollectionName(entity.GetType())}/{Guid.NewGuid()}";
+        => (entity is IHasNaturalId natural ? natural.GetId() : $"{GetCollectionName(entity.GetType())}/{Guid.NewGuid()}").ToLowerInvariant();
 
-    /// <summary>The entity's <c>Id</c> property, when it has a writable string one (RavenDB's identity convention).</summary>
-    public static string? ReadId(object entity) => IdProperty(entity.GetType())?.GetValue(entity) as string;
+    /// <summary>The entity's <c>Id</c> property, a writable <see cref="string"/> or <see cref="Id{T}"/> one.</summary>
+    public static string? ReadId(object entity) => IdProperty(entity.GetType()) is { } property
+        ? SparkIdValues.ToText(property.GetValue(entity))
+        : null;
 
-    public static void WriteId(object entity, string id) => IdProperty(entity.GetType())?.SetValue(entity, id);
+    public static void WriteId(object entity, string id)
+    {
+        if (IdProperty(entity.GetType()) is { } property)
+            property.SetValue(entity, SparkIdValues.FromText(property.PropertyType, id));
+    }
 
     private static PropertyInfo? IdProperty(Type type) => IdProperties.GetOrAdd(type, static t =>
         t.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance) is { PropertyType: var p, CanWrite: true } property
-            && p == typeof(string)
+            && (p == typeof(string) || SparkIdValues.IsId(p))
             ? property
             : null);
 

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
@@ -30,7 +31,7 @@ public class GitHubForgeDependencyUpdatesTests
 
     private static Repository Target() => new()
     {
-        Id = Entities.Repository.DocumentId(EForgeProvider.GitHub, 910040),
+        Id = Id<Repository>.FromTrusted(Entities.Repository.DocumentId(EForgeProvider.GitHub, 910040)),
         GitHubId = 910040, Name = "widget", FullName = "acme/widget", OwnerLogin = "acme", Account = AccountId,
     };
 

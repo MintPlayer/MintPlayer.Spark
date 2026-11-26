@@ -11,9 +11,10 @@ namespace SeoTester.Entities;
 /// together, so a batch that dies is simply done again. <c>@expires</c> 2 days; deleted when the run finishes.
 /// Not a persistent object: only the pipeline reads it.
 /// </summary>
-public class CrawlFrontier : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class CrawlFrontier : IExpiring
 {
-    public string? Id { get; set; }
+    public Id<CrawlFrontier> Id { get; set; }
     public string RunId { get; set; } = string.Empty;
     public string Origin { get; set; } = string.Empty;
     public string Host { get; set; } = string.Empty;
@@ -92,9 +93,10 @@ public sealed record StoredFinding(string CheckId, string Status, string? Detail
 /// A cached answer of a third-party lookup (RDAP, the IANA bootstrap, hstspreload.org): §4.2, natural ids
 /// <c>LookupCaches/{kind}/{key}</c>, expiring after the kind's lifetime (1–7 days). Not a persistent object.
 /// </summary>
-public class LookupCache : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class LookupCache : IExpiring
 {
-    public string? Id { get; set; }
+    public Id<LookupCache> Id { get; set; }
     public string Kind { get; set; } = string.Empty;
     public string Key { get; set; } = string.Empty;
 

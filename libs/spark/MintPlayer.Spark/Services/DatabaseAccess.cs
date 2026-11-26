@@ -65,7 +65,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // Insert or Update for the owner module (#467, D15), decided before the store assigns an id.
         var idBefore = ReadId();
-        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.ExistsAsync(idBefore));
+        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.ExistsAsync(typeof(T), idBefore));
 
         await session.StoreAsync(document);
         await CommitAsync();
@@ -79,7 +79,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task DeleteDocumentUncheckedAsync<T>(string id) where T : class
     {
-        session.Delete(id);
+        session.Delete(typeof(T), id);
         await CommitAsync(deletedById: typeof(T));
 
         // If this is a replicated entity, also notify the owner module
@@ -293,7 +293,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if (!string.IsNullOrEmpty(derivedId))
             {
                 using var probeSession = store.OpenSession();
-                if (await probeSession.ExistsAsync(derivedId))
+                if (await probeSession.ExistsAsync(entityType, derivedId))
                 {
                     persistentObject.Id = derivedId;
                     naturalIdCollision = true;
@@ -921,7 +921,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // Evicted first: RavenDB refuses a delete by id of a tracked entity that an interceptor changed.
             session.Evict(entity);
             SparkRawWrites.IssuedByFramework(session.Native, id);
-            session.Delete(id, expectedChangeVector);
+            session.Delete(entityType, id, expectedChangeVector);
         }
 
         await interceptors.EnqueueCommittedAsync(context, id, operation, isDelete: true, context.IsReplaced, expectedChangeVector);

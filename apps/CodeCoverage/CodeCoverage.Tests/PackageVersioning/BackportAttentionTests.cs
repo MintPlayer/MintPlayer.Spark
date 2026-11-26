@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.PackageVersioning;
@@ -23,7 +24,7 @@ public class BackportAttentionTests : CoverageRavenTest
 
     private readonly Repository repository = new()
     {
-        Id = "Repositories/621", FullName = "acme/widget", Provider = EForgeProvider.GitHub, GitHubId = 621, DefaultBranch = "master",
+        Id = Id<Repository>.FromTrusted("Repositories/621"), FullName = "acme/widget", Provider = EForgeProvider.GitHub, GitHubId = 621, DefaultBranch = "master",
     };
     private readonly FakeForgeVersioning forge = new();
     private readonly IForgeMergeQueue queue = Substitute.For<IForgeMergeQueue>();
@@ -59,10 +60,10 @@ public class BackportAttentionTests : CoverageRavenTest
     private async Task SeedAsync(IDocumentStore store, string? outcome = null)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(new BackportPullRequest { Repository = repository.Id!, Number = Held, Source = Source, SourceSha = new string('s', 40), Branch = Line },
-            BackportPullRequest.DocumentId(repository.Id!, Held));
+        await session.StoreAsync(new BackportPullRequest { Repository = repository.Id.Value, Number = Held, Source = Source, SourceSha = new string('s', 40), Branch = Line },
+            BackportPullRequest.DocumentId(repository.Id.Value, Held));
         if (outcome is not null)
-            await session.StoreAsync(new BackportAttempt { Repository = repository.Id!, Source = Source, Branch = Line, Outcome = outcome, PullRequest = Held, Detail = "held" },
+            await session.StoreAsync(new BackportAttempt { Repository = repository.Id.Value, Source = Source, Branch = Line, Outcome = outcome, PullRequest = Held, Detail = "held" },
                 BackportAttempt.DocumentId(repository.Provider, repository.GitHubId, Source, Line));
         await session.SaveChangesAsync();
     }

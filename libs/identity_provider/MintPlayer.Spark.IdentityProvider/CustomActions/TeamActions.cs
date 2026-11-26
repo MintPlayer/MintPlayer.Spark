@@ -58,7 +58,7 @@ internal sealed partial class InviteMemberAction : ICustomAction
         }
 
         var token = await invitations.InviteAsync(app, email, role, access.UserId!, cancellationToken);
-        await audit.RecordAsync(session, OidcAuditKinds.MemberInvited, access.UserId, app.Id, ipAddress: access.IpAddress,
+        await audit.RecordAsync(session, OidcAuditKinds.MemberInvited, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
             details: new Dictionary<string, string> { ["role"] = role }, ct: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
@@ -97,7 +97,7 @@ internal sealed partial class ResendInvitationAction : ICustomAction
                 continue;
             if (await invitations.InviteAsync(app, email, pending.Role, access.UserId!, cancellationToken) is { } token)
                 sends.Add((email, pending.Role, token));
-            await audit.RecordAsync(session, OidcAuditKinds.MemberInvited, access.UserId, app.Id, ipAddress: access.IpAddress,
+            await audit.RecordAsync(session, OidcAuditKinds.MemberInvited, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
                 details: new Dictionary<string, string> { ["role"] = pending.Role, ["resent"] = "true" }, ct: cancellationToken);
         }
 
@@ -143,7 +143,7 @@ internal sealed partial class RemoveMemberAction : ICustomAction
         {
             member.Status = OidcMemberStatuses.Revoked;
             member.InvitationHash = null;
-            await audit.RecordAsync(session, OidcAuditKinds.MemberRemoved, access.UserId, app.Id, member.UserId, access.IpAddress,
+            await audit.RecordAsync(session, OidcAuditKinds.MemberRemoved, access.UserId, app.Id.Value, member.UserId, access.IpAddress,
                 new Dictionary<string, string> { ["role"] = member.Role }, cancellationToken);
         }
 
@@ -178,7 +178,7 @@ internal sealed partial class SwitchToLiveAction : ICustomAction
         if (options.Apps.RequireReviewToGoLive && !await access.IsAdministratorAsync())
         {
             app.GoLiveReview = new OidcReviewDecision { Status = OidcScopeStatuses.Pending, RequestedAt = DateTime.UtcNow, RequestedBy = access.UserId };
-            await audit.RecordAsync(session, OidcAuditKinds.GoLiveRequested, access.UserId, app.Id, ipAddress: access.IpAddress, ct: cancellationToken);
+            await audit.RecordAsync(session, OidcAuditKinds.GoLiveRequested, access.UserId, app.Id.Value, ipAddress: access.IpAddress, ct: cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             manager.Client.Notify(manager.GetTranslatedMessage("identityProvider.goLiveRequested"), NotificationKind.Info);
         }
@@ -186,7 +186,7 @@ internal sealed partial class SwitchToLiveAction : ICustomAction
         {
             app.Mode = OidcApplicationModes.Live;
             app.GoLiveReview = null;
-            await audit.RecordAsync(session, OidcAuditKinds.ApplicationModeSwitched, access.UserId, app.Id, ipAddress: access.IpAddress,
+            await audit.RecordAsync(session, OidcAuditKinds.ApplicationModeSwitched, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
                 details: new Dictionary<string, string> { ["mode"] = app.Mode }, ct: cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             manager.Client.Notify(manager.GetTranslatedMessage("identityProvider.nowLive"), NotificationKind.Success);
@@ -214,7 +214,7 @@ internal sealed partial class SwitchToDevelopmentAction : ICustomAction
         if (app.Mode == OidcApplicationModes.Development) return;
 
         app.Mode = OidcApplicationModes.Development;
-        await audit.RecordAsync(session, OidcAuditKinds.ApplicationModeSwitched, access.UserId, app.Id, ipAddress: access.IpAddress,
+        await audit.RecordAsync(session, OidcAuditKinds.ApplicationModeSwitched, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
             details: new Dictionary<string, string> { ["mode"] = app.Mode }, ct: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         manager.Client.RefreshAttribute(args.Parent, nameof(OidcApplication.Mode));

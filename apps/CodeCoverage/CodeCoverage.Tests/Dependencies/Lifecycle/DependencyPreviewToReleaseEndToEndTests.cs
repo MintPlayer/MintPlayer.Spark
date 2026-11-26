@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
@@ -29,7 +30,7 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
 
     private static readonly PlatformRelease Released = new()
     {
-        Id = PlatformRelease.IdFor("dotnet", "11.0"), Platform = "dotnet", Channel = "11.0", Major = 11, Name = "11.0", Phase = "active",
+        Id = Id<PlatformRelease>.FromTrusted(PlatformRelease.IdFor("dotnet", "11.0")), Platform = "dotnet", Channel = "11.0", Major = 11, Name = "11.0", Phase = "active",
         LatestVersion = "11.0.0", LatestSdk = "11.0.100", LatestReleasedOn = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
         SupportEndsOn = new DateTime(2028, 5, 9, 0, 0, 0, DateTimeKind.Utc), Source = "releases-index",
     };
@@ -77,7 +78,7 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         harness.Updates.Files[$"{DependencyOnboarding.ActionRepository}@{DependencyOnboarding.ActionTag}:{DependencySdkPreset.ActionYmlPath}"] =
             declared ? "# capabilities: sdk-preset\nname: 'MintPlayer Dependency Update'\n" : "name: 'MintPlayer Dependency Update'\n";
         await harness.SeedAsync();
-        await harness.StoreAsync(Released, Released.Id!);
+        await harness.StoreAsync(Released, Released.Id.Value);
 
         string table;
         using (var session = Store.OpenAsyncSession())
@@ -117,7 +118,7 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         var harness = new DependencyHarness(Store);
         harness.SetYml(DependencyHarness.Yml);
         await harness.SeedAsync();
-        await harness.StoreAsync(Released, Released.Id!);
+        await harness.StoreAsync(Released, Released.Id.Value);
         var upstreamId = Repository.DocumentId(EForgeProvider.GitHub, 9101);
         await harness.StoreAsync(new Repository
         {
@@ -158,7 +159,7 @@ public class DependencyPreviewToReleaseEndToEndTests : SparkTestDriver
         var harness = new DependencyHarness(Store);
         harness.SetYml(DependencyHarness.Yml);
         await harness.SeedAsync();
-        await harness.StoreAsync(Released, Released.Id!);
+        await harness.StoreAsync(Released, Released.Id.Value);
         await harness.StoreAsync(new DependencyUpdateState
         {
             Repository = DependencyHarness.RepositoryId,

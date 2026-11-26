@@ -77,15 +77,20 @@ public sealed record DependencyReadinessRepo(string RepositoryId, string FullNam
 
 public sealed record DependencyBlockerCount(string Name, int Repositories);
 
-/// <summary>What the view is built from, for the repositories the viewer may see.</summary>
+/// <summary>What the view is built from, for the repositories the viewer may see. The dictionaries are keyed by repository
+/// id and match it ignoring case, whatever comparer they arrive with: a loaded id is lower case while a stored reference
+/// keeps its casing (#536).</summary>
 public sealed record DependencyFleetInput
 {
     public required IReadOnlyList<Repository> Repositories { get; init; }
     public Account? Account { get; init; }
-    public IReadOnlyDictionary<string, DependencyUpdateRun> Runs { get; init; } = new Dictionary<string, DependencyUpdateRun>();
-    public IReadOnlyDictionary<string, DependencyUpdateState> States { get; init; } = new Dictionary<string, DependencyUpdateState>();
-    public IReadOnlyDictionary<string, DependencyRunReport> Reports { get; init; } = new Dictionary<string, DependencyRunReport>();
-    public IReadOnlyDictionary<string, RepositoryManifest> Manifests { get; init; } = new Dictionary<string, RepositoryManifest>();
+    public IReadOnlyDictionary<string, DependencyUpdateRun> Runs { get; init => field = AnyCase(value); } = AnyCase(new Dictionary<string, DependencyUpdateRun>());
+    public IReadOnlyDictionary<string, DependencyUpdateState> States { get; init => field = AnyCase(value); } = AnyCase(new Dictionary<string, DependencyUpdateState>());
+    public IReadOnlyDictionary<string, DependencyRunReport> Reports { get; init => field = AnyCase(value); } = AnyCase(new Dictionary<string, DependencyRunReport>());
+    public IReadOnlyDictionary<string, RepositoryManifest> Manifests { get; init => field = AnyCase(value); } = AnyCase(new Dictionary<string, RepositoryManifest>());
+
+    private static Dictionary<string, T> AnyCase<T>(IReadOnlyDictionary<string, T> source)
+        => new(source, StringComparer.OrdinalIgnoreCase);
     public DependencyFleetState? Fleet { get; init; }
     public required DateTimeOffset Now { get; init; }
 }
@@ -123,7 +128,7 @@ public static class DependencyFleetView
 
     public static DependencyFleetResponse Build(DependencyFleetInput input)
     {
-        var repositories = input.Repositories.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Id, StringComparer.Ordinal).ToList();
+        var repositories = input.Repositories.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Id.Value, StringComparer.Ordinal).ToList();
         var statuses = repositories.Select(r => Status(input, r)).ToList();
         var (packages, truncated) = Packages(input, repositories);
         return new DependencyFleetResponse(input.Account?.DependencyUpdates ?? false, statuses, packages, truncated, Readiness(input, repositories));
@@ -131,8 +136,8 @@ public static class DependencyFleetView
 
     public static DependencyRepoView Repo(DependencyFleetInput input, Repository repository)
     {
-        var report = input.Reports.GetValueOrDefault(repository.Id!);
-        var run = input.Runs.GetValueOrDefault(repository.Id!);
+        var report = input.Reports.GetValueOrDefault(repository.Id.Value);
+        var run = input.Runs.GetValueOrDefault(repository.Id.Value);
         return new DependencyRepoView(Status(input, repository),
             [.. (report?.Groups ?? []).Select(g => new DependencyPlannedGroupView(g.Group, g.Level.ToString().ToLowerInvariant(), g.AutoMerge,
                 [.. g.Items.Select(i => new DependencyPlannedItemView(i.DepName, i.PackageFile, i.From, i.To))]))],
@@ -141,7 +146,7 @@ public static class DependencyFleetView
 
     public static DependencyRepoStatus Status(DependencyFleetInput input, Repository repository)
     {
-        var id = repository.Id!;
+        var id = repository.Id.Value;
         var run = input.Runs.GetValueOrDefault(id);
         var state = input.States.GetValueOrDefault(id);
         var report = input.Reports.GetValueOrDefault(id);
@@ -226,28 +231,28 @@ public static class DependencyFleetView
     /// </summary>
     private static (IReadOnlyList<DependencyPackageRow> Rows, bool Truncated) Packages(DependencyFleetInput input, IReadOnlyList<Repository> repositories)
     {
-        var visible = repositories.Select(r => r.Id!).ToHashSet(StringComparer.Ordinal);
+        var visible = repositories.Select(r => r.Id.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var red = (input.Fleet?.RedVersions ?? []).Where(r => visible.Contains(r.Repository) && DependencyFleetState.IsLive(r, input.Now.UtcDateTime)).ToList();
         var uses = new Dictionary<(string Ecosystem, string Name), List<DependencyPackageUse>>(KeyComparer.Instance);
         foreach (var repository in repositories)
         {
-            if (input.Manifests.GetValueOrDefault(repository.Id!) is not { } manifest)
+            if (input.Manifests.GetValueOrDefault(repository.Id.Value) is not { } manifest)
                 continue;
-            var report = input.Reports.GetValueOrDefault(repository.Id!);
-            var state = input.States.GetValueOrDefault(repository.Id!);
+            var report = input.Reports.GetValueOrDefault(repository.Id.Value);
+            var state = input.States.GetValueOrDefault(repository.Id.Value);
             foreach (var dependency in DependencyLookupIngest.Consumes(manifest))
             {
                 var key = (dependency.Ecosystem, dependency.Name);
                 if (!uses.TryGetValue(key, out var list))
                     uses[key] = list = [];
-                list.Add(new DependencyPackageUse(repository.Id!, repository.FullName, dependency.Version ?? dependency.Constraint, dependency.Path, dependency.Dev,
-                    UseStatus(dependency, report, state, red.Where(r => r.Repository == repository.Id).ToList())));
+                list.Add(new DependencyPackageUse(repository.Id.Value, repository.FullName, dependency.Version ?? dependency.Constraint, dependency.Path, dependency.Dev,
+                    UseStatus(dependency, report, state, red.Where(r => string.Equals(r.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)).ToList())));
             }
         }
 
         var qualified = uses
-            .Where(u => u.Value.Select(x => x.RepositoryId).Distinct(StringComparer.Ordinal).Count() > 1 || u.Value.Any(x => x.Status is not null))
-            .OrderByDescending(u => u.Value.Select(x => x.RepositoryId).Distinct(StringComparer.Ordinal).Count())
+            .Where(u => u.Value.Select(x => x.RepositoryId).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1 || u.Value.Any(x => x.Status is not null))
+            .OrderByDescending(u => u.Value.Select(x => x.RepositoryId).Distinct(StringComparer.OrdinalIgnoreCase).Count())
             .ThenBy(u => u.Key.Ecosystem, StringComparer.Ordinal)
             .ThenBy(u => u.Key.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -311,7 +316,7 @@ public static class DependencyFleetView
             var rows = new List<(Repository Repo, string? Current, long? CurrentMajor, Dictionary<long, (string Status, string? Detail, List<string> Blockers)> Offers)>();
             foreach (var repository in repositories)
             {
-                var id = repository.Id!;
+                var id = repository.Id.Value;
                 var report = input.Reports.GetValueOrDefault(id);
                 var state = input.States.GetValueOrDefault(id);
                 var manifestUse = input.Manifests.GetValueOrDefault(id) is { } manifest
@@ -362,15 +367,15 @@ public static class DependencyFleetView
             var repos = rows.Select(r =>
             {
                 if (r.CurrentMajor >= next)
-                    return new DependencyReadinessRepo(r.Repo.Id!, r.Repo.FullName, r.Current, "on-target", null, []);
+                    return new DependencyReadinessRepo(r.Repo.Id.Value, r.Repo.FullName, r.Current, "on-target", null, []);
                 return r.Offers.TryGetValue(next, out var offer)
-                    ? new DependencyReadinessRepo(r.Repo.Id!, r.Repo.FullName, r.Current, offer.Status, offer.Detail, offer.Blockers)
-                    : new DependencyReadinessRepo(r.Repo.Id!, r.Repo.FullName, r.Current, "not-offered", "no lookup has offered it for this repository yet", []);
+                    ? new DependencyReadinessRepo(r.Repo.Id.Value, r.Repo.FullName, r.Current, offer.Status, offer.Detail, offer.Blockers)
+                    : new DependencyReadinessRepo(r.Repo.Id.Value, r.Repo.FullName, r.Current, "not-offered", "no lookup has offered it for this repository yet", []);
             }).OrderBy(r => r.FullName, StringComparer.OrdinalIgnoreCase).ToList();
             var ready = repos.Count(r => r.Status is "on-target" or "in-pull-request" or "ready");
             var blockers = repos.SelectMany(r => r.Blockers.Distinct(StringComparer.Ordinal).Select(b => (b, r.RepositoryId)))
                 .GroupBy(x => x.b, StringComparer.Ordinal)
-                .Select(g => new DependencyBlockerCount(g.Key, g.Select(x => x.RepositoryId).Distinct(StringComparer.Ordinal).Count()))
+                .Select(g => new DependencyBlockerCount(g.Key, g.Select(x => x.RepositoryId).Distinct(StringComparer.OrdinalIgnoreCase).Count()))
                 .OrderByDescending(b => b.Repositories).ThenBy(b => b.Name, StringComparer.Ordinal)
                 .ToList();
             result.Add(new DependencyReadiness(platform, anchor, next.ToString(System.Globalization.CultureInfo.InvariantCulture), ready, repos.Count, repos, blockers));

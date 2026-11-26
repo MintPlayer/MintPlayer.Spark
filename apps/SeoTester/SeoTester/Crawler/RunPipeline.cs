@@ -91,14 +91,14 @@ public sealed class RunPipeline(
     {
         using (var session = store.OpenAsyncSession())
         {
-            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.Status, status);
-            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.Phase!, status.ToLowerInvariant());
-            session.Advanced.Patch<AuditRun, DateTime?>(run.Id!, r => r.CompletedAtUtc, NowUtc);
-            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.Error!, error!);
-            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.CurrentUrl!, null!);
-            session.Delete(CrawlFrontier.IdFor(run.Id!));
+            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Status, status);
+            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Phase!, status.ToLowerInvariant());
+            session.Advanced.Patch<AuditRun, DateTime?>(run.Id.Value, r => r.CompletedAtUtc, NowUtc);
+            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Error!, error!);
+            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.CurrentUrl!, null!);
+            session.Delete(CrawlFrontier.IdFor(run.Id.Value));
             if (logKind is not null && run.SiteId is not null && await session.LoadAsync<Site>(run.SiteId, cancellationToken) is { } site)
-                await session.StoreAsync(await auditLog.EntryAsync(logKind, run.StartedBy, site, run.Id, error, cancellationToken), cancellationToken);
+                await session.StoreAsync(await auditLog.EntryAsync(logKind, run.StartedBy, site, run.Id.Value, error, cancellationToken), cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
         if (status != AuditRunStatus.Cancelled)
@@ -140,12 +140,12 @@ public sealed class RunPipeline(
         if (sampled.Count > 0)
         {
             var added = sampled.ToArray();
-            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(run.Id!), f => f.SampledFindings, list => list.Add(added));
+            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(run.Id.Value), f => f.SampledFindings, list => list.Add(added));
         }
         if (site.Count > 0)
         {
             var added = site.ToArray();
-            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(run.Id!), f => f.SiteFindings, list => list.Add(added));
+            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(run.Id.Value), f => f.SiteFindings, list => list.Add(added));
         }
     }
 
@@ -163,7 +163,7 @@ public sealed class RunPipeline(
         while (await stream.MoveNextAsync())
         {
             var page = stream.Current.Document;
-            if (page.RunId == run.Id || frontier?.Stored.Contains(SeoTester.Crawling.CrawlUrl.Hash(page.Url)) == true)
+            if (string.Equals(page.RunId, run.Id.Value, StringComparison.OrdinalIgnoreCase) || frontier?.Stored.Contains(SeoTester.Crawling.CrawlUrl.Hash(page.Url)) == true)
                 pages.Add(page);
         }
         return pages;
@@ -181,7 +181,7 @@ public sealed class RunPipeline(
                 UserIds = run.Participants.Count > 0 ? run.Participants : run.StartedBy is { } by ? [by] : [],
                 Title = title.Length > 200 ? title[..200] : title,
                 Body = body,
-                Url = RunUrl(run.Id!),
+                Url = RunUrl(run.Id.Value),
                 OrganizationId = run.OrganizationId,
                 Category = category,
             }, cancellationToken);

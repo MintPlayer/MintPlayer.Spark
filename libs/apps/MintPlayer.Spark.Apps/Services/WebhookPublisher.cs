@@ -79,7 +79,7 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
             ?? throw new InvalidOperationException($"{data.GetType().Name} is not a webhook event: mark it [WebhookEvent] and register it with AddApps(apps => apps.AddEvent…).");
 
         // The owner's registry lists its destinations; an owner without one costs a single load and no message.
-        var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner), cancellationToken);
+        var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
         if (registry is not { HasDestinations: true })
             return null;
 
@@ -88,7 +88,7 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
         {
             // A fixed id was published before: the first run's message stands. Two runs at once both get here; the
             // create-only store (empty change vector) fails the second SaveChanges, and its retry sees the key.
-            var keyId = WebhookEventKey.IdFor(messageId);
+            var keyId = WebhookEventKey.IdFor(messageId).Value;
             if (await session.LoadAsync<WebhookEventKey>(keyId, cancellationToken) is not null)
                 return messageId;
             await session.StoreAsync(new WebhookEventKey { ExpiresAtUtc = now.UtcDateTime + options.Value.DeliveryRetention }, string.Empty, keyId, cancellationToken);

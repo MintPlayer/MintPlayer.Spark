@@ -42,7 +42,7 @@ id, now) and restores the stored values on every later write, whatever the clien
 otherwise anyone could collect the reputation of someone else's post. Ids only, never names (D8).
 
 A vote never touches the target document (its etag would move and an author editing at the same
-time would get a 409): scores live in `ModerationTallies/{targetId}`.
+time would get a 409): scores live in `moderationtallies/{targetId}`.
 
 ## Configuration: `App_Data/moderation.json` (D14)
 
@@ -111,7 +111,7 @@ Privileges are applied as groups by a composed group-membership provider (core's
 
 ## Votes and the ledger
 
-- One vote per voter and target: the id is `ModerationVotes/{voterId}/{targetId}`; the vote, its
+- One vote per voter and target: the id is `moderationvotes/{voterId}/{targetId}`; the vote, its
   ledger entries, the tally and the cap counters are one optimistic-concurrency transaction (spike
   S-MOD-E), retried on a fresh session when a concurrent vote won.
 - Changing or withdrawing a vote writes a `Retraction` compensation; nothing in the ledger is ever
@@ -124,7 +124,7 @@ Privileges are applied as groups by a composed group-membership provider (core's
   `Moderation/PendingReputation`, `Moderation/VotePairs`, and the map index
   `Moderation/EntriesToCredit`), deployed from this assembly by core; a test asserts they deploy
   (a deploy failure only logs to the console). The privilege provider reads a per-user
-  `ModerationReputation/{userId}` summary document, recomputed from the indexes by the crediting job
+  `moderationreputation/{userId}` summary document, recomputed from the indexes by the crediting job
   and by every reversal, flag decision and deletion — so a request costs one batched load, never a
   query. A vote does not recompute (it would cost the vote path two index waits); the badge's
   "+N pending" is therefore read live from `Moderation/PendingReputation` by
@@ -158,13 +158,13 @@ configuration. What bounds the damage is that only reversible privileges are ear
 ## Flags, review, locks, suspensions
 
 - `POST /spark/moderation/flag { objectTypeId, id, reason }`: one open flag per user and post,
-  joined into `ModerationCases/flag/{targetId}`. Upheld: each flagger `FlagUpheld` (+2, credited at
+  joined into `moderationcases/flag/{targetId}`. Upheld: each flagger `FlagUpheld` (+2, credited at
   once); declined: `FlagDeclined` (0).
-- **Lock** (`Lock/T`): `ModerationLocks/{targetId}`. For everyone without `Lock/T` a save, AsDetail
+- **Lock** (`Lock/T`): `moderationlocks/{targetId}`. For everyone without `Lock/T` a save, AsDetail
   change, custom-action write, revert, delete, restore and purge of the post is **400 "This post is
   locked."**, and the detail page loads without Edit/Delete. A module **sync** passes (the owner
   already decided). `/spark/po/delete-row` writes nothing, so it is not refused — the parent save is.
-- **Suspend** (`Suspend/Moderation`): writes `ModerationSuspensions/{userId}` first — read by id on
+- **Suspend** (`Suspend/Moderation`): writes `moderationsuspensions/{userId}` first — read by id on
   every request, so the write block and the loss of reputation groups apply to the **next request**
   — then Identity lockout + security-stamp refresh. Measured (spike S-MOD-C, 30-minute
   `SecurityStampValidatorOptions.ValidationInterval`, 1-hour bearer tokens): an existing **cookie**

@@ -70,10 +70,16 @@ namespace TestApp
     /// target or the property means migrating both.
     /// </remarks>
     [global::System.CodeDom.Compiler.GeneratedCode("MintPlayer.Spark.Contributions.SourceGenerators", "1")]
+    [global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]
     public partial class SongLyricsContribution : global::MintPlayer.Spark.Contributions.IContribution, global::MintPlayer.Spark.Abstractions.IHasNaturalId, global::MintPlayer.Spark.SoftDelete.ISoftDeletable
     {
         /// <summary>The document id; see <see cref="GetId"/>.</summary>
-        public string? Id { get; set; }
+        public global::MintPlayer.Spark.Abstractions.Id<SongLyricsContribution> Id { get; set; }
+
+        /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.Text.Json.Serialization.JsonIgnore]
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<SongLyricsContribution>.FromTrusted(value); }
 
         /// <inheritdoc />
         public string TargetId { get; set; } = "";
@@ -111,7 +117,7 @@ namespace TestApp
 
         /// <summary><c>{targetId}/LyricsContributions/{Language}/{Script}/User/{userId}</c>; the user id keeps its own slashes.</summary>
         public static string GetId(string targetId, string language, string script, string userId)
-            => targetId + "/LyricsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script) + "/User/" + userId;
+            => (targetId + "/LyricsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script) + "/User/" + userId).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Language, Script, ContributorId);
     }
@@ -122,10 +128,16 @@ namespace TestApp
     /// <c>{targetId}/Lyrics/{Language}/{Script}</c>.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("MintPlayer.Spark.Contributions.SourceGenerators", "1")]
+    [global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]
     public partial class SongLyricsCurrent : global::MintPlayer.Spark.Contributions.ICurrentContribution, global::MintPlayer.Spark.Abstractions.IHasNaturalId
     {
         /// <summary>The document id; see <see cref="GetId"/>.</summary>
-        public string? Id { get; set; }
+        public global::MintPlayer.Spark.Abstractions.Id<SongLyricsCurrent> Id { get; set; }
+
+        /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.Text.Json.Serialization.JsonIgnore]
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<SongLyricsCurrent>.FromTrusted(value); }
 
         /// <summary>The document id of the target entity (part of <see cref="Id"/>).</summary>
         public string TargetId { get; set; } = "";
@@ -153,7 +165,7 @@ namespace TestApp
 
         /// <summary><c>{targetId}/Lyrics/{Language}/{Script}</c>.</summary>
         public static string GetId(string targetId, string language, string script)
-            => targetId + "/Lyrics/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script);
+            => (targetId + "/Lyrics/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script)).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Language, Script);
     }
@@ -239,7 +251,7 @@ namespace TestApp
         {
             return new global::TestApp.SongLyricsContribution
             {
-                Id = ContributionId(targetId, row, contributorId),
+                Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.SongLyricsContribution>.FromTrusted(ContributionId(targetId, row, contributorId)),
                 TargetId = targetId,
                 ContributorId = contributorId,
                 UpdatedAt = updatedAtUtc,
@@ -260,7 +272,7 @@ namespace TestApp
         {
             return new global::TestApp.SongLyricsCurrent
             {
-                Id = global::TestApp.SongLyricsCurrent.GetId(contribution.TargetId, contribution.Language, contribution.Script),
+                Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.SongLyricsCurrent>.FromTrusted(global::TestApp.SongLyricsCurrent.GetId(contribution.TargetId, contribution.Language, contribution.Script)),
                 TargetId = contribution.TargetId,
                 ContributorId = contribution.ContributorId,
                 ContributionId = global::TestApp.SongLyricsContribution.GetId(contribution.TargetId, contribution.Language, contribution.Script, contribution.ContributorId),

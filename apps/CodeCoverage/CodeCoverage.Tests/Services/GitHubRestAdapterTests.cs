@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -34,7 +35,7 @@ public class GitHubRestAdapterTests : CoverageRavenTest
 
     private static Repository Repo(long gitHubId, bool isPrivate = false, string? account = null) => new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, gitHubId),
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, gitHubId)),
         GitHubId = gitHubId, Name = "widget", FullName = "acme/widget", OwnerLogin = "acme", IsPrivate = isPrivate, Account = account,
     };
 
@@ -358,7 +359,7 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         var accountId = Account.DocumentId(EForgeProvider.GitHub, 77);
         await seed.StoreAsync(new Account { GitHubId = 77, Login = "acme", InstallationId = installationId }, accountId);
         var repository = Repo(gitHubId, account: accountId);
-        await seed.StoreAsync(repository, repository.Id);
+        await seed.StoreAsync(repository, repository.Id.Value);
         await seed.SaveChangesAsync();
         return repository;
     }

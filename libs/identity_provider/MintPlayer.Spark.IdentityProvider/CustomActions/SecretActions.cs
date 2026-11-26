@@ -45,7 +45,7 @@ internal sealed partial class GenerateSecretAction : ICustomAction
             CreatedAt = DateTime.UtcNow,
         };
         app.Secrets.Add(secret);
-        await audit.RecordAsync(session, OidcAuditKinds.SecretGenerated, access.UserId, app.Id, ipAddress: access.IpAddress,
+        await audit.RecordAsync(session, OidcAuditKinds.SecretGenerated, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
             details: new Dictionary<string, string> { ["secretId"] = secret.SecretId }, ct: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
@@ -79,7 +79,7 @@ internal sealed partial class RevokeSecretAction : ICustomAction
         foreach (var secret in revoked)
         {
             app.Secrets.Remove(secret);
-            await audit.RecordAsync(session, OidcAuditKinds.SecretRevoked, access.UserId, app.Id, ipAddress: access.IpAddress,
+            await audit.RecordAsync(session, OidcAuditKinds.SecretRevoked, access.UserId, app.Id.Value, ipAddress: access.IpAddress,
                 details: new Dictionary<string, string> { ["secretId"] = secret.SecretId! }, ct: cancellationToken);
         }
 

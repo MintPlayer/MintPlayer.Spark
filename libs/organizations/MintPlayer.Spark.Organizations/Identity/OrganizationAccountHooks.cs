@@ -40,15 +40,15 @@ internal sealed class OrganizationAccountDeletion(IDocumentStore store, SparkOrg
             if (organization is null)
                 continue;
             // The user's own personal organization goes. Someone else's (D42) is left like any other.
-            if (organization.IsPersonal && string.Equals(organization.Id, Organization.PersonalIdFor(userId), StringComparison.OrdinalIgnoreCase))
+            if (organization.IsPersonal && organization.Id == Organization.PersonalIdFor(userId))
             {
                 toDelete.Add(organization);
                 continue;
             }
-            if (membership.Role != OrganizationRole.Owner || await SparkOrganizations.HasOtherOwnerAsync(session, organization.Id!, userId, cancellationToken))
+            if (membership.Role != OrganizationRole.Owner || await SparkOrganizations.HasOtherOwnerAsync(session, organization.Id.Value, userId, cancellationToken))
                 continue;
 
-            var others = (await SparkOrganizations.MembersAsync(session, organization.Id!, cancellationToken))
+            var others = (await SparkOrganizations.MembersAsync(session, organization.Id.Value, cancellationToken))
                 .Any(m => !string.Equals(m.UserId, userId, StringComparison.OrdinalIgnoreCase));
             if (others)
                 throw new SparkValidationException($"You are the only Owner of '{organization.Name}'. Make another member Owner, or delete the organization, before deleting your account.");
@@ -61,7 +61,8 @@ internal sealed class OrganizationAccountDeletion(IDocumentStore store, SparkOrg
             session.Delete(organization);
         }
         // The deleted organizations' memberships went with them; the rest are left one by one.
-        var deleted = toDelete.Select(o => o.Id!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Ignoring case: a membership stored before #536 says "Organizations/…", the loaded id "organizations/…".
+        var deleted = toDelete.Select(o => o.Id.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var membership in memberships.Where(m => m.OrganizationId is null || !deleted.Contains(m.OrganizationId)))
             session.Delete(membership);
 
@@ -112,7 +113,7 @@ internal sealed class OrganizationPersonalData(IDocumentStore store, IEnumerable
 
             result.Add(new
             {
-                id = organization.Id,
+                id = organization.Id.Value,
                 name = organization.Name,
                 isPersonal = organization.IsPersonal,
                 role = membership.Role.ToString(),

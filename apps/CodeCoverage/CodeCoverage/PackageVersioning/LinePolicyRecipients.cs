@@ -61,7 +61,7 @@ public partial class LinePolicyRecipient : IRecipient<LinePolicyMessage>
     {
         var repository = await session.LoadAsync<Repository>(message.RepositoryId, cancellationToken);
         if (repository is null || repository.Connection == RepositoryConnection.Disconnected || repository.Archived) return;
-        if (repository.DefaultBranch is not { } defaultBranch || repository.Id is not { } repositoryId) return;
+        if (repository.DefaultBranch is not { } defaultBranch || repository.Id.Value is not { Length: > 0 } repositoryId) return;
         if (forges.FirstOrDefault(f => f.Provider == repository.Provider) is not { } forge
             || queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git)
             return;

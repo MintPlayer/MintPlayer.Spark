@@ -18,7 +18,7 @@ public partial class MinificationTests
 {
     private const int Timeout = 30_000;
 
-    private static readonly string SongPath = $"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.SongId)}/{MintPlayerTestHost.SongSlug}";
+    private static readonly string SongPath = $"/po/song/{Uri.EscapeDataString(MintPlayerTestHost.CanonicalSongId)}/{MintPlayerTestHost.SongSlug}";
 
     private readonly MintPlayerE2ECollectionFixture _fixture;
     public MinificationTests(MintPlayerE2ECollectionFixture fixture) => _fixture = fixture;

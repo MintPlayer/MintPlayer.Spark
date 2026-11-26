@@ -8,10 +8,10 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// secrets, its scopes, its members (D3), its mode (D4), its branding and its per-client protocol
 /// settings (D8).
 /// </summary>
-public class OidcApplication
+public partial class OidcApplication
 {
     /// <summary>Unique identifier of the client application, assigned automatically on creation.</summary>
-    public string? Id { get; set; }
+    public Id<OidcApplication> Id { get; set; }
 
     // --- Identity ---
     /// <summary>Public client identifier the application sends in every OIDC request. Generated when the application is created, and read-only afterwards.</summary>

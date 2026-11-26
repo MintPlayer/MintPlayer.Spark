@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -9,9 +10,10 @@ namespace CodeCoverage.Entities;
 /// Loaded by id only (<see cref="ForRepository"/>), so the <c>workflow_run</c> webhook's filter is one point load. The
 /// run's deadline (<see cref="FormatRun.TimeoutMinutes"/>) is its expiry: the timeout step finishes it.
 /// </remarks>
-public class FormatRuns
+[IdKind(SparkIdKind.Natural)]
+public partial class FormatRuns
 {
-    public string? Id { get; set; }
+    public Id<FormatRuns> Id { get; set; }
 
     public List<FormatRun> Pending { get; set; } = [];
 

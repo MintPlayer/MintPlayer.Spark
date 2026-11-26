@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Actions;
 using MintPlayer.Entities;
 using MintPlayer.Media;
@@ -16,8 +17,8 @@ public class SongHeroTests
 
     private static readonly Dictionary<string, MediumType> Types = new()
     {
-        ["MediumTypes/1"] = new() { Id = "MediumTypes/1", Name = "Official video", Visible = true },
-        ["MediumTypes/15"] = new() { Id = "MediumTypes/15", Name = "Lyrics source", Visible = false },
+        ["MediumTypes/1"] = new() { Id = Id<MediumType>.FromTrusted("MediumTypes/1"), Name = "Official video", Visible = true },
+        ["MediumTypes/15"] = new() { Id = Id<MediumType>.FromTrusted("MediumTypes/15"), Name = "Lyrics source", Visible = false },
     };
 
     private static Medium M(string url, string? typeId = "MediumTypes/1") => new() { Value = url, TypeId = typeId };

@@ -45,7 +45,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         if (mustExist && !string.IsNullOrEmpty(documentId))
         {
             using var checkSession = store.OpenSession();
-            var stored = await checkSession.GetVersionsAsync([documentId]);
+            var stored = await checkSession.GetVersionsAsync(entityType, [documentId]);
             if (!stored.TryGetValue(documentId, out var version))
                 throw SparkConcurrencyException.DeletedSinceLoaded("sync");
             po.Etag = version;

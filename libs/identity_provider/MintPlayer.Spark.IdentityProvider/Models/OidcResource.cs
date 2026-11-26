@@ -16,10 +16,11 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// The document id is natural, <c>OidcResources/&lt;name&gt;</c>, and a scope name is unique across
 /// every resource (a compare-exchange reservation, O17).
 /// </summary>
-public class OidcResource
+[IdKind(SparkIdKind.Natural)]
+public partial class OidcResource
 {
     /// <summary>The document id, <c>OidcResources/&lt;name&gt;</c>.</summary>
-    public string? Id { get; set; }
+    public Id<OidcResource> Id { get; set; }
     /// <summary><c>Identity</c> for a scope of user claims, or <c>Api</c> for a protected API.</summary>
     public string Kind { get; set; } = OidcResourceKinds.Identity;
     /// <summary>For an identity resource, the scope name (<c>email</c>). For an API, the audience (<c>fleet</c>). Read-only once created.</summary>

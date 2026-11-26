@@ -69,7 +69,7 @@ internal sealed partial class GetConnectedApplications : IGetEndpoint
                     || app.Scopes.Any(s => s.Required && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
                 return new ConnectedScope(name, text.Of(def?.DisplayName, name), def?.Description is null ? null : text.Of(def.Description, ""), required);
             }).ToList();
-            result.Add(new ConnectedApplication(app.Id!, app.DisplayName, app.LogoUrl, app.Publisher, app.HomepageUrl, scopes,
+            result.Add(new ConnectedApplication(app.Id.Value, app.DisplayName, app.LogoUrl, app.Publisher, app.HomepageUrl, scopes,
                 grant.CreatedAt, grant.LastUsedAt, grant.Remembered, grant.ExpiresAt));
         }
 

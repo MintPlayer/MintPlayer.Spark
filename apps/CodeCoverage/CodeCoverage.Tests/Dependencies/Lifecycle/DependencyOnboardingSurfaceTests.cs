@@ -102,7 +102,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         var count = await DependencyUpdateSwitch.FanOutAsync(session, bus, AccountId, DependencyUpdateSwitch.On, DateTimeOffset.UnixEpoch, CancellationToken.None);
 
         count.Should().Be(1);
-        bus.Signals.Should().ContainSingle().Which.Signal.RepositoryId.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, 1));
+        bus.Signals.Should().ContainSingle().Which.Signal.RepositoryId.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, 1).ToLowerInvariant());
         bus.Signals.Single().Options.Expedite.Should().BeFalse();
     }
 
@@ -128,7 +128,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
             => throw new NotSupportedException();
 
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id!, _ => reason));
+            => Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id.Value, _ => reason));
     }
 
     private async Task<(RunScheduledSlotNowAction Action, RecordingBus Bus, Repository Repository, Raven.Client.Documents.IDocumentStore Store)> RunNowAsync(
@@ -137,7 +137,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         var h = new DependencyHarness(GetDocumentStore());
         await h.SeedAsync(enabled);
         if (state is { } running)
-            await h.StoreAsync(new DependencyUpdateRun { Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId, State = running },
+            await h.StoreAsync(new DependencyUpdateRun { Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId, State = running },
                 DependencyUpdateRun.ForRepository(RepositoryId));
         var bus = new RecordingBus();
         var session = h.Store.OpenAsyncSession();
@@ -196,7 +196,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
     {
         var h = new DependencyHarness(GetDocumentStore());
         await h.SeedAsync();
-        await h.StoreAsync(new DependencyUpdateRun { Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId }, DependencyUpdateRun.ForRepository(RepositoryId));
+        await h.StoreAsync(new DependencyUpdateRun { Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId }, DependencyUpdateRun.ForRepository(RepositoryId));
         var context = new FixedMessageContext();
         var notes = new DependencyRateLimitNotes(h.Store, context, Options.Create(new SparkMessagingOptions()), h.Time, NullLogger<DependencyRateLimitNotes>.Instance);
         var limited = new ForgeRequestException("GitHub rate limit reached.", 429,
@@ -215,7 +215,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         var status = DependencyFleetView.Status(new DependencyFleetInput
         {
             Repositories = [], Now = h.Time.Now, Runs = new Dictionary<string, DependencyUpdateRun> { [RepositoryId] = run },
-        }, new Repository { Id = RepositoryId, FullName = "acme/widget", Name = "widget" });
+        }, new Repository { Id = Id<Repository>.FromTrusted(RepositoryId), FullName = "acme/widget", Name = "widget" });
         status.RateLimit.Should().Be(new DependencyRateLimitView(run.RateLimitedUntilUtc!.Value, 2, 25));
 
         await notes.WatchAsync(RepositoryId, () => Task.CompletedTask, CancellationToken.None);
@@ -244,11 +244,11 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         public Task<IReadOnlyDictionary<string, bool>> CheckAdministratorAsync(Account account, IReadOnlyList<Repository> repositories, string login, CancellationToken cancellationToken = default)
         {
             AdminChecks++;
-            return Task.FromResult<IReadOnlyDictionary<string, bool>>(repositories.ToDictionary(r => r.Id!, r => Admins.GetValueOrDefault(r.Id!)));
+            return Task.FromResult<IReadOnlyDictionary<string, bool>>(repositories.ToDictionary(r => r.Id.Value, r => Admins.GetValueOrDefault(r.Id.Value)));
         }
 
         public Task<IReadOnlySet<string>> GetAdministeredRepositoriesAsync(Account account, IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlySet<string>>(repositories.Where(r => Admins.GetValueOrDefault(r.Id!)).Select(r => r.Id!).ToHashSet());
+            => Task.FromResult<IReadOnlySet<string>>(repositories.Where(r => Admins.GetValueOrDefault(r.Id.Value)).Select(r => r.Id.Value).ToHashSet());
     }
 
     /// <summary>The viewer's owners: <paramref name="managed"/> are reached AND managed; <see cref="ReachedOnly"/> are
@@ -292,7 +292,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         listing.Repositories.Select(r => (r.FullName, r.ManagedBy)).Should().Equal(
             [("acme/not-synced-yet", "owner"), ("acme/widget", "owner"), ("other-org/tool", "repo-admin")]);
         var widget = listing.Repositories.Single(r => r.FullName == "acme/widget");
-        widget.RepositoryId.Should().Be(RepositoryId);
+        widget.RepositoryId.Should().Be(RepositoryId.ToLowerInvariant());
         widget.Syncing.Should().BeFalse();
         widget.Enabled.Should().BeFalse();
         widget.Setting.Should().Be("Inherit");
@@ -323,16 +323,16 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
     public async Task R21_the_execution_time_check_asks_the_forge_only_for_what_management_does_not_cover()
     {
         var (service, forge) = await OnboardingAsync("github:acme");
-        var widget = new Repository { Id = RepositoryId, OwnerLogin = "acme", Account = AccountId, Provider = EForgeProvider.GitHub };
-        var foreign = new Repository { Id = Repository.DocumentId(EForgeProvider.GitHub, 920001), OwnerLogin = "other-org", Account = AccountId, Provider = EForgeProvider.GitHub };
-        var refused = new Repository { Id = Repository.DocumentId(EForgeProvider.GitHub, 920002), OwnerLogin = "other-org", Account = AccountId, Provider = EForgeProvider.GitHub };
-        forge.Admins[foreign.Id!] = true;
+        var widget = new Repository { Id = Id<Repository>.FromTrusted(RepositoryId), OwnerLogin = "acme", Account = AccountId, Provider = EForgeProvider.GitHub };
+        var foreign = new Repository { Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 920001)), OwnerLogin = "other-org", Account = AccountId, Provider = EForgeProvider.GitHub };
+        var refused = new Repository { Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 920002)), OwnerLogin = "other-org", Account = AccountId, Provider = EForgeProvider.GitHub };
+        forge.Admins[foreign.Id.Value] = true;
 
         var reasons = await service.CheckAsync([widget, foreign, refused]);
 
-        reasons[widget.Id!].Should().Be("owner");
-        reasons[foreign.Id!].Should().Be("repo-admin");
-        reasons[refused.Id!].Should().BeNull("a listing's admin flag is shown, never trusted: the forge said no now");
+        reasons[widget.Id.Value].Should().Be("owner");
+        reasons[foreign.Id.Value].Should().Be("repo-admin");
+        reasons[refused.Id.Value].Should().BeNull("a listing's admin flag is shown, never trusted: the forge said no now");
         forge.AdminChecks.Should().Be(1);
     }
 
@@ -341,16 +341,16 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
     {
         // acme's installation is reachable (the owner set has it), but the viewer is no owner of the organization.
         var (service, forge) = await OnboardingAsync(new ScriptedVisibility { ReachedOnly = ["github:acme"] });
-        var widget = new Repository { Id = RepositoryId, OwnerLogin = "acme", Account = AccountId, Provider = EForgeProvider.GitHub };
+        var widget = new Repository { Id = Id<Repository>.FromTrusted(RepositoryId), OwnerLogin = "acme", Account = AccountId, Provider = EForgeProvider.GitHub };
 
         var listing = await service.ListAsync(new Dictionary<string, string?>());
         var before = await service.CheckAsync([widget]);
-        forge.Admins[widget.Id!] = true;
+        forge.Admins[widget.Id.Value] = true;
         var after = await service.CheckAsync([widget]);
 
         listing.Repositories.Select(r => (r.FullName, r.ManagedBy)).Should().Equal([("other-org/tool", "repo-admin")],
             "acme's repositories are listed without the admin flag, and reaching the installation is not owning it");
-        before[widget.Id!].Should().BeNull("a member with read access may not enable dependency updates");
-        after[widget.Id!].Should().Be("repo-admin", "an administrator of the repository may, asked of the forge now");
+        before[widget.Id.Value].Should().BeNull("a member with read access may not enable dependency updates");
+        after[widget.Id.Value].Should().Be("repo-admin", "an administrator of the repository may, asked of the forge now");
     }
 }

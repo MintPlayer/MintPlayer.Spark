@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Testing;
 using SeoTester.Crawler;
 using SeoTester.Crawling;
@@ -20,7 +21,7 @@ public class RunPagesTests : SparkTestDriver
     [Fact]
     public async Task A_runs_pages_are_those_it_stored_even_where_a_concurrent_scan_fetched_them_again()
     {
-        var run = new AuditRun { Id = ThisRun, SiteId = SiteId };
+        var run = new AuditRun { Id = Id<AuditRun>.FromTrusted(ThisRun), SiteId = SiteId };
         using (var session = Store.OpenAsyncSession())
         {
             await session.StoreAsync(Page(SiteId, "https://a.test/", ThisRun));
@@ -36,14 +37,15 @@ public class RunPagesTests : SparkTestDriver
         using var read = Store.OpenAsyncSession();
         var pages = await RunPipeline.LoadRunPagesAsync(read, run, frontier, CancellationToken.None);
 
-        pages.Select(p => p.Id).Order(StringComparer.Ordinal).Should().Equal(
-            PageResult.IdFor(SiteId, "https://a.test/"), PageResult.IdFor(SiteId, "https://a.test/both"));
+        pages.Select(p => p.Id.Value).Order(StringComparer.Ordinal).Should().Equal(
+            // A new id is lower case (#536 D7).
+            PageResult.IdFor(SiteId, "https://a.test/").ToLowerInvariant(), PageResult.IdFor(SiteId, "https://a.test/both").ToLowerInvariant());
     }
 
     [Fact]
     public async Task A_sampled_finding_replaces_the_same_check_on_the_page_and_stays_with_its_run()
     {
-        var run = new AuditRun { Id = ThisRun, SiteId = SiteId };
+        var run = new AuditRun { Id = Id<AuditRun>.FromTrusted(ThisRun), SiteId = SiteId };
         var pageId = PageResult.IdFor(SiteId, "https://a.test/");
         using (var session = Store.OpenAsyncSession())
         {
@@ -51,7 +53,7 @@ public class RunPagesTests : SparkTestDriver
             var page = Page(SiteId, "https://a.test/", ConcurrentRun);
             page.Findings = [new PageFinding { CheckId = "seo.title-present", Status = "Pass" }, new PageFinding { CheckId = "accessibility.color-contrast", Status = "Pass" }];
             await session.StoreAsync(page);
-            await session.StoreAsync(new CrawlFrontier { Id = CrawlFrontier.IdFor(ThisRun), RunId = ThisRun });
+            await session.StoreAsync(new CrawlFrontier { Id = Id<CrawlFrontier>.FromTrusted(CrawlFrontier.IdFor(ThisRun)), RunId = ThisRun });
             await session.SaveChangesAsync();
         }
 
@@ -75,7 +77,7 @@ public class RunPagesTests : SparkTestDriver
 
     private static PageResult Page(string owner, string url, string runId) => new()
     {
-        Id = PageResult.IdFor(owner, url),
+        Id = Id<PageResult>.FromTrusted(PageResult.IdFor(owner, url)),
         RunId = runId,
         OrganizationId = "Organizations/acme",
         Url = url,

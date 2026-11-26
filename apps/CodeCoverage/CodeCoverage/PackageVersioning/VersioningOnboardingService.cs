@@ -66,7 +66,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
 
     public async Task<bool> PushSeedsAsync(Repository repository, bool afterCuts = false, CancellationToken cancellationToken = default)
     {
-        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!), cancellationToken);
+        var state = await session.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value), cancellationToken);
         if (state is null || repository.DefaultBranch is not { } defaultBranch) return true;
         // docs/onboarding_merge_backfill_PRD.md D1: a merge with no seeds still backfills, when the onboarding asked for it.
         // D2: not before the onboarding's line cuts, which only the merge handler runs (#638 D7).

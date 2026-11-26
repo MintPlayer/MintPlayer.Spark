@@ -200,7 +200,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
         using var session = Store.OpenAsyncSession();
         await session.StoreAsync(new OidcResource
         {
-            Id = OidcScopeCatalog.ResourceId(ApiName),
+            Id = Id<OidcResource>.FromTrusted(OidcScopeCatalog.ResourceId(ApiName)),
             Kind = OidcResourceKinds.Api,
             Name = ApiName,
             DisplayName = TranslatedString.Create(ApiName),
@@ -288,7 +288,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     private async Task<OidcApplication> SeedPendingScopeApplicationAsync()
     {
         var app = await SeedApplicationAsync(ClientId("client"));
-        await UpdateAsync(app.Id!, a =>
+        await UpdateAsync(app.Id.Value, a =>
         {
             a.Members.Add(Member("SparkUsers/dev", OidcMemberRoles.Admin));
             a.Scopes.Add(new OidcApplicationScope
@@ -310,7 +310,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     }
 
     private async Task<OidcApplicationScope> PendingScopeAsync(OidcApplication app)
-        => (await LoadAsync(app.Id!)).Scopes.Single(s => s.Name == ApiName + ".read");
+        => (await LoadAsync(app.Id.Value)).Scopes.Single(s => s.Name == ApiName + ".read");
 
     [Fact]
     public async Task The_api_owner_approves_a_pending_scope()
@@ -359,7 +359,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     private async Task<OidcApplication> SeedDevelopmentApplicationAsync(string adminId)
     {
         var app = await SeedApplicationAsync(ClientId("client"));
-        await UpdateAsync(app.Id!, a =>
+        await UpdateAsync(app.Id.Value, a =>
         {
             a.Mode = OidcApplicationModes.Development;
             a.Members.Add(Member(adminId, OidcMemberRoles.Admin));
@@ -375,7 +375,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
             manager: Substitute.For<IManager>(), session: session, access: access, audit: Audit, options: new Options(requireReview));
         await action.ExecuteAsync(new CustomActionArgs
         {
-            Parent = new PersistentObject { Id = app.Id, Name = nameof(OidcApplication), ObjectTypeId = Guid.NewGuid() },
+            Parent = new PersistentObject { Id = app.Id.Value, Name = nameof(OidcApplication), ObjectTypeId = Guid.NewGuid() },
         });
     }
 
@@ -386,7 +386,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
         await SwitchToLiveAsync(app, Access("SparkUsers/app-admin", administrator: false), requireReview: false);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         stored.Mode.Should().Be(OidcApplicationModes.Live);
         stored.GoLiveReview.Should().BeNull();
     }
@@ -398,7 +398,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
         await SwitchToLiveAsync(app, Access("SparkUsers/app-admin", administrator: false), requireReview: true);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         stored.Mode.Should().Be(OidcApplicationModes.Development, "the switch waits for an administrator");
         stored.GoLiveReview!.Status.Should().Be(OidcScopeStatuses.Pending);
         stored.GoLiveReview!.RequestedBy.Should().Be("SparkUsers/app-admin");
@@ -412,7 +412,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
         await SwitchToLiveAsync(app, Access("SparkUsers/team-dev", administrator: false), requireReview: false);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         stored.Mode.Should().Be(OidcApplicationModes.Development);
         stored.GoLiveReview.Should().BeNull();
     }
@@ -421,14 +421,14 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     {
         using var session = Store.OpenAsyncSession();
         await OidcGoLiveDecision.DecideAsync(
-            Selected(app.Id!), approve, Substitute.For<IManager>(), session, access, Audit,
+            Selected(app.Id.Value), approve, Substitute.For<IManager>(), session, access, Audit,
             Factory.GetService<OidcPortalMail>(), CancellationToken.None);
     }
 
     private async Task<OidcApplication> SeedGoLiveRequestAsync()
     {
         var app = await SeedDevelopmentApplicationAsync("SparkUsers/app-admin");
-        await UpdateAsync(app.Id!, a => a.GoLiveReview = new OidcReviewDecision
+        await UpdateAsync(app.Id.Value, a => a.GoLiveReview = new OidcReviewDecision
         {
             Status = OidcScopeStatuses.Pending, RequestedBy = "SparkUsers/app-admin", RequestedAt = DateTime.UtcNow,
         });
@@ -442,7 +442,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
         await DecideGoLiveAsync(app, Access(Administrator, administrator: true), approve: true);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         stored.Mode.Should().Be(OidcApplicationModes.Live);
         stored.GoLiveReview!.Status.Should().Be(OidcScopeStatuses.Approved);
         stored.GoLiveReview!.DecidedBy.Should().Be(Administrator);
@@ -455,7 +455,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
         await DecideGoLiveAsync(app, Access(Administrator, administrator: true), approve: false);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         stored.Mode.Should().Be(OidcApplicationModes.Development);
         stored.GoLiveReview!.Status.Should().Be(OidcScopeStatuses.Rejected);
     }
@@ -468,7 +468,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
         await DecideGoLiveAsync(app, Access("SparkUsers/app-admin", administrator: false), approve: true);
 
-        var stored = await LoadAsync(app.Id!);
+        var stored = await LoadAsync(app.Id.Value);
         stored.Mode.Should().Be(OidcApplicationModes.Development);
         stored.GoLiveReview!.Status.Should().Be(OidcScopeStatuses.Pending);
     }

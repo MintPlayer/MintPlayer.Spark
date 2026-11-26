@@ -47,7 +47,7 @@ public partial class PullRequestCommentPublisher : IPullRequestCommentPublisher
         {
             feedback = new PullRequestFeedback
             {
-                Repository = repository.Id,
+                Repository = repository.Id.Value,
                 PullRequestNumber = pullRequestNumber,
             };
             await session.StoreAsync(feedback, id, cancellationToken);

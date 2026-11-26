@@ -1,14 +1,18 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Boards;
 
 /// <summary>
 /// One user's changes to one board (<c>docs/dashboard_layout_PRD.md</c> §4.2). Its id is natural,
-/// <c>BoardLayouts/{userId}/{boardId}</c>: a load is a point lookup, a second save overwrites, and Reset deletes it.
+/// <c>boardlayouts/{userId}/{boardId}</c>: a load is a point lookup, a second save overwrites, and Reset deletes it.
+/// Layouts stored before #536 keep their <c>BoardLayouts/</c> casing; RavenDB ids ignore case, so they still load.
 /// </summary>
-public sealed class BoardLayout
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class BoardLayout
 {
-    public const string IdPrefix = "BoardLayouts/";
+    public const string IdPrefix = "boardlayouts/";
 
-    public string? Id { get; set; }
+    public Id<BoardLayout> Id { get; set; }
 
     public string Owner { get; set; } = "";
 
@@ -29,5 +33,5 @@ public sealed class BoardLayout
     /// <summary>Only the column counts the user edited at. A count not here is the application's (§4.7).</summary>
     public Dictionary<int, List<SparkTileLayoutEntry>> Layouts { get; set; } = [];
 
-    public static string IdFor(string userId, string boardId) => IdPrefix + userId + "/" + boardId;
+    public static Id<BoardLayout> IdFor(string userId, string boardId) => Id<BoardLayout>.FromTrusted(IdPrefix + userId + "/" + boardId);
 }

@@ -100,7 +100,7 @@ internal static class SeoApi
     {
         using (var session = host.Database.OpenAsyncSession())
         {
-            var setting = await session.LoadAsync<Setting>(Setting.IdFor(key)) ?? new Setting { Id = Setting.IdFor(key), Key = key };
+            var setting = await session.LoadAsync<Setting>(Setting.IdFor(key).Value) ?? new Setting { Id = Setting.IdFor(key), Key = key };
             setting.Value = value;
             await session.StoreAsync(setting);
             await session.SaveChangesAsync();

@@ -68,10 +68,10 @@ public static class DependencyUpdateSwitch
             .Where(r => r.Account == accountId)
             .Take(1024)
             .ToListAsync(ct);
-        var followers = repositories.Where(r => r.Id is not null && r.Connection != RepositoryConnection.Disconnected && !r.Archived
+        var followers = repositories.Where(r => !r.Id.IsEmpty && r.Connection != RepositoryConnection.Disconnected && !r.Archived
             && r.DependencyUpdates == LookupReferences.EDependencyUpdatesPolicy.Inherit).ToList();
         foreach (var repository in followers)
-            await SignalAsync(bus, repository.Id!, transition, occurredAt, expedite: false, ct);
+            await SignalAsync(bus, repository.Id.Value, transition, occurredAt, expedite: false, ct);
         return followers.Count;
     }
 }

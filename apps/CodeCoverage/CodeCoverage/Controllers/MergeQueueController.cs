@@ -104,11 +104,11 @@ public partial class MergeQueueController : ControllerBase
         var queue = queues.FirstOrDefault(q => q.Provider == repository.Provider);
         if (queue is null) return Ok(new MergeQueueView(false, [], null, await ViewerAsync(repository, null, cancellationToken)));
 
-        var document = await session.LoadAsync<QueueDocument>(QueueDocument.DocumentId(repository.Id!), cancellationToken);
+        var document = await session.LoadAsync<QueueDocument>(QueueDocument.DocumentId(repository.Id.Value), cancellationToken);
         var lanes = document?.Lanes ?? [];
         var recent = document?.Recent ?? [];
 
-        var ids = lanes.SelectMany(l => l.Waiting.Prepend(l.Current)).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var ids = lanes.SelectMany(l => l.Waiting.Prepend(l.Current)).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var entries = ids.Count == 0
             ? new Dictionary<string, MergeQueueEntry>()
             : await session.LoadAsync<MergeQueueEntry>(ids, cancellationToken);
@@ -141,7 +141,7 @@ public partial class MergeQueueController : ControllerBase
         // O15: the configuration a run actually used, from the entry being worked on or else the latest one to end. Reading
         // coverage.yml afresh would cost a forge call on every view, anonymous ones included.
         var source = lanes.Select(l => l.Current).OfType<string>().Select(id => entries.GetValueOrDefault(id)).OfType<MergeQueueEntry>().FirstOrDefault()
-            ?? (recent.Count > 0 ? await session.LoadAsync<MergeQueueEntry>(MergeQueueEntry.DocumentId(repository.Id!, recent[^1].Number), cancellationToken) : null);
+            ?? (recent.Count > 0 ? await session.LoadAsync<MergeQueueEntry>(MergeQueueEntry.DocumentId(repository.Id.Value, recent[^1].Number), cancellationToken) : null);
         var config = source is { Config.Values.Count: > 0 }
             ? new ConfigView(source.Number, source.Run, source.Config.ConfigRef, [.. source.Config.Values.Select(v => new ConfigValueView(v.Key, v.Value, v.Source))])
             : null;
@@ -200,9 +200,9 @@ public partial class MergeQueueController : ControllerBase
         // The same rule the enqueue applies: an entry that has not ended is in the queue; an evicted, dequeued or refused
         // one may be queued again.
         var entries = await session.LoadAsync<MergeQueueEntry>(
-            open.PullRequests.Select(p => MergeQueueEntry.DocumentId(repository.Id!, p.Number)).Distinct(StringComparer.Ordinal), cancellationToken);
+            open.PullRequests.Select(p => MergeQueueEntry.DocumentId(repository.Id.Value, p.Number)).Distinct(StringComparer.OrdinalIgnoreCase), cancellationToken);
         var candidates = open.PullRequests
-            .Where(p => entries.GetValueOrDefault(MergeQueueEntry.DocumentId(repository.Id!, p.Number)) is not { } entry || entry.State.IsTerminal())
+            .Where(p => entries.GetValueOrDefault(MergeQueueEntry.DocumentId(repository.Id.Value, p.Number)) is not { } entry || entry.State.IsTerminal())
             .OrderByDescending(p => p.Number)
             .Select(p => new QueueCandidate(p.Number, p.Title, p.BaseRef, p.AuthorLogin))
             .ToList();
@@ -269,7 +269,7 @@ public partial class MergeQueueController : ControllerBase
                 : StatusCode(StatusCodes.Status403Forbidden, new CommandRefused(
                     "Your account has no linked GitHub sign-in. The queue acts as your GitHub login, so sign in with GitHub to queue pull requests from here."));
 
-        var entry = await session.LoadAsync<MergeQueueEntry>(MergeQueueEntry.DocumentId(repository.Id!, number), cancellationToken);
+        var entry = await session.LoadAsync<MergeQueueEntry>(MergeQueueEntry.DocumentId(repository.Id.Value, number), cancellationToken);
         var active = entry is not null && !entry.State.IsTerminal();
         if (command == EMergeQueueCommand.Dequeue && !active)
             return Conflict(new CommandRefused($"#{number} is not in the queue."));
@@ -283,7 +283,7 @@ public partial class MergeQueueController : ControllerBase
         }
 
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<MergeQueueCommandIssued>(repository.Provider,
-            new MergeQueueCommandIssued(repository.Id!, number, command, login, EMergeQueueCommandSource.Button)), cancellationToken);
+            new MergeQueueCommandIssued(repository.Id.Value, number, command, login, EMergeQueueCommandSource.Button)), cancellationToken);
         logger.LogInformation("Merge queue: {Command} of #{Number} in {Repository} by @{Actor} (button)", command, number, repository.FullName, login);
         return Accepted(new CommandAccepted(number, command == EMergeQueueCommand.Enqueue ? "enqueue" : "dequeue", login));
     }

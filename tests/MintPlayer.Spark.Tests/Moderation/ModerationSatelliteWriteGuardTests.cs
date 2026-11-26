@@ -31,7 +31,7 @@ public class ModerationSatelliteWriteGuardTests : SparkTestDriver
     public async Task A_locked_moderatable_document_is_refused_and_an_unlocked_one_or_a_plain_type_is_not()
     {
         await using var host = await MoHost.StartAsync(Store);
-        await SeedAsync(session => session.StoreAsync(new ModerationLock(), ModerationIds.Lock("MoPosts/locked")));
+        await SeedAsync(session => session.StoreAsync(new ModerationLock(), ModerationIds.Lock("MoPosts/locked").Value));
 
         var ex = (await new Func<Task>(() => EnsureAsync(host, typeof(MoPost), "MoPosts/locked")).Should().ThrowExactlyAsync<SparkValidationException>()).Which;
         ex.Message.Should().Contain("locked");

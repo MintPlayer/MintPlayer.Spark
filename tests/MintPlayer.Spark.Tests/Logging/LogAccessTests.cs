@@ -27,7 +27,7 @@ public class LogAccessTests : OrganizationsTestHost
     private async Task<string> WriteLogAsync(string key, string? relatedPersistentObjectId, string text)
     {
         await Factory.GetService<ILoggerScopeProvider>().LogAsync(key, LogLevel.Information, text, relatedPersistentObjectId: relatedPersistentObjectId);
-        return LogIds.ForKey(key);
+        return LogIds.ForKey(key).Value;
     }
 
     private Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body)> LoadLogAsync(string id, string? userId)
@@ -39,7 +39,7 @@ public class LogAccessTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var bob = await SeedUserAsync("bob");
         var organization = await SeedOrganizationAsync("Acme", ann);
-        var note = await SeedNoteAsync("Plan", organization.Id);
+        var note = await SeedNoteAsync("Plan", organization.Id.Value);
         var id = await WriteLogAsync("tests/note-log", note.Id, "Merged the plan");
 
         var (status, body) = await LoadLogAsync(id, ann.Id);
@@ -78,7 +78,7 @@ public class LogAccessTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var bob = await SeedUserAsync("bob");
         var organization = await SeedOrganizationAsync("Acme", ann);
-        var note = await SeedNoteAsync("Plan", organization.Id);
+        var note = await SeedNoteAsync("Plan", organization.Id.Value);
         var noteLog = await WriteLogAsync("tests/note-log", note.Id, "Merged the plan");
         await WriteLogAsync("tests/orphan", "OgNotes/does-not-exist", "Orphaned");
         var standalone = await WriteLogAsync("tests/standalone", null, "Standalone");

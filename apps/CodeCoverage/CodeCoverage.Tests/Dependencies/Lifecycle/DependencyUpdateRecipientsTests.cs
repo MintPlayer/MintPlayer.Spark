@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Dependencies.Policy;
 using CodeCoverage.Entities;
@@ -35,7 +36,7 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
     private static (DependencyUpdateRun, string) Run(string? line = null, Action<DependencyUpdateRun>? configure = null)
     {
         var id = DependencyUpdateRun.ForRepository(RepositoryId, line);
-        var run = new DependencyUpdateRun { Id = id, Repository = RepositoryId, Line = line };
+        var run = new DependencyUpdateRun { Id = Id<DependencyUpdateRun>.FromTrusted(id), Repository = RepositoryId, Line = line };
         configure?.Invoke(run);
         return (run, id);
     }
@@ -351,9 +352,9 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
 
     private static async Task SeedFleetAsync(IDocumentStore store, DateTime latest)
     {
-        var fleet = new DependencyFleetState { Id = DependencyFleetState.ForAccount(AccountId) };
+        var fleet = new DependencyFleetState { Id = Id<DependencyFleetState>.FromTrusted(DependencyFleetState.ForAccount(AccountId)) };
         fleet.ProducerEvents.Add(new DependencyProducerEvent { ProducerRepository = RepositoryId, Kind = "release", AtUtc = latest });
-        await SeedAsync(store, (fleet, fleet.Id));
+        await SeedAsync(store, (fleet, fleet.Id.Value));
     }
 
     [Fact]
@@ -381,10 +382,10 @@ public class DependencyUpdateRecipientsTests : CoverageRavenTest
         var bus = await PropagateAsync(store, at);
 
         var (signal, options) = bus.Signals.Should().ContainSingle().Which;
-        signal.RepositoryId.Should().Be(ConsumerId);
+        signal.RepositoryId.Should().Be(ConsumerId.ToLowerInvariant());
         signal.Kind.Should().Be(EDependencySignal.Trigger);
         signal.Trigger.Should().Be(EDependencyRunTrigger.OwnRelease);
-        options.DeduplicationKey.Should().Be($"dependency-own:{ConsumerId}:{RepositoryId}:{at.Ticks}");
+        options.DeduplicationKey.Should().Be($"dependency-own:{ConsumerId.ToLowerInvariant()}:{RepositoryId}:{at.Ticks}");
     }
 
     [Fact]

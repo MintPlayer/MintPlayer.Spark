@@ -23,7 +23,7 @@ public class RenderPipelineTests(RenderHostFixture host, ITestOutputHelper outpu
     private async Task<string> StartAsync(Site site, string user = Max)
     {
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, user);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, user);
         status.Should().Be(HttpStatusCode.OK, raw);
         return body.GetProperty("result").GetProperty("runId").GetString()!;
     }

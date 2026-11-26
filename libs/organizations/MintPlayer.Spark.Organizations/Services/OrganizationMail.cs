@@ -58,7 +58,7 @@ internal sealed class OrganizationMail(
             return;
         }
 
-        if (Link(invitation.Id!, token) is not { } link)
+        if (Link(invitation.Id.Value, token) is not { } link)
         {
             logger.LogWarning(
                 "The {Template} mail for {InvitationId} was not sent: no public base URL is configured. Set 'Spark:Auth:PublicBaseUrl'. "

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents.Indexes;
@@ -40,6 +41,9 @@ public abstract class SparkIndexCreationTask<TDocument> : AbstractIndexCreationT
     public override IndexDefinition CreateIndexDefinition()
     {
         ConfigureSparkFields();
+        // Typed ids (#536 D23, S-ID6): the own x.Id becomes Id(x) and a reference's text its stored string. Idempotent.
+        if (Map is not null)
+            Map = RavenIndexIdRewriter.Rewrite(Map);
         return base.CreateIndexDefinition();
     }
 
@@ -124,4 +128,8 @@ public abstract class SparkMultiMapIndexCreationTask<TReduceResult> : AbstractMu
     protected virtual void ConfigureSparkFields()
     {
     }
+
+    /// <summary>Adds a map with its typed ids rewritten (#536 D23, S-ID6; see <see cref="RavenIndexIdRewriter"/>).</summary>
+    protected new void AddMap<TSource>(System.Linq.Expressions.Expression<Func<IEnumerable<TSource>, IEnumerable>> map)
+        => base.AddMap(RavenIndexIdRewriter.Rewrite(map));
 }

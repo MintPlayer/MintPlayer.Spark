@@ -199,7 +199,7 @@ public class OidcRefreshTokenFamilyTests(OidcSharedHost host) : OidcTestHost(hos
             var rotated = await RefreshAsync(app, issued.Refresh!);
             rotated.Status.Should().Be(HttpStatusCode.OK);
 
-            (await Factory.GetService<OidcGrantWithdrawal>().WithdrawAsync(userId, app.Id!, scopes: null, ipAddress: null, CancellationToken.None))
+            (await Factory.GetService<OidcGrantWithdrawal>().WithdrawAsync(userId, app.Id.Value, scopes: null, ipAddress: null, CancellationToken.None))
                 .Should().BeTrue();
 
             (await RefreshAsync(app, rotated.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest,

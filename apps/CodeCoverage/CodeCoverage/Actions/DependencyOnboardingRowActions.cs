@@ -54,7 +54,7 @@ public partial class DependencyOnboardingRowActions : ISparkOwnsRowSecurity
         var listing = await onboarding.ListAsync(DependencyOnboardingScope.Parse(scope));
         return listing.Repositories
             .Where(r => r.RepositoryId is not null)
-            .DistinctBy(r => r.RepositoryId, StringComparer.Ordinal)
+            .DistinctBy(r => r.RepositoryId, StringComparer.OrdinalIgnoreCase)
             .Select(ToRow)
             .ToList()
             .AsQueryable();

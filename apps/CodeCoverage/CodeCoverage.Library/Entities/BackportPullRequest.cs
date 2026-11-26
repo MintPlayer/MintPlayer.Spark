@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -21,9 +22,10 @@ namespace CodeCoverage.Entities;
 /// </list>
 /// </para>
 /// </remarks>
-public class BackportPullRequest
+[IdKind(SparkIdKind.Natural)]
+public partial class BackportPullRequest
 {
-    public string? Id { get; set; }
+    public Id<BackportPullRequest> Id { get; set; }
 
     public string Repository { get; set; } = string.Empty;
 

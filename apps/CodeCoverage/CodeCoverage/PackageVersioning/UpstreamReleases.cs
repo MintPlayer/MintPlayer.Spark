@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -81,7 +82,7 @@ public static partial class UpstreamReleases
             var record = records.GetValueOrDefault(id);
             if (record is null)
             {
-                record = new PackageReleaseRecord { Id = id, Repository = repositoryId, Kind = release.Kind, Package = release.Id };
+                record = new PackageReleaseRecord { Id = Id<PackageReleaseRecord>.FromTrusted(id), Repository = repositoryId, Kind = release.Kind, Package = release.Id };
                 await session.StoreAsync(record, id, cancellationToken);
                 records[id] = record;
             }
@@ -149,7 +150,7 @@ public static partial class UpstreamReleases
     {
         var record = await session.LoadAsync<PackageReleaseRecord>(PackageReleaseRecord.DocumentId(kind, package), cancellationToken);
         if (record is null) return null;
-        var upstream = string.Equals(record.Repository, repository.Id, StringComparison.OrdinalIgnoreCase)
+        var upstream = string.Equals(record.Repository, repository.Id.Value, StringComparison.OrdinalIgnoreCase)
             ? repository
             : await session.LoadAsync<Repository>(record.Repository, cancellationToken);
         if (upstream is null || upstream.Provider != repository.Provider) return null;

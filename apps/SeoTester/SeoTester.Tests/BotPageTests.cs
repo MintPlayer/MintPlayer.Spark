@@ -36,7 +36,7 @@ public class BotPageTests(SeoTesterHostFixture host)
     [Fact]
     public async Task The_page_states_the_limits_the_administrator_set()
     {
-        var id = Setting.IdFor(SeoSettings.UnverifiedPagesPerRun.Key);
+        var id = Setting.IdFor(SeoSettings.UnverifiedPagesPerRun.Key).Value;
         await SetAsync(id, "250");
         try
         {

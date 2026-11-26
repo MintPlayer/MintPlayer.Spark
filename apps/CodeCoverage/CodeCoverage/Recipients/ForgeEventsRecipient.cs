@@ -278,7 +278,8 @@ public partial class ForgeEventsRecipient :
 
         if (evt.ReportedByAccountId is { Length: > 0 } reporter
             && repository.Account is not null
-            && repository.Account != reporter)
+            // A stored reference keeps its legacy casing; a loaded id is lower case (#536 D7).
+            && !string.Equals(repository.Account, reporter, StringComparison.OrdinalIgnoreCase))
         {
             logger.LogInformation(
                 "Ignoring a stale loss of {FullName} reported by {Reporter}: it now belongs to {Owner}",
@@ -300,10 +301,10 @@ public partial class ForgeEventsRecipient :
 
     private async Task<IReadOnlyList<Repository>> LoadRepositoriesOfAsync(Account account, CancellationToken cancellationToken)
     {
-        if (account.Id is null) return [];
+        if (account.Id.IsEmpty) return [];
 
         return await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.Account == account.Id)
+            .Where(r => r.Account == account.Id.Value)
             .Take(MaxRepositoriesPerAccount)
             .ToListAsync(cancellationToken);
     }
@@ -335,7 +336,7 @@ public partial class ForgeEventsRecipient :
             commit = new Commit
             {
                 Sha = sha,
-                Repository = repository.Id,
+                Repository = repository.Id.Value,
                 FirstSeenAtUtc = DateTimeOffset.UtcNow,
             };
             await session.StoreAsync(commit, id, cancellationToken);

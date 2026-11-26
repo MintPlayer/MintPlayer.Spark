@@ -47,14 +47,14 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
         var site = await SeedSiteAsync(host, Acme);
         using (var session = host.Database.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<Site>(site.Id);
+            var stored = await session.LoadAsync<Site>(site.Id.Value);
             stored.LatestScore = 87;
             stored.LatestGrade = "B";
             await session.SaveChangesAsync();
         }
 
-        (await ActionAsync(host, SiteTypeId, "Site", "ShareBadge", site.Id!, Max)).Raw.Should().NotContain("badge.svg", "D31: Owners and Admins");
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "ShareBadge", site.Id!, Ann);
+        (await ActionAsync(host, SiteTypeId, "Site", "ShareBadge", site.Id.Value, Max)).Raw.Should().NotContain("badge.svg", "D31: Owners and Admins");
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "ShareBadge", site.Id.Value, Ann);
         status.Should().Be(HttpStatusCode.OK, raw);
         var markdown = Strings(body).Single(s => s.Contains("badge.svg"));
         var badge = new Uri(markdown[(markdown.IndexOf("](", StringComparison.Ordinal) + 2)..markdown.IndexOf(")](", StringComparison.Ordinal)]);
@@ -67,8 +67,8 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
         (await svg.Content.ReadAsStringAsync()).Should().Contain("87 B").And.Contain("#1a7f37");
 
         (await client.GetAsync(badge.PathAndQuery.Replace("token=", "token=x"))).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await client.GetAsync($"/seotester/badge.svg?site={Uri.EscapeDataString(site.Id!)}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await ActionAsync(host, SiteTypeId, "Site", "RevokeShareLink", site.Id!, Ann)).Status.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync($"/seotester/badge.svg?site={Uri.EscapeDataString(site.Id.Value)}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await ActionAsync(host, SiteTypeId, "Site", "RevokeShareLink", site.Id.Value, Ann)).Status.Should().Be(HttpStatusCode.OK);
         (await client.GetAsync(badge.PathAndQuery)).StatusCode.Should().Be(HttpStatusCode.NotFound, "revoking the link ends the badge");
     }
 
@@ -105,14 +105,14 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
     public async Task A_run_offers_only_the_actions_its_state_allows(string status, string[] disabled)
     {
         var site = await SeedSiteAsync(host, Acme);
-        var run = new AuditRun { SiteId = site.Id, OrganizationId = Acme, Origin = site.Origin, Status = status, StartedAtUtc = DateTime.UtcNow };
+        var run = new AuditRun { SiteId = site.Id.Value, OrganizationId = Acme, Origin = site.Origin, Status = status, StartedAtUtc = DateTime.UtcNow };
         using (var session = host.Database.OpenAsyncSession())
         {
             await session.StoreAsync(run);
             await session.SaveChangesAsync();
         }
 
-        var (loaded, body, raw) = await LoadAsync(host, AuditRunTypeId, run.Id!, Ann);
+        var (loaded, body, raw) = await LoadAsync(host, AuditRunTypeId, run.Id.Value, Ann);
 
         loaded.Should().Be(HttpStatusCode.OK, raw);
         var actual = body.TryGetProperty("disabledActions", out var list) && list.ValueKind == JsonValueKind.Array

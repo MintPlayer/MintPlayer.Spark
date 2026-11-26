@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Moderation.Indexes;
 using Raven.Client.Documents;
@@ -65,7 +66,7 @@ internal sealed partial class FraudDetector
                 if (j - i + 1 >= fraud.SerialVotesIn24Hours)
                 {
                     for (var k = i; k <= j; k++)
-                        serial.Add(ordered[k].Id!);
+                        serial.Add(ordered[k].Id.Value);
                 }
             }
             if (serial.Count > 0)
@@ -81,7 +82,7 @@ internal sealed partial class FraudDetector
                 continue;
             foreach (var pair in byVoter.Where(p => p.Value * 100 >= fraud.ConcentrationPercent * total))
             {
-                var voteIds = votes.Where(v => v.VoterId == pair.Key.VoterId && v.AuthorId == pair.Key.AuthorId).Select(v => v.Id!).ToList();
+                var voteIds = votes.Where(v => v.VoterId == pair.Key.VoterId && v.AuthorId == pair.Key.AuthorId).Select(v => v.Id.Value).ToList();
                 await ReverseAsync("concentration", pair.Key.VoterId, pair.Key.AuthorId, voteIds,
                     $"{pair.Value} of the voter's {total} votes went to one author.", report, now, cancellationToken);
             }
@@ -95,7 +96,7 @@ internal sealed partial class FraudDetector
             if (pairs.GetValueOrDefault((pair.Key.AuthorId, pair.Key.VoterId)) is var back && back < fraud.ReciprocalMinVotesEachWay)
                 continue;
             var voteIds = votes.Where(v => (v.VoterId == pair.Key.VoterId && v.AuthorId == pair.Key.AuthorId)
-                                            || (v.VoterId == pair.Key.AuthorId && v.AuthorId == pair.Key.VoterId)).Select(v => v.Id!).ToList();
+                                            || (v.VoterId == pair.Key.AuthorId && v.AuthorId == pair.Key.VoterId)).Select(v => v.Id.Value).ToList();
             await OpenCaseAsync("reciprocal", pair.Key.VoterId, pair.Key.AuthorId, voteIds,
                 $"{pair.Value} votes one way and {back} the other.", report, now, cancellationToken);
         }
@@ -108,7 +109,7 @@ internal sealed partial class FraudDetector
             if (fast.Count < fraud.FastVoteMinCount)
                 continue;
             var author = fast.GroupBy(v => v.AuthorId ?? string.Empty).OrderByDescending(g => g.Count()).First().Key;
-            await OpenCaseAsync("fast-voting", byVoter.Key, author, fast.Select(v => v.Id!).ToList(),
+            await OpenCaseAsync("fast-voting", byVoter.Key, author, fast.Select(v => v.Id.Value).ToList(),
                 $"{fast.Count} votes cast less than {fraud.FastVoteSeconds} s after the post appeared.", report, now, cancellationToken);
         }
 
@@ -149,7 +150,7 @@ internal sealed partial class FraudDetector
             if (!sharedNetwork && !sharedDomain)
                 continue;
 
-            var voteIds = votes.Where(v => (v.VoterId == a && v.AuthorId == b) || (v.VoterId == b && v.AuthorId == a)).Select(v => v.Id!).ToList();
+            var voteIds = votes.Where(v => (v.VoterId == a && v.AuthorId == b) || (v.VoterId == b && v.AuthorId == a)).Select(v => v.Id.Value).ToList();
             var signal = sharedNetwork ? "share a network hash" : $"share the domain {accountA.EmailDomain}";
             await OpenCaseAsync("registration-cluster", a, b, voteIds,
                 $"Created {Math.Abs((createdA - createdB).TotalMinutes):0} min apart, {signal}, and vote for each other.", report, now, cancellationToken);
@@ -179,43 +180,43 @@ internal sealed partial class FraudDetector
         var caseId = ModerationIds.FraudCase(rule, voterId, authorId);
         using (var session = documentStore.OpenAsyncSession())
         {
-            var existing = await session.LoadAsync<ReviewCase>(caseId, cancellationToken);
+            var existing = await session.LoadAsync<ReviewCase>(caseId.Value, cancellationToken);
             var reviewCase = existing ?? new ReviewCase { Kind = rule, AccountIds = [voterId, authorId], OpenedAtUtc = now };
-            reviewCase.VoteIds = reviewCase.VoteIds.Union(voteIds).ToList();
+            reviewCase.VoteIds = reviewCase.VoteIds.Union(voteIds, StringComparer.OrdinalIgnoreCase).ToList(); // Stored ids keep their casing (#536 D7).
             reviewCase.Summary = summary;
             reviewCase.Status = ModerationCaseStatus.Reversed;
             reviewCase.Decision = "auto-reverse";
             reviewCase.DecidedAtUtc ??= now;
             reviewCase.DecidedBy = null;
-            await session.StoreAsync(reviewCase, caseId, cancellationToken);
+            await session.StoreAsync(reviewCase, caseId.Value, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
 
-        var changed = await ledger.ReverseVotesAsync(voteIds, rule, caseId, cancellationToken);
+        var changed = await ledger.ReverseVotesAsync(voteIds, rule, caseId.Value, cancellationToken);
         if (changed.Count > 0)
         {
             report.ReversedVotes += voteIds.Count;
-            await audit.WriteAsync("auto-reverse:" + rule, null, null, voterId, caseId, details: summary, cancellationToken: cancellationToken, actorId: "system");
+            await audit.WriteAsync("auto-reverse:" + rule, null, null, voterId, caseId.Value, details: summary, cancellationToken: cancellationToken, actorId: "system");
         }
-        if (!report.ReversedCases.Contains(caseId))
-            report.ReversedCases.Add(caseId);
+        if (!report.ReversedCases.Contains(caseId.Value))
+            report.ReversedCases.Add(caseId.Value);
     }
 
     private async Task OpenCaseAsync(string rule, string a, string b, IReadOnlyList<string> voteIds, string summary, FraudDetectionReport report, DateTime now, CancellationToken cancellationToken)
     {
         var caseId = ModerationIds.FraudCase(rule, a, b);
         using var session = documentStore.OpenAsyncSession();
-        var reviewCase = await session.LoadAsync<ReviewCase>(caseId, cancellationToken);
+        var reviewCase = await session.LoadAsync<ReviewCase>(caseId.Value, cancellationToken);
         if (reviewCase is not null && reviewCase.Status != ModerationCaseStatus.Open)
             return; // Decided by a human: the detector does not reopen it.
 
         reviewCase ??= new ReviewCase { Kind = rule, AccountIds = [a, b], OpenedAtUtc = now };
-        reviewCase.VoteIds = reviewCase.VoteIds.Union(voteIds).ToList();
+        reviewCase.VoteIds = reviewCase.VoteIds.Union(voteIds, StringComparer.OrdinalIgnoreCase).ToList(); // Stored ids keep their casing (#536 D7).
         reviewCase.Summary = summary;
-        await session.StoreAsync(reviewCase, caseId, cancellationToken);
+        await session.StoreAsync(reviewCase, caseId.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
-        if (!report.OpenedCases.Contains(caseId))
-            report.OpenedCases.Add(caseId);
+        if (!report.OpenedCases.Contains(caseId.Value))
+            report.OpenedCases.Add(caseId.Value);
     }
 
     private async Task<IReadOnlyList<ModerationVote>> ActiveVotesSinceAsync(DateTime since, CancellationToken cancellationToken)
@@ -223,7 +224,7 @@ internal sealed partial class FraudDetector
         using var session = documentStore.OpenAsyncSession();
         var rows = await ModerationQueries.StreamAllAsync(session, () => session.Query<ModerationVote>().Where(v => v.CastAtUtc >= since && v.Direction != 0), cancellationToken);
         foreach (var (id, vote) in rows)
-            vote.Id = id;
+            vote.Id = Id<ModerationVote>.FromTrusted(id);
         return rows.Select(r => r.Document).ToList();
     }
 

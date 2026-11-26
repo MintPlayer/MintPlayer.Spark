@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions;
 
 namespace Fleet.Replicated;
@@ -19,10 +20,10 @@ namespace Fleet.Replicated;
             }
         });
     """)]
-public class Company
+public partial class Company
 {
     /// <summary>Identifier of the company, replicated from HR; it matches the HR document id.</summary>
-    public string? Id { get; set; }
+    public Id<Company> Id { get; set; }
     /// <summary>Legal or trading name of the company, replicated read-only from HR.</summary>
     public string Name { get; set; } = string.Empty;
     /// <summary>Public website address of the company, replicated read-only from HR.</summary>

@@ -148,7 +148,7 @@ internal sealed partial class OidcDeviceSubmit : IPostEndpoint<OidcDeviceDecisio
         device.Properties["acr"] = signedIn.Acr;
         if (signedIn.SessionId is { } sid) device.Properties["sid"] = sid;
         device.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, signedIn.UserId, scopes, remember: false, ct);
-        await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, signedIn.UserId, app.Id, signedIn.UserId,
+        await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, signedIn.UserId, app.Id.Value, signedIn.UserId,
             context.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["scopes"] = string.Join(' ', scopes), ["device"] = "true" }, ct);
         await session.SaveChangesAsync(ct);
         return Results.Redirect("/connect/device?status=allowed");

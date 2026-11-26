@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -10,7 +11,8 @@ namespace CodeCoverage.Entities;
 /// every finalize of any build of the commit, so it is a pure function of the
 /// builds and the base. Percentages are never stored, only counts.
 /// </summary>
-public class CommitAssembly
+[IdKind(SparkIdKind.Natural)]
+public partial class CommitAssembly
 {
     public const string Complete = "Complete";
     public const string Partial = "Partial";
@@ -24,7 +26,7 @@ public class CommitAssembly
     public const string ReasonUnmeasuredChanges = "unmeasuredChanges";
 
     /// <summary>Document id of this assembly, <c>{commitId}/assembly</c>.</summary>
-    public string? Id { get; set; }
+    public Id<CommitAssembly> Id { get; set; }
 
     /// <summary>Document id of the commit this assembly is the coverage record of.</summary>
     public string? Commit { get; set; }

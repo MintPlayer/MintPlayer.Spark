@@ -29,12 +29,13 @@ internal sealed partial class ModerationVoteReversal : IAfterDeleteCommitted<IMo
             return;
 
         using var read = documentStore.OpenAsyncSession();
-        var voteIds = await read.Query<ModerationVote>()
+        // The documents, not a projection of Id: a typed id is not a field RavenDB can project (#536 D23).
+        var votes = await read.Query<ModerationVote>()
             .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
             .Where(v => v.TargetId == change.Id && v.Direction != 0)
-            .Select(v => v.Id!)
             .Take(10_000)
             .ToListAsync(cancellationToken);
+        var voteIds = votes.Select(v => v.Id.Value).ToList();
 
         if (voteIds.Count > 0)
             await ledger.ReverseVotesAsync(voteIds, "content-deleted", null, cancellationToken);

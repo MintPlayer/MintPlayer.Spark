@@ -5,10 +5,10 @@ namespace HR.Entities;
 // The breadcrumb template lives in App_Data/Model/Company.json ("{Name} · {Sector}"); {Sector}
 // is a reference to a Profession, so the Company breadcrumb embeds the Profession's breadcrumb —
 // the middle link of the Person → Company → Profession chain.
-public class Company
+public partial class Company
 {
     /// <summary>Unique identifier of the company, assigned automatically on creation.</summary>
-    public string? Id { get; set; }
+    public Id<Company> Id { get; set; }
     /// <summary>Legal or trading name of the company.</summary>
     public string Name { get; set; } = string.Empty;
     /// <summary>Public website of the company, including the scheme, e.g. <c>https://example.com</c>.</summary>

@@ -146,9 +146,17 @@ public class ContributionsModelSyncTests : IDisposable
         var options = ContributionDescriptor.LineDiffRendererOptions(CoSongLyricsContributionMetadata.Instance, "Text");
         var id = CoSongLyricsContribution.GetId("CoSongs/1", "en", "Latn", "MintPlayerUsers/abc");
 
+        // A new id is lower case (#536 D7); one written before keeps its casing, and the pattern takes both.
+        id.Should().Be("cosongs/1/lyricscontributions/en/latn/user/mintplayerusers/abc");
         System.Text.RegularExpressions.Regex.Replace(id, (string)options["compareIdPattern"], (string)options["compareIdReplacement"])
-            .Should().Be("CoSongs/1");
+            .Should().Be("cosongs/1");
         System.Text.RegularExpressions.Regex.Replace(id, (string)options["compareRowKeyPattern"], (string)options["compareRowKeyReplacement"])
+            .Should().Be("en/latn");
+
+        const string legacy = "CoSongs/1/LyricsContributions/en/Latn/User/MintPlayerUsers/abc";
+        System.Text.RegularExpressions.Regex.Replace(legacy, (string)options["compareIdPattern"], (string)options["compareIdReplacement"])
+            .Should().Be("CoSongs/1");
+        System.Text.RegularExpressions.Regex.Replace(legacy, (string)options["compareRowKeyPattern"], (string)options["compareRowKeyReplacement"])
             .Should().Be("en/Latn");
     }
 

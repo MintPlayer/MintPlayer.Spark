@@ -46,16 +46,16 @@ public partial class RunScheduledSlotNowAction : SparkCustomAction
     /// is off here) or <see cref="Busy"/> (a run is in progress).</summary>
     internal async Task<string> RunAsync(Repository repository, CancellationToken ct)
     {
-        if ((await onboarding.CheckAsync([repository], ct)).GetValueOrDefault(repository.Id!) is null)
+        if ((await onboarding.CheckAsync([repository], ct)).GetValueOrDefault(repository.Id.Value) is null)
             return Refused;
         var account = repository.Account is { } accountId ? await session.LoadAsync<Account>(accountId, ct) : null;
         if (!Repository.ResolveDependencyUpdates(repository, account))
             return Off;
-        if (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repository.Id!), ct) is { } run && run.State.IsBusy())
+        if (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repository.Id.Value), ct) is { } run && run.State.IsBusy())
             return Busy;
         await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
         {
-            RepositoryId = repository.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled, Expedite = true,
+            RepositoryId = repository.Id.Value, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled, Expedite = true,
         }, $"dependency-run-now:{repository.Id}:{time.GetUtcNow().UtcTicks}:{Guid.NewGuid():N}", new BroadcastOptions { Expedite = true }, ct);
         return Started;
     }

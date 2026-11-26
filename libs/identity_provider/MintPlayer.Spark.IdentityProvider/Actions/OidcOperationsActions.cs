@@ -29,9 +29,10 @@ internal partial class OidcAuditEventActions : DefaultPersistentObjectActions<Oi
 
         var adminOf = await session.Query<OidcApplication>()
             .Where(a => a.Members.Any(m => m.UserId == userId && m.Status == OidcMemberStatuses.Active && m.Role == OidcMemberRoles.Admin))
-            .Select(a => a.Id)
             .ToListAsync();
-        return e => e.ApplicationId != null && e.ApplicationId.In(adminOf);
+        // The documents, not a projection of Id: a raw session cannot project a typed id (#536).
+        var adminOfIds = adminOf.Select(a => a.Id.Value).ToList();
+        return e => e.ApplicationId != null && e.ApplicationId.In(adminOfIds);
     }
 }
 

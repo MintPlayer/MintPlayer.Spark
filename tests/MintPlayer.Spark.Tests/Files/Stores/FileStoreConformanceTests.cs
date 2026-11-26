@@ -173,7 +173,7 @@ public abstract class FileStoreConformanceTests : IAsyncLifetime
     public void Entity_keys_parse_back_without_their_variant()
     {
         ObjectFileStore.TryParseEntity(Store.EntityKey("Cars/1-A", "f00d.thumb"), out var entityId, out var fileId).Should().BeTrue();
-        entityId.Should().Be("Cars/1-A");
+        entityId.Should().Be("cars/1-a", "a key carries the lower-case id (#536 D7)");
         fileId.Should().Be("f00d");
         ObjectFileStore.TryParseStaging(Store.StagingKey("tok_en-1"), out var token).Should().BeTrue();
         token.Should().Be("tok_en-1");

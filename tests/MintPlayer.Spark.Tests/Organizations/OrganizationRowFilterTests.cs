@@ -67,8 +67,8 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var out_ = await SeedUserAsync("out");
         var acme = await SeedOrganizationAsync("Acme", ann, (vic, OrganizationRole.Viewer));
         var other = await SeedOrganizationAsync("Other", out_);
-        var note = await SeedNoteAsync("plan", acme.Id);
-        var foreign = await SeedNoteAsync("foreign", other.Id);
+        var note = await SeedNoteAsync("plan", acme.Id.Value);
+        var foreign = await SeedNoteAsync("foreign", other.Id.Value);
         await SeedNoteAsync("orphan", null);
 
         var (viewerLoad, _) = await SendAsync("/spark/po/load", Load(NoteTypeId, note.Id!), vic.Id);
@@ -90,7 +90,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var max = await SeedUserAsync("max");
         var ada = await SeedUserAsync("ada");
         var acme = await SeedOrganizationAsync("Acme", ann, (vic, OrganizationRole.Viewer), (max, OrganizationRole.Member), (ada, OrganizationRole.Admin));
-        var note = await SeedNoteAsync("plan", acme.Id);
+        var note = await SeedNoteAsync("plan", acme.Id.Value);
 
         var (viewerEdit, _) = await SendAsync("/spark/po/update", await EditNoteAsync(note.Id!, "by viewer"), vic.Id);
         viewerEdit.Should().Be(HttpStatusCode.NotFound, "Edit needs Member");
@@ -98,8 +98,8 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         memberEdit.Should().Be(HttpStatusCode.OK);
         (await LoadAsync<OgNote>(note.Id!))!.Title.Should().Be("by member");
 
-        var (viewerCreate, _) = await SendAsync("/spark/po/create", NewNote("v", acme.Id!), vic.Id);
-        var (memberCreate, _) = await SendAsync("/spark/po/create", NewNote("m", acme.Id!), max.Id);
+        var (viewerCreate, _) = await SendAsync("/spark/po/create", NewNote("v", acme.Id.Value), vic.Id);
+        var (memberCreate, _) = await SendAsync("/spark/po/create", NewNote("m", acme.Id.Value), max.Id);
         viewerCreate.Should().Be(HttpStatusCode.NotFound, "New needs Member (WITH CHECK)");
         memberCreate.Should().Be(HttpStatusCode.Created);
 
@@ -117,9 +117,9 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var out_ = await SeedUserAsync("out");
         var acme = await SeedOrganizationAsync("Acme", ann);
         var other = await SeedOrganizationAsync("Other", out_);
-        var note = await SeedNoteAsync("plan", acme.Id);
+        var note = await SeedNoteAsync("plan", acme.Id.Value);
 
-        var (create, _) = await SendAsync("/spark/po/create", NewNote("smuggled", other.Id!), ann.Id);
+        var (create, _) = await SendAsync("/spark/po/create", NewNote("smuggled", other.Id.Value), ann.Id);
         var (move, _) = await SendAsync("/spark/po/update", Wire.Typed(NoteTypeId, new
         {
             persistentObject = new
@@ -134,7 +134,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
 
         create.Should().Be(HttpStatusCode.NotFound);
         move.Should().Be(HttpStatusCode.NotFound, "WITH CHECK judges the resulting row");
-        (await LoadAsync<OgNote>(note.Id!))!.OrganizationId.Should().Be(acme.Id);
+        (await LoadAsync<OgNote>(note.Id!))!.OrganizationId.Should().Be(acme.Id.Value);
     }
 
     [Fact]
@@ -142,8 +142,8 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
     {
         var ann = await SeedUserAsync("ann");
         var acme = await SeedOrganizationAsync("Acme", ann);
-        var live = await SeedNoteAsync("live", acme.Id, DateTime.UtcNow.AddDays(1));
-        var expired = await SeedNoteAsync("expired", acme.Id, DateTime.UtcNow.AddMinutes(-1));
+        var live = await SeedNoteAsync("live", acme.Id.Value, DateTime.UtcNow.AddDays(1));
+        var expired = await SeedNoteAsync("expired", acme.Id.Value, DateTime.UtcNow.AddMinutes(-1));
 
         var (expiredLoad, _) = await SendAsync("/spark/po/load", Load(NoteTypeId, expired.Id!), ann.Id);
 
@@ -157,15 +157,15 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var bob = await SeedUserAsync("bob");
         var acme = await SeedOrganizationAsync("Acme", ann);
-        var note = await SeedNoteAsync("plan", acme.Id);
+        var note = await SeedNoteAsync("plan", acme.Id.Value);
         (await SendAsync("/spark/po/load", Load(NoteTypeId, note.Id!), bob.Id)).Status.Should().Be(HttpStatusCode.NotFound);
 
-        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Viewer, ann.Id!);
         var (invitationId, token, _) = LastLink("bob@test.local");
         (await Organizations().AcceptAsync(invitationId, token, bob.Id!)).Accepted.Should().BeTrue();
         (await SendAsync("/spark/po/load", Load(NoteTypeId, note.Id!), bob.Id)).Status.Should().Be(HttpStatusCode.OK, "read by id prefix, no index to wait for");
 
-        await Organizations().LeaveAsync(acme.Id!, bob.Id!);
+        await Organizations().LeaveAsync(acme.Id.Value, bob.Id!);
         (await SendAsync("/spark/po/load", Load(NoteTypeId, note.Id!), bob.Id)).Status.Should().Be(HttpStatusCode.NotFound, "access ends with the membership");
     }
 
@@ -178,18 +178,18 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var organization = new Organization { Id = Organization.NewId(), Name = "Acme", CreatedBy = ann.Id };
         using (var session = Store.OpenAsyncSession())
         {
-            await session.StoreAsync(organization, organization.Id);
+            await session.StoreAsync(organization, organization.Id.Value);
             await session.StoreAsync(new OrganizationMembership
             {
                 Id = OrganizationMembership.IdFor(ann.Id!, organization.Id!),
-                OrganizationId = organization.Id,
+                OrganizationId = organization.Id.Value,
                 UserId = ann.Id,
                 Role = OrganizationRole.Owner,
             });
             await session.SaveChangesAsync();
         }
 
-        (await SendAsync("/spark/po/load", Load(OrganizationTypeId, organization.Id!), ann.Id)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await SendAsync("/spark/po/load", Load(OrganizationTypeId, organization.Id.Value), ann.Id)).Status.Should().Be(HttpStatusCode.NotFound);
         (await QueryIdsAsync(Wire.Query(OrganizationsQueryId), ann.Id!)).Should().BeEmpty();
         var (membersStatus, _) = await SendAsync("/spark/queries/execute", Wire.Query(MembersQueryId, new { parentId = organization.Id, parentType = "Organization" }), ann.Id);
         membersStatus.Should().Be(HttpStatusCode.NotFound, "the parent organization is unreadable, so its sub-query is refused");
@@ -219,7 +219,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
 
         status.Should().Be(HttpStatusCode.Created);
         var id = body.GetProperty("result").GetProperty("id").GetString()!;
-        id.Should().StartWith("Organizations/");
+        id.Should().StartWith("organizations/");
         var stored = await LoadAsync<Organization>(id);
         stored!.IsPersonal.Should().BeFalse("nobody posts IsPersonal");
         stored.CreatedBy.Should().Be(ann.Id);
@@ -236,7 +236,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var vic = await SeedUserAsync("vic");
         var ada = await SeedUserAsync("ada");
         var acme = await SeedOrganizationAsync("Acme", ann, (vic, OrganizationRole.Viewer), (ada, OrganizationRole.Admin));
-        await Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Viewer, ann.Id!);
         var parent = new { parentId = acme.Id, parentType = "Organization" };
 
         var viewerMembers = await QueryIdsAsync(Wire.Query(MembersQueryId, parent), vic.Id!);
@@ -258,19 +258,19 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var vicMembership = OrganizationMembership.IdFor(vic.Id!, acme.Id!);
         var annMembership = OrganizationMembership.IdFor(ann.Id!, acme.Id!);
 
-        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Member), vic.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership.Value, OrganizationRole.Member), vic.Id)).Status
             .Should().Be(HttpStatusCode.NotFound, "a Viewer edits no membership");
-        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Member), ada.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership.Value, OrganizationRole.Member), ada.Id)).Status
             .Should().Be(HttpStatusCode.OK, "an Admin changes roles");
-        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Owner), ada.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership.Value, OrganizationRole.Owner), ada.Id)).Status
             .Should().Be(HttpStatusCode.BadRequest, "only an Owner gives the Owner role");
-        (await SendAsync("/spark/po/update", await EditRoleAsync(annMembership, OrganizationRole.Admin), ann.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(annMembership.Value, OrganizationRole.Admin), ann.Id)).Status
             .Should().Be(HttpStatusCode.BadRequest, "the last Owner cannot step down");
-        (await SendAsync("/spark/po/delete", Wire.Typed(MembershipTypeId, id: annMembership, etag: await StoredEtag.OfAsync(Store, annMembership)), ann.Id)).Status
+        (await SendAsync("/spark/po/delete", Wire.Typed(MembershipTypeId, id: annMembership.Value, etag: await StoredEtag.OfAsync(Store, annMembership.Value)), ann.Id)).Status
             .Should().Be(HttpStatusCode.BadRequest, "nor be removed");
 
-        (await LoadAsync<OrganizationMembership>(vicMembership))!.Role.Should().Be(OrganizationRole.Member);
-        (await LoadAsync<OrganizationMembership>(annMembership))!.Role.Should().Be(OrganizationRole.Owner);
+        (await LoadAsync<OrganizationMembership>(vicMembership.Value))!.Role.Should().Be(OrganizationRole.Member);
+        (await LoadAsync<OrganizationMembership>(annMembership.Value))!.Role.Should().Be(OrganizationRole.Owner);
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
                 await session.StoreAsync(new OrganizationMembership
                 {
                     Id = OrganizationMembership.IdFor(user.Id!, personal.Id!),
-                    OrganizationId = personal.Id,
+                    OrganizationId = personal.Id.Value,
                     UserId = user.Id,
                     UserName = user.UserName,
                     Role = OrganizationRole.Viewer,
@@ -299,18 +299,18 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var maxMembership = OrganizationMembership.IdFor(max.Id!, personal.Id!);
         var annMembership = OrganizationMembership.IdFor(ann.Id!, personal.Id!);
 
-        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Member), ann.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership.Value, OrganizationRole.Member), ann.Id)).Status
             .Should().Be(HttpStatusCode.OK, "the Owner changes a member's role");
-        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Owner), ann.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership.Value, OrganizationRole.Owner), ann.Id)).Status
             .Should().Be(HttpStatusCode.BadRequest, "nobody else becomes Owner of a personal organization");
-        (await SendAsync("/spark/po/update", await EditRoleAsync(annMembership, OrganizationRole.Admin), ann.Id)).Status
+        (await SendAsync("/spark/po/update", await EditRoleAsync(annMembership.Value, OrganizationRole.Admin), ann.Id)).Status
             .Should().Be(HttpStatusCode.BadRequest, "its user stays Owner");
-        (await SendAsync("/spark/po/delete", Wire.Typed(MembershipTypeId, id: maxMembership, etag: await StoredEtag.OfAsync(Store, maxMembership)), ann.Id)).Status
+        (await SendAsync("/spark/po/delete", Wire.Typed(MembershipTypeId, id: maxMembership.Value, etag: await StoredEtag.OfAsync(Store, maxMembership.Value)), ann.Id)).Status
             .Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
 
-        (await LoadAsync<OrganizationMembership>(vicMembership))!.Role.Should().Be(OrganizationRole.Member);
-        (await LoadAsync<OrganizationMembership>(maxMembership)).Should().BeNull();
-        (await LoadAsync<OrganizationMembership>(annMembership))!.Role.Should().Be(OrganizationRole.Owner);
+        (await LoadAsync<OrganizationMembership>(vicMembership.Value))!.Role.Should().Be(OrganizationRole.Member);
+        (await LoadAsync<OrganizationMembership>(maxMembership.Value)).Should().BeNull();
+        (await LoadAsync<OrganizationMembership>(annMembership.Value))!.Role.Should().Be(OrganizationRole.Owner);
     }
 
     [Fact]
@@ -321,22 +321,22 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var ada = await SeedUserAsync("ada");
         var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
-        await Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Viewer, ann.Id!);
         var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
 
-        var (byAdmin, _) = await SendAsync("/spark/po/delete", Wire.Typed(OrganizationTypeId, id: acme.Id, etag: await StoredEtag.OfAsync(Store, acme.Id!)), ada.Id);
-        var (personalDelete, _) = await SendAsync("/spark/po/delete", Wire.Typed(OrganizationTypeId, id: personal.Id, etag: await StoredEtag.OfAsync(Store, personal.Id!)), ann.Id);
+        var (byAdmin, _) = await SendAsync("/spark/po/delete", Wire.Typed(OrganizationTypeId, id: acme.Id.Value, etag: await StoredEtag.OfAsync(Store, acme.Id.Value)), ada.Id);
+        var (personalDelete, _) = await SendAsync("/spark/po/delete", Wire.Typed(OrganizationTypeId, id: personal.Id.Value, etag: await StoredEtag.OfAsync(Store, personal.Id.Value)), ann.Id);
         byAdmin.Should().Be(HttpStatusCode.NotFound, "Delete needs Owner");
         personalDelete.Should().Be(HttpStatusCode.BadRequest);
         sites.Deleted.Should().BeEmpty();
 
-        var (byOwner, _) = await SendAsync("/spark/po/delete", Wire.Typed(OrganizationTypeId, id: acme.Id, etag: await StoredEtag.OfAsync(Store, acme.Id!)), ann.Id);
+        var (byOwner, _) = await SendAsync("/spark/po/delete", Wire.Typed(OrganizationTypeId, id: acme.Id.Value, etag: await StoredEtag.OfAsync(Store, acme.Id.Value)), ann.Id);
 
         byOwner.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
-        sites.Deleted.Should().Equal(acme.Id!);
-        (await LoadAsync<Organization>(acme.Id!)).Should().BeNull();
-        (await MembersAsync(acme.Id!)).Should().BeEmpty();
-        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+        sites.Deleted.Should().Equal(acme.Id.Value);
+        (await LoadAsync<Organization>(acme.Id.Value)).Should().BeNull();
+        (await MembersAsync(acme.Id.Value)).Should().BeEmpty();
+        (await InvitationsAsync(acme.Id.Value)).Should().BeEmpty();
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         }), max.Id);
 
         status.Should().Be(HttpStatusCode.OK);
-        (await Organizations().GetRoleAsync(acme.Id!, max.Id!)).HasValue.Should().BeFalse();
+        (await Organizations().GetRoleAsync(acme.Id.Value, max.Id!)).HasValue.Should().BeFalse();
     }
 
     [Fact]
@@ -380,8 +380,8 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
 
         byMember.Should().Be(HttpStatusCode.NotFound, "the row gate asks Owner for this action");
         byOwner.Should().Be(HttpStatusCode.OK);
-        (await Organizations().GetRoleAsync(acme.Id!, max.Id!)).Should().Be(OrganizationRole.Owner);
-        (await Organizations().GetRoleAsync(acme.Id!, ann.Id!)).Should().Be(OrganizationRole.Admin);
+        (await Organizations().GetRoleAsync(acme.Id.Value, max.Id!)).Should().Be(OrganizationRole.Owner);
+        (await Organizations().GetRoleAsync(acme.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Admin);
     }
 
     // ---- the accept endpoint ------------------------------------------------------------------------
@@ -392,7 +392,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var bob = await SeedUserAsync("bob");
         var acme = await SeedOrganizationAsync("Acme", ann);
-        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Member, ann.Id!);
         var (invitationId, token, _) = LastLink("bob@test.local");
 
         var eve = await SeedUserAsync("eve");
@@ -413,7 +413,7 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         otherBody.GetProperty("reason").GetString().Should().Be(OrganizationAcceptance.OtherAddressReason);
         accepted.Should().Be(HttpStatusCode.OK);
         body.GetProperty("accepted").GetBoolean().Should().BeTrue();
-        body.GetProperty("organizationId").GetString().Should().Be(acme.Id);
-        (await Organizations().GetRoleAsync(acme.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
+        body.GetProperty("organizationId").GetString().Should().Be(acme.Id.Value);
+        (await Organizations().GetRoleAsync(acme.Id.Value, bob.Id!)).Should().Be(OrganizationRole.Member);
     }
 }

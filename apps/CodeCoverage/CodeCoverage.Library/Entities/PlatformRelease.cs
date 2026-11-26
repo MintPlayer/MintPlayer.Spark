@@ -15,11 +15,12 @@ namespace CodeCoverage.Entities;
 /// minor (3.13, 1.25), all on one major.
 /// </remarks>
 [GenerateIndex]
-public class PlatformRelease
+[IdKind(SparkIdKind.Natural)]
+public partial class PlatformRelease
 {
     public const string Prefix = "PlatformReleases/";
 
-    public string? Id { get; set; }
+    public Id<PlatformRelease> Id { get; set; }
 
     /// <summary>The platform's name, as release lines spell their ecosystem and the dependency updater its SDK:
     /// <c>dotnet</c>, <c>node</c>, <c>python</c>, <c>java</c>, <c>go</c>, <c>php</c>, <c>ruby</c>, <c>rust</c>,

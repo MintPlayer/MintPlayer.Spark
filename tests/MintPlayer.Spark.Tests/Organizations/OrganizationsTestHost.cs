@@ -195,7 +195,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
             await session.StoreAsync(new OrganizationMembership
             {
                 Id = OrganizationMembership.IdFor(user.Id!, organization.Id!),
-                OrganizationId = organization.Id,
+                OrganizationId = organization.Id.Value,
                 UserId = user.Id,
                 UserName = user.UserName,
                 Role = role,
@@ -348,7 +348,7 @@ internal sealed class OgDataHandler(string name) : IOrganizationDataHandler
     {
         if (Fail)
             throw new InvalidOperationException("the application refused");
-        Deleted.Add(organization.Id!);
+        Deleted.Add(organization.Id.Value);
         return Task.CompletedTask;
     }
 }

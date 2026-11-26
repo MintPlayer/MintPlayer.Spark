@@ -49,14 +49,14 @@ public class CrawledContentTests(RenderHostFixture host)
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "Fixtures", "psi_mintplayer_mobile_perf.json")), ContentType: "application/json");
         var site = await SeedSiteAsync(host, Acme, hostName: h);
         await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id!, Max);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", site.Id.Value, Max);
         status.Should().Be(HttpStatusCode.OK, raw);
         var runId = body.GetProperty("result").GetProperty("runId").GetString()!;
 
         var run = await FakeSite.FinishedAsync(host.Database, runId, TimeSpan.FromMinutes(3));
 
         run.Status.Should().Be(AuditRunStatus.Completed, run.Error);
-        var home = (await LoadDocumentAsync<PageResult>(host, PageResult.IdFor(site.Id!, o + "/")))!;
+        var home = (await LoadDocumentAsync<PageResult>(host, PageResult.IdFor(site.Id.Value, o + "/")))!;
         home.Title.Should().Be("Home of the marker shop", "the page was crawled, its extracted fields kept (the control)");
         host.Web.RequestsTo(h).Should().Contain(r => r.UserAgent != null && r.UserAgent.Contains("Chrome/"), "the pages were rendered too");
 
@@ -64,7 +64,7 @@ public class CrawledContentTests(RenderHostFixture host)
         var selectors = new HashSet<string>(StringComparer.Ordinal);
         using (var session = host.Database.OpenAsyncSession())
         {
-            await using var stream = await session.Advanced.StreamAsync<PageResult>(PageResult.PrefixFor(site.Id!));
+            await using var stream = await session.Advanced.StreamAsync<PageResult>(PageResult.PrefixFor(site.Id.Value));
             while (await stream.MoveNextAsync())
                 foreach (var finding in stream.Current.Document.Findings)
                     selectors.UnionWith(finding.Selectors ?? []);

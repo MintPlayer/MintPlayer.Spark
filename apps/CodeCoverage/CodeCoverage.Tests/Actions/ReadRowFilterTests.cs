@@ -125,7 +125,7 @@ public class ReadRowFilterTests : CoverageRavenTest
         var actions = CreateActions<CommitActions>(VisibilityFor(session, logins), session);
         var filter = await actions.GetRowFilterAsync("Query");
         var rows = await session.Query<Commit>().Where(filter!).ToListAsync();
-        return [.. rows.Select(c => c.Id!).Order(StringComparer.Ordinal)];
+        return [.. rows.Select(c => c.Id.Value).Order(StringComparer.Ordinal)];
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class ReadRowFilterTests : CoverageRavenTest
         await SeedAsync(store);
         WaitForIndexing(store);
 
-        (await VisibleCommitsAsync(store)).Should().Equal(PublicCommit);
+        (await VisibleCommitsAsync(store)).Should().Equal(PublicCommit.ToLowerInvariant());
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class ReadRowFilterTests : CoverageRavenTest
         WaitForIndexing(store);
 
         (await VisibleCommitsAsync(store, "acme"))
-            .Should().Equal(new[] { PublicCommit, PrivateCommit }.Order(StringComparer.Ordinal).ToArray());
+            .Should().Equal(new[] { PublicCommit.ToLowerInvariant(), PrivateCommit.ToLowerInvariant() }.Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
@@ -576,7 +576,7 @@ public class ReadRowFilterTests : CoverageRavenTest
         (await visibility.CanManageOwnerAsync("github:member-of")).Should().BeFalse("reaching the installation is not owning the organization");
         (await visibility.CanManageOwnerAsync("github:stranger")).Should().BeFalse();
         (await visibility.GetManagedOwnersAsync()).Should().Equal("github:owned");
-        (await visibility.CanManageRepositoryAsync(new Repository { Id = "Repositories/x", OwnerLogin = "member-of", Account = "Accounts/x" }))
+        (await visibility.CanManageRepositoryAsync(new Repository { Id = Id<Repository>.FromTrusted("Repositories/x"), OwnerLogin = "member-of", Account = "Accounts/x" }))
             .Should().BeFalse("no forge administers anything here: no IForgeRepositoryAdministration is registered");
 
         await forge.Received(1).ManagesOwnerAsync(new ForgeOwner(EForgeProvider.GitHub, "owned"), Arg.Any<CancellationToken>());

@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Mcp.Plans;
 
 /// <summary>
@@ -10,9 +12,11 @@ namespace MintPlayer.Spark.Mcp.Plans;
 /// RavenDB deletes an expired plan itself, which is housekeeping only: every read checks
 /// <see cref="ExpiresAt"/>, because the expiration sweep may run long after it.
 /// </remarks>
-internal sealed class McpPlan
+[IdKind(SparkIdKind.Natural)]
+internal sealed partial class McpPlan
 {
-    public string? Id { get; set; }
+    /// <summary><c>mcpplans/{32 hex}</c>, handed to the agent as the plan id.</summary>
+    public Id<McpPlan> Id { get; set; }
 
     /// <summary>The local user id of the proposer.</summary>
     public required string UserId { get; set; }

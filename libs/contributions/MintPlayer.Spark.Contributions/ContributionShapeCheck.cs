@@ -2,19 +2,22 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Contributions;
 
 /// <summary>The shape a declaration's current documents were last built in (one per declaration).</summary>
-internal sealed class ContributionShapeMarker
+[IdKind(SparkIdKind.Natural)]
+internal sealed partial class ContributionShapeMarker
 {
-    public string? Id { get; set; }
+    public Id<ContributionShapeMarker> Id { get; set; }
     public string Shape { get; set; } = "";
     public DateTime CheckedAt { get; set; }
 
-    /// <summary><c>SparkContributions/Shapes/{QueryName}</c>.</summary>
-    public static string IdFor(ContributionDescriptor descriptor) => "SparkContributions/Shapes/" + descriptor.ContributionsQueryName;
+    /// <summary><c>sparkcontributions/shapes/{queryname}</c> (lower case, #536 D7; a marker written before still loads).</summary>
+    public static Id<ContributionShapeMarker> IdFor(ContributionDescriptor descriptor)
+        => Id<ContributionShapeMarker>.FromTrusted("sparkcontributions/shapes/" + descriptor.ContributionsQueryName);
 }
 
 /// <summary>
@@ -48,7 +51,7 @@ internal sealed class ContributionShapeCheck(IServiceProvider services, ILogger<
         foreach (var handler in catalog.All)
         {
             var descriptor = handler.Descriptor;
-            var markerId = ContributionShapeMarker.IdFor(descriptor);
+            var markerId = ContributionShapeMarker.IdFor(descriptor).Value;
             using (var read = store.OpenAsyncSession())
             {
                 var marker = await read.LoadAsync<ContributionShapeMarker>(markerId, cancellationToken);

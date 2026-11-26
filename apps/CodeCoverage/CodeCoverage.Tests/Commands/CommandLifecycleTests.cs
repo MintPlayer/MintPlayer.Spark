@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Commands;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -17,7 +18,7 @@ public class CommandLifecycleTests : CoverageRavenTest
 
     private static readonly Repository Repo = new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 6600), Provider = EForgeProvider.GitHub, GitHubId = 6600, FullName = "acme/widget",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 6600)), Provider = EForgeProvider.GitHub, GitHubId = 6600, FullName = "acme/widget",
     };
 
     private readonly FakeCommentReactions reactions = new();
@@ -28,7 +29,7 @@ public class CommandLifecycleTests : CoverageRavenTest
         var store = GetDocumentStore();
         using (var session = store.OpenAsyncSession())
         {
-            await session.StoreAsync(new Repository { Provider = Repo.Provider, GitHubId = Repo.GitHubId, FullName = Repo.FullName }, Repo.Id);
+            await session.StoreAsync(new Repository { Provider = Repo.Provider, GitHubId = Repo.GitHubId, FullName = Repo.FullName }, Repo.Id.Value);
             await session.SaveChangesAsync();
         }
         return (store, CommandTestKit.Lifecycle(store, reactions, logs: logs, retentionDays: retentionDays));
@@ -47,7 +48,7 @@ public class CommandLifecycleTests : CoverageRavenTest
         var record = await CommandTestKit.InvocationAsync(store, Repo, Comment);
         record!.Command.Should().Be("/queue", "only the first line is the command");
         record.Outcome.Should().Be(ECommandOutcome.Received);
-        record.LogId.Should().Be(LogIds.ForKey(CommandInvocation.LogKeyOf(first!)));
+        record.LogId.Should().Be(LogIds.ForKey(CommandInvocation.LogKeyOf(first!)).Value);
         record.ExpiresAtUtc.HasValue.Should().BeFalse("G5: a command still going never expires");
     }
 
@@ -152,7 +153,7 @@ public class CommandLifecycleTests : CoverageRavenTest
         var (_, lifecycle) = await LifecycleAsync();
         var id = await lifecycle.BeginAsync(Repo, 7, Comment, "/queue", "maintainer");
 
-        await lifecycle.LinkLogAsync(id, LogIds.ForKey("merge-queue/github/6600/7/run-1"));
+        await lifecycle.LinkLogAsync(id, LogIds.ForKey("merge-queue/github/6600/7/run-1").Value);
         await lifecycle.FinishAsync(id, ECommandOutcome.Refused, "not mergeable");
 
         logs.Lines.Should().ContainSingle().Which.Key.Should().Be("merge-queue/github/6600/7/run-1");

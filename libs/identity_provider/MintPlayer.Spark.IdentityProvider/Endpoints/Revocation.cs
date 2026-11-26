@@ -120,7 +120,8 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
         if (tokenDoc is not { Status: "valid" })
             tokenDoc = null;
 
-        if (tokenDoc != null && tokenDoc.ApplicationId == app.Id)
+        // Ignoring case: a token stores the application id as written, "OidcApplications/…" before #536 (D7).
+        if (tokenDoc != null && string.Equals(tokenDoc.ApplicationId, app.Id.Value, StringComparison.OrdinalIgnoreCase))
         {
             tokenDoc.Status = "revoked";
             tokenDoc.RedeemedAt = DateTime.UtcNow;
@@ -140,7 +141,7 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
                 }
             }
 
-            await audit.RecordAsync(session, OidcAuditKinds.TokenRevoked, actorId: null, app.Id, tokenDoc.Subject,
+            await audit.RecordAsync(session, OidcAuditKinds.TokenRevoked, actorId: null, app.Id.Value, tokenDoc.Subject,
                 httpContext.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["type"] = tokenDoc.Type }, ct);
             await session.SaveChangesAsync(ct);
         }

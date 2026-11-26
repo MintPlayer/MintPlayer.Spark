@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
@@ -167,14 +168,14 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
                 };
                 if (refusal is null)
                 {
-                    await RecordAsync(session, repository.Id!, tag, message.PusherLogin, ReleaseVersion.FromTag, clock.GetUtcNow().UtcDateTime, cancellationToken);
+                    await RecordAsync(session, repository.Id.Value, tag, message.PusherLogin, ReleaseVersion.FromTag, clock.GetUtcNow().UtcDateTime, cancellationToken);
                     await session.SaveChangesAsync(cancellationToken);
                 }
             }
             else if (result.Tag == GitWriterHandTagResult.Accepted && result.Commit is { } placedOn)
             {
                 // Segment T: the tag stays; recorded as placed there, so a promoted repository's past line releases it.
-                await RecordPlacedAsync(session, repository.Id!, tag, message.PusherLogin, placedOn, clock.GetUtcNow().UtcDateTime, cancellationToken);
+                await RecordPlacedAsync(session, repository.Id.Value, tag, message.PusherLogin, placedOn, clock.GetUtcNow().UtcDateTime, cancellationToken);
                 await session.SaveChangesAsync(cancellationToken);
             }
             if (result.Tag is GitWriterHandTagResult.Recorded or GitWriterHandTagResult.Refused && result.Commit is { } commit)
@@ -202,7 +203,7 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
         }
         await session.StoreAsync(new ReleaseVersion
         {
-            Id = id, Repository = repositoryId, PackageId = tag.PackageId, Version = tag.Version.ToString(), Tag = tag.Name, Actor = actor, Source = source,
+            Id = Id<ReleaseVersion>.FromTrusted(id), Repository = repositoryId, PackageId = tag.PackageId, Version = tag.Version.ToString(), Tag = tag.Name, Actor = actor, Source = source,
             RecordedUtc = nowUtc,
         }, id, cancellationToken);
     }
@@ -220,7 +221,7 @@ public partial class HandTagRecipient : IRecipient<HandTagMessage>
         {
             record = new ReleaseVersion
             {
-                Id = id, Repository = repositoryId, PackageId = tag.PackageId, Version = tag.Version.ToString(), Tag = tag.Name, Source = ReleaseVersion.FromTag,
+                Id = Id<ReleaseVersion>.FromTrusted(id), Repository = repositoryId, PackageId = tag.PackageId, Version = tag.Version.ToString(), Tag = tag.Name, Source = ReleaseVersion.FromTag,
                 RecordedUtc = nowUtc,
             };
             await session.StoreAsync(record, id, cancellationToken);

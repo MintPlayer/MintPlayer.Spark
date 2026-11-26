@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Organizations.Models;
 
 /// <summary>
@@ -14,10 +16,11 @@ namespace MintPlayer.Spark.Organizations.Models;
 [RequiresOrganizationRole("Edit", OrganizationRole.Admin)]
 [RequiresOrganizationRole("Delete", OrganizationRole.Admin)]
 [RequiresOrganizationRole(OrganizationActionNames.TransferOwnership, OrganizationRole.Owner)]
-public class OrganizationMembership : IOrganizationOwned
+[IdKind(SparkIdKind.Natural)]
+public partial class OrganizationMembership : IOrganizationOwned
 {
     /// <summary><see cref="IdFor"/>.</summary>
-    public string? Id { get; set; }
+    public Id<OrganizationMembership> Id { get; set; }
 
     /// <inheritdoc />
     public string? OrganizationId { get; set; }
@@ -35,8 +38,14 @@ public class OrganizationMembership : IOrganizationOwned
     public DateTime? JoinedAtUtc { get; set; }
 
     /// <summary>The id of <paramref name="userId"/>'s membership of <paramref name="organizationId"/>.</summary>
-    public static string IdFor(string userId, string organizationId) => PrefixFor(userId) + organizationId;
+    public static Id<OrganizationMembership> IdFor(string userId, string organizationId) => Id<OrganizationMembership>.FromTrusted(PrefixFor(userId) + organizationId);
 
-    /// <summary>The id prefix of every membership of <paramref name="userId"/>.</summary>
-    public static string PrefixFor(string userId) => "OrganizationMemberships/" + userId + "/";
+    /// <inheritdoc cref="IdFor(string, string)"/>
+    public static Id<OrganizationMembership> IdFor(string userId, Id<Organization> organizationId) => IdFor(userId, organizationId.Value);
+
+    /// <summary>
+    /// The id prefix of every membership of <paramref name="userId"/>. Memberships stored before #536 keep their
+    /// mixed casing; RavenDB ids and prefix loads ignore case.
+    /// </summary>
+    public static string PrefixFor(string userId) => "organizationmemberships/" + userId + "/";
 }

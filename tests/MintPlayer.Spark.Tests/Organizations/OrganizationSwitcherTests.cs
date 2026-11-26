@@ -51,21 +51,21 @@ public class OrganizationSwitcherTests : OrganizationsTestHost
         var acme = await SeedOrganizationAsync("Acme", ann);
         var globex = await SeedOrganizationAsync("Globex", ann);
         var other = await SeedOrganizationAsync("Other", bob);
-        var plan = await SeedNoteAsync("plan", acme.Id);
-        var memo = await SeedNoteAsync("memo", globex.Id);
+        var plan = await SeedNoteAsync("plan", acme.Id.Value);
+        var memo = await SeedNoteAsync("memo", globex.Id.Value);
 
         var all = await QueryIdsAsync(Wire.Query(NotesQueryId), ann.Id!);
-        var acmeOnly = await QueryIdsAsync(Wire.Query(NotesQueryId), ann.Id!, Chosen(acme.Id!));
-        var detail = await SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, id: memo.Id), ann.Id, Chosen(acme.Id!));
-        var members = await QueryIdsAsync(Wire.Query(MembersQueryId, new { parentId = globex.Id, parentType = "Organization" }), ann.Id!, Chosen(acme.Id!));
-        var organizations = await QueryIdsAsync(Wire.Query(OrganizationsQueryId), ann.Id!, Chosen(acme.Id!));
-        var foreignChoice = await QueryIdsAsync(Wire.Query(NotesQueryId), ann.Id!, Chosen(other.Id!));
+        var acmeOnly = await QueryIdsAsync(Wire.Query(NotesQueryId), ann.Id!, Chosen(acme.Id.Value));
+        var detail = await SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, id: memo.Id), ann.Id, Chosen(acme.Id.Value));
+        var members = await QueryIdsAsync(Wire.Query(MembersQueryId, new { parentId = globex.Id, parentType = "Organization" }), ann.Id!, Chosen(acme.Id.Value));
+        var organizations = await QueryIdsAsync(Wire.Query(OrganizationsQueryId), ann.Id!, Chosen(acme.Id.Value));
+        var foreignChoice = await QueryIdsAsync(Wire.Query(NotesQueryId), ann.Id!, Chosen(other.Id.Value));
 
         all.Should().BeEquivalentTo([plan.Id!, memo.Id!]);
         acmeOnly.Should().Equal(plan.Id!);
         detail.Status.Should().Be(HttpStatusCode.OK, "a row of another organization still opens by its link");
         members.Should().ContainSingle("a sub-query shows its parent's rows whatever the switcher says");
-        organizations.Should().BeEquivalentTo([acme.Id!, globex.Id!]);   // the switcher picks from the full organization list
+        organizations.Should().BeEquivalentTo([acme.Id.Value, globex.Id.Value]);   // the switcher picks from the full organization list
         foreignChoice.Should().BeEquivalentTo([plan.Id!, memo.Id!]);   // a cookie naming someone else's organization is ignored, never widened
     }
 
@@ -78,17 +78,17 @@ public class OrganizationSwitcherTests : OrganizationsTestHost
         var acme = await SeedOrganizationAsync("Acme", ann);
         var viewOnly = await SeedOrganizationAsync("ViewOnly", vic, (ann, OrganizationRole.Viewer));
 
-        var (chosenStatus, chosenBody) = await SendAsync("/spark/po/create", NewNote("chosen"), ann.Id, Chosen(acme.Id!));
+        var (chosenStatus, chosenBody) = await SendAsync("/spark/po/create", NewNote("chosen"), ann.Id, Chosen(acme.Id.Value));
         var (noneStatus, noneBody) = await SendAsync("/spark/po/create", NewNote("none"), ann.Id);
-        var (viewerStatus, viewerBody) = await SendAsync("/spark/po/create", NewNote("viewer"), ann.Id, Chosen(viewOnly.Id!));
+        var (viewerStatus, viewerBody) = await SendAsync("/spark/po/create", NewNote("viewer"), ann.Id, Chosen(viewOnly.Id.Value));
 
         chosenStatus.Should().Be(HttpStatusCode.Created);
         noneStatus.Should().Be(HttpStatusCode.Created);
         viewerStatus.Should().Be(HttpStatusCode.Created);
-        (await LoadAsync<OgNote>(chosenBody.GetProperty("result").GetProperty("id").GetString()!))!.OrganizationId.Should().Be(acme.Id);
-        (await LoadAsync<OgNote>(noneBody.GetProperty("result").GetProperty("id").GetString()!))!.OrganizationId.Should().Be(Organization.PersonalIdFor(ann.Id!));
+        (await LoadAsync<OgNote>(chosenBody.GetProperty("result").GetProperty("id").GetString()!))!.OrganizationId.Should().Be(acme.Id.Value);
+        (await LoadAsync<OgNote>(noneBody.GetProperty("result").GetProperty("id").GetString()!))!.OrganizationId.Should().Be(Organization.PersonalIdFor(ann.Id!).Value);
         (await LoadAsync<OgNote>(viewerBody.GetProperty("result").GetProperty("id").GetString()!))!.OrganizationId
-            .Should().Be(Organization.PersonalIdFor(ann.Id!), "a Viewer cannot create there, so the personal organization is the default");
+            .Should().Be(Organization.PersonalIdFor(ann.Id!).Value, "a Viewer cannot create there, so the personal organization is the default");
     }
 
     [Fact]
@@ -104,19 +104,19 @@ public class OrganizationSwitcherTests : OrganizationsTestHost
         status.Should().Be(HttpStatusCode.OK);
         body.GetProperty("current").ValueKind.Should().Be(JsonValueKind.Null, "no choice is All organizations");
         body.GetProperty("organizations").EnumerateArray().Select(o => o.GetProperty("id").GetString())
-            .Should().Equal(Organization.PersonalIdFor(ann.Id!), acme.Id);
+            .Should().Equal(Organization.PersonalIdFor(ann.Id!).Value, acme.Id.Value);
 
         var (pick, picked) = await SendAsync("/spark/organizations/current", new { organizationId = acme.Id }, ann.Id);
         pick.Should().Be(HttpStatusCode.OK);
-        picked.GetProperty("current").GetString().Should().Be(acme.Id);
+        picked.GetProperty("current").GetString().Should().Be(acme.Id.Value);
 
         (await SendAsync("/spark/organizations/current", new { organizationId = other.Id }, ann.Id)).Status
             .Should().Be(HttpStatusCode.NotFound, "an organization the caller is not in reads as missing (#453)");
         (await SendAsync("/spark/organizations/current", new { organizationId = (string?)null }, ann.Id)).Body
             .GetProperty("current").ValueKind.Should().Be(JsonValueKind.Null);
 
-        var (_, remembered, _) = await GetCurrentAsync(ann.Id!, Chosen(acme.Id!));
-        remembered.GetProperty("current").GetString().Should().Be(acme.Id);
+        var (_, remembered, _) = await GetCurrentAsync(ann.Id!, Chosen(acme.Id.Value));
+        remembered.GetProperty("current").GetString().Should().Be(acme.Id.Value);
     }
 
     [Fact]
@@ -126,14 +126,14 @@ public class OrganizationSwitcherTests : OrganizationsTestHost
         var bob = await SeedUserAsync("bob");
         var acme = await SeedOrganizationAsync("Acme", ann, (bob, OrganizationRole.Member));
         var globex = await SeedOrganizationAsync("Globex", bob);
-        var plan = await SeedNoteAsync("plan", acme.Id);
-        var memo = await SeedNoteAsync("memo", globex.Id);
-        (await QueryIdsAsync(Wire.Query(NotesQueryId), bob.Id!, Chosen(acme.Id!))).Should().Equal(plan.Id!);
+        var plan = await SeedNoteAsync("plan", acme.Id.Value);
+        var memo = await SeedNoteAsync("memo", globex.Id.Value);
+        (await QueryIdsAsync(Wire.Query(NotesQueryId), bob.Id!, Chosen(acme.Id.Value))).Should().Equal(plan.Id!);
 
-        await Organizations().LeaveAsync(acme.Id!, bob.Id!);
+        await Organizations().LeaveAsync(acme.Id.Value, bob.Id!);
 
-        (await QueryIdsAsync(Wire.Query(NotesQueryId), bob.Id!, Chosen(acme.Id!))).Should().Equal(memo.Id!);
-        var (_, body, setCookie) = await GetCurrentAsync(bob.Id!, Chosen(acme.Id!));
+        (await QueryIdsAsync(Wire.Query(NotesQueryId), bob.Id!, Chosen(acme.Id.Value))).Should().Equal(memo.Id!);
+        var (_, body, setCookie) = await GetCurrentAsync(bob.Id!, Chosen(acme.Id.Value));
         body.GetProperty("current").ValueKind.Should().Be(JsonValueKind.Null);
         setCookie.Should().NotBeNull("the stale choice is deleted");
         setCookie!.Should().Contain("expires=");

@@ -158,7 +158,8 @@ public class BrowseControllerRemainderTests : CoverageRavenTest
 
         var account = Ok(await CreateController(session).GetAccount(provider, "acme", default));
 
-        account.Id.Should().Be(Account.DocumentId(ForgeProviders.TryParse(provider, out var p) ? p : default, 1));
+        // A loaded id is lower case (#536 D7).
+        account.Id.Should().Be(Account.DocumentId(ForgeProviders.TryParse(provider, out var p) ? p : default, 1).ToLowerInvariant());
         account.Login.Should().Be("acme");
     }
 

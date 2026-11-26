@@ -32,7 +32,7 @@ public partial class ConvertCentralPackagesAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (ids.Count == 0)
             return;
 
@@ -52,13 +52,13 @@ public partial class ConvertCentralPackagesAction : SparkCustomAction
         var managed = await permissions.CheckAsync(repositories, cancellationToken);
         foreach (var repository in repositories)
         {
-            if (managed.GetValueOrDefault(repository.Id!) is null)
+            if (managed.GetValueOrDefault(repository.Id.Value) is null)
             {
-                results.Add(new(repository.Id!, repository.FullName, false, manager.GetTranslatedMessage("centralPackages.reason.notManaged"), null));
+                results.Add(new(repository.Id.Value, repository.FullName, false, manager.GetTranslatedMessage("centralPackages.reason.notManaged"), null));
                 continue;
             }
             var outcome = await onboarding.ConvertCentralPackagesAsync(repository, direction, cancellationToken);
-            results.Add(new(repository.Id!, repository.FullName, outcome.Opened, outcome.Note, outcome.PullRequestUrl));
+            results.Add(new(repository.Id.Value, repository.FullName, outcome.Opened, outcome.Note, outcome.PullRequestUrl));
         }
 
         foreach (var result in results)

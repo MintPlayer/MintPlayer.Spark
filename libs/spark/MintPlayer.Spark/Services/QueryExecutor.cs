@@ -641,6 +641,22 @@ internal sealed record DatabasePage(int TotalItems);
         // ── The queryable branch pushes the filter into the provider, and stays string-only.
         // Not a limitation: RavenDB cannot translate ToString() into RQL, and a document id is a
         // string by definition, so nothing reachable here needs more.
+        // An Id<T> (#536 D23) is filtered with Contains over typed ids on every provider: RavenDB's execution-time
+        // rewrite turns it into id() IN (...), LINQ to objects compares the ids as they are.
+        if (declaredId is { CanRead: true } && SparkIdValues.IsId(declaredId.PropertyType) && source is IQueryable)
+        {
+            var parameter = Expression.Parameter(elementType, "x");
+            var idAccess = Expression.Property(parameter, declaredId);
+            var typedIds = SparkIdValues.ToCollection(typeof(List<>).MakeGenericType(declaredId.PropertyType), ids);
+            var contains = typedIds.GetType().GetMethod(nameof(List<object>.Contains))!;
+            var lambda = Expression.Lambda(Expression.Call(Expression.Constant(typedIds), contains, idAccess), parameter);
+            var where = typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.Where)
+                         && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+                .MakeGenericMethod(elementType);
+            return where.Invoke(null, [source, lambda])!;
+        }
+
         if (declaredId is { CanRead: true } && declaredId.PropertyType == typeof(string)
             && source is IQueryable)
         {
@@ -660,10 +676,13 @@ internal sealed record DatabasePage(int TotalItems);
             // Contains is an INSTANCE method, so the list is the receiver and not the first
             // argument — the other way round throws "Static method requires null instance".
             var idList = ids.ToList();
+            // In memory, a row's id is compared ignoring case, as a store compares document ids: a loaded id is lower
+            // case, a submitted one may keep its legacy casing (#536 D7).
+            var idSet = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
 
             Expression predicate = queryProvider.IsStoreQuery((IQueryable)source)
                 ? queryProvider.In(idAccess, idList)
-                : Expression.Call(Expression.Constant(idList), ContainsMethod, idAccess);
+                : Expression.Call(Expression.Constant(idSet), ContainsMethod, idAccess);
 
             var lambda = Expression.Lambda(predicate, parameter);
 
@@ -752,9 +771,9 @@ internal sealed record DatabasePage(int TotalItems);
     private static string HookHost(EntityTypeDefinition definition, object? actions)
         => actions?.GetType().Name ?? $"{definition.Name}Actions";
 
-    /// <summary>The <c>List&lt;string&gt;.Contains</c> the default restriction composes.</summary>
-    private static readonly MethodInfo ContainsMethod = typeof(List<string>)
-        .GetMethod(nameof(List<string>.Contains), [typeof(string)])!;
+    /// <summary>The <c>HashSet&lt;string&gt;.Contains</c> the default in-memory restriction composes (the set ignores case).</summary>
+    private static readonly MethodInfo ContainsMethod = typeof(HashSet<string>)
+        .GetMethod(nameof(HashSet<string>.Contains), [typeof(string)])!;
 
     /// <summary>
     /// An actions class's optional <c>RestrictToIds</c>, duck-typed and cached (nulls too).

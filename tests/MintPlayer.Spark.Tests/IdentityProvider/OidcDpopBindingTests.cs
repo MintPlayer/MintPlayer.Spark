@@ -112,7 +112,7 @@ public class OidcDpopBindingTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var (app, code) = await CodeAsync();
         using (var session = Store.OpenAsyncSession())
         {
-            var stored = await session.LoadAsync<OidcApplication>(app.Id!);
+            var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.RequireDpop = true;
             await session.SaveChangesAsync();
         }

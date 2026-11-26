@@ -36,7 +36,7 @@ public class ModerationVoteTests : SparkTestDriver
         body.GetProperty("result").GetProperty("score").GetInt32().Should().Be(1);
         second.Should().Be(HttpStatusCode.OK);
         again.GetProperty("result").GetProperty("score").GetInt32().Should().Be(1, "the same vote again is a no-op");
-        var vote = await host.LoadAsync<ModerationVote>(ModerationIds.Vote(Bob, post));
+        var vote = await host.LoadAsync<ModerationVote>(ModerationIds.Vote(Bob, post).Value);
         vote!.Direction.Should().Be(1);
         (await host.EventsForAsync(Alice)).Should().ContainSingle().Which.Points.Should().Be(10);
     }
@@ -84,7 +84,7 @@ public class ModerationVoteTests : SparkTestDriver
         var (missing, missingBody) = await host.VoteAsync(Bob, "MoPosts/does-not-exist", 1);
         hiddenStatus.Should().Be(HttpStatusCode.NotFound);
         hiddenBody.GetRawText().Should().Be(missingBody.GetRawText(), "a hidden post answers exactly like a missing one (#453)");
-        (await host.LoadAsync<ModerationVote>(ModerationIds.Vote(Bob, hidden))).Should().BeNull();
+        (await host.LoadAsync<ModerationVote>(ModerationIds.Vote(Bob, hidden).Value)).Should().BeNull();
         var (plainStatus, plainBody) = await host.SendAsync("/spark/moderation/vote", Wire.Typed(MoHost.PlainTypeId, new { direction = 1 }, plainId), Bob);
         var (anonymous, _) = await host.SendAsync("/spark/moderation/vote", Wire.Typed(MoHost.PostTypeId, new { direction = 1 }, post), user: null);
         var (flagMissing, flagBody) = await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "spam" }, "MoPosts/does-not-exist"), Bob);
@@ -142,8 +142,8 @@ public class ModerationVoteTests : SparkTestDriver
         await host.SeedUserAsync("users/veteran", ageDays: 30);
         using (var session = host.Store.OpenAsyncSession())
         {
-            await session.StoreAsync(new ReputationSummary { UserId = "users/veteran", Total = 60 }, ModerationIds.Summary("users/veteran"));
-            await session.StoreAsync(new ReputationSummary { UserId = Carol, Total = 10 }, ModerationIds.Summary(Carol));
+            await session.StoreAsync(new ReputationSummary { UserId = "users/veteran", Total = 60 }, ModerationIds.Summary("users/veteran").Value);
+            await session.StoreAsync(new ReputationSummary { UserId = Carol, Total = 10 }, ModerationIds.Summary(Carol).Value);
             await session.SaveChangesAsync();
         }
         var post = await host.SeedPostAsync(Alice);
@@ -206,7 +206,7 @@ public class ModerationVoteTests : SparkTestDriver
         byTarget[posts[2]].ZeroedBy.Should().Be("pair-cap");
         byTarget[posts[3]].Points.Should().Be(10);
         byTarget[posts[4]].ZeroedBy.Should().Be("pair-cap");
-        (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(posts[4])))!.Score.Should().Be(1, "the score still moves");
+        (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(posts[4]).Value))!.Score.Should().Be(1, "the score still moves");
     }
 
     [Fact]
@@ -383,8 +383,8 @@ public class ModerationVoteTests : SparkTestDriver
         using (var session = host.Store.OpenAsyncSession())
         {
             foreach (var user in new[] { "users/young", Bob })
-                await session.StoreAsync(new ReputationSummary { UserId = user, Total = 20, PrivilegeReputation = 20 }, ModerationIds.Summary(user));
-            await session.StoreAsync(new ReputationSummary { UserId = Carol, Total = 20, PrivilegeReputation = 10 }, ModerationIds.Summary(Carol));
+                await session.StoreAsync(new ReputationSummary { UserId = user, Total = 20, PrivilegeReputation = 20 }, ModerationIds.Summary(user).Value);
+            await session.StoreAsync(new ReputationSummary { UserId = Carol, Total = 20, PrivilegeReputation = 10 }, ModerationIds.Summary(Carol).Value);
             await session.SaveChangesAsync();
         }
         var post = await host.SeedPostAsync(Alice);

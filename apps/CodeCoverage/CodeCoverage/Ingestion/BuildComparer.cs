@@ -25,10 +25,10 @@ public static class BuildComparer
             ? new ResolvedBase(build.DeclaredBaseSha, null, ResolvedBase.None, null, null)
             : await baseResolver.ResolveAsync(repository, commit, build.DeclaredBaseSha, cancellationToken);
 
-        if (resolved.BaseBuildId is null || build.Id is null)
+        if (resolved.BaseBuildId is null || build.Id.IsEmpty)
             return new Result(resolved, null, []);
 
-        var headTree = await session.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(build.Id), cancellationToken);
+        var headTree = await session.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(build.Id.Value), cancellationToken);
         if (headTree is null)
             return new Result(resolved, null, []);
 

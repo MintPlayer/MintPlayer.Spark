@@ -114,7 +114,7 @@ public sealed class OnboardingBackfillEndToEndTests : CoverageRavenTest, IAsyncL
             await seed.StoreAsync(new VersioningOnboardingState
             {
                 PullRequestNumber = 56, BaseSha = v11, Features = [EOnboardingFeature.Versioning], MoveTags = ["Acme.A/v10.0.0"], Backfill = true,
-            }, VersioningOnboardingState.ForRepository(repository.Id!));
+            }, VersioningOnboardingState.ForRepository(repository.Id.Value));
             await seed.SaveChangesAsync();
         }
 
@@ -171,7 +171,7 @@ public sealed class OnboardingBackfillEndToEndTests : CoverageRavenTest, IAsyncL
             .And.Contain("not tagged: Acme.B/v11.0.0 (rejected").And.Contain(Origin.RefusedMessage);
 
         using var read = store.OpenAsyncSession();
-        var state = (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id!)))!;
+        var state = (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repository.Id.Value)))!;
         (state.MergeHandledAt, state.BackfilledAt).Should().Be((merge, merge), "the merge is handled once; a refusal is reported, not retried forever");
     }
 }

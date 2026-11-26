@@ -49,7 +49,7 @@ public class FormattingActionTests : CoverageRavenTest
 
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyDictionary<string, string?>>(
-                repositories.ToDictionary(r => r.Id!, r => r.Id == Foreign ? null : DependencyOnboardingService.Owner));
+                repositories.ToDictionary(r => r.Id.Value, r => string.Equals(r.Id.Value, Foreign, StringComparison.OrdinalIgnoreCase) ? null : DependencyOnboardingService.Owner));
     }
 
     private readonly IManager manager = Substitute.For<IManager>();
@@ -71,7 +71,7 @@ public class FormattingActionTests : CoverageRavenTest
     }
 
     private void Target(string id, FormattingTarget? target, string? refusal = null)
-        => onboarding.FormattingTargetAsync(Arg.Is<Repository>(r => r.Id == id), Arg.Any<CancellationToken>()).Returns((target, refusal));
+        => onboarding.FormattingTargetAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, id, StringComparison.OrdinalIgnoreCase)), Arg.Any<CancellationToken>()).Returns((target, refusal));
 
     private async Task<T> ActionAsync<T>(Func<IDependencyOnboardingService, IOnboardingService, IFormatRunEngine, Raven.Client.Documents.Session.IAsyncDocumentSession,
         IManager, ISparkCurrentPrincipal, IEnumerable<IForgeRepositoryAdministration>, T> create)
@@ -166,9 +166,9 @@ public class FormattingActionTests : CoverageRavenTest
         var notes = ((FormattingResult)args.Result!).Repositories.ToDictionary(r => r.Id, r => (r.Started, r.Note));
         notes.Should().BeEquivalentTo(new Dictionary<string, (bool, string)>
         {
-            [RepositoryId] = (false, "formatting.reason.notSetUp"),
-            [Second] = (false, "the default branch could not be read"),
-            [Foreign] = (false, "formatting.reason.notManaged"),
+            [RepositoryId.ToLowerInvariant()] = (false, "formatting.reason.notSetUp"),
+            [Second.ToLowerInvariant()] = (false, "the default branch could not be read"),
+            [Foreign.ToLowerInvariant()] = (false, "formatting.reason.notManaged"),
             [Missing] = (false, "formatting.reason.notFound"),
         });
         manager.Client.Received(4).Notify("formatting.notStarted", NotificationKind.Warning);

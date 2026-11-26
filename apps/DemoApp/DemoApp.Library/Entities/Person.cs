@@ -3,10 +3,10 @@ using System.ComponentModel;
 
 namespace DemoApp.Library.Entities;
 
-public class Person
+public partial class Person
 {
     /// <summary>Unique identifier of this person, assigned automatically when it is saved.</summary>
-    public string? Id { get; set; }
+    public Id<Person> Id { get; set; }
     /// <summary>Given name, as it should appear on badges and in greetings.</summary>
     public string FirstName { get; set; } = string.Empty;
     /// <summary>Family name or surname of the person.</summary>

@@ -27,7 +27,7 @@ internal sealed class PersonalAccessTokenScheme(AgentGrantStore grants) : IAgent
 
         var agent = new AgentInformation(EAgentKind.PersonalAccessToken, grant.ClientId, VerifiedHost: null, grant.Name, principal)
         {
-            GrantId = grant.Id,
+            GrantId = grant.Id.Value,
         };
         return new AgentCredential(agent, grant.ToScope());
     }

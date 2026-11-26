@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -23,7 +24,7 @@ internal static class OidcReplayCache
         using var session = store.OpenAsyncSession();
         var marker = new OidcToken
         {
-            Id = id,
+            Id = Id<OidcToken>.FromTrusted(id),
             Type = OidcTokenTypes.DpopProof,
             Status = "redeemed",
             CreatedAt = DateTime.UtcNow,

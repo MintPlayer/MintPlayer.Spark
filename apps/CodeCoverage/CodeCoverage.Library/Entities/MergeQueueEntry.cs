@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.LookupReferences;
 
 namespace CodeCoverage.Entities;
@@ -18,9 +19,10 @@ namespace CodeCoverage.Entities;
 /// do.
 /// </para>
 /// </remarks>
-public class MergeQueueEntry
+[IdKind(SparkIdKind.Natural)]
+public partial class MergeQueueEntry
 {
-    public string? Id { get; set; }
+    public Id<MergeQueueEntry> Id { get; set; }
 
     /// <summary>The repository document id.</summary>
     public string Repository { get; set; } = string.Empty;

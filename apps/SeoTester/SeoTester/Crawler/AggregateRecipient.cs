@@ -42,7 +42,7 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
 
     private async Task AggregateAsync(AuditRun run, CancellationToken cancellationToken)
     {
-        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
+        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id.Value), cancellationToken);
         // The pages this run stored, of the site's latest results (one per page): never one an earlier scan left behind.
         var pages = await RunPipeline.LoadRunPagesAsync(session, run, frontier, cancellationToken);
 
@@ -85,7 +85,7 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
         }).ToList();
 
         var now = pipeline.NowUtc;
-        var id = run.Id!;
+        var id = run.Id.Value;
         session.Advanced.Patch<AuditRun, string>(id, r => r.Status, AuditRunStatus.Completed);
         RunPipeline.PatchProgress(session, id, "done", frontier?.Fetched ?? pages.Count, frontier?.Seen.Count ?? pages.Count, null);
         session.Advanced.Patch<AuditRun, DateTime?>(id, r => r.CompletedAtUtc, now);

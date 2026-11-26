@@ -53,7 +53,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
     {
         var pages = new Dictionary<string, List<PageFinding>>(StringComparer.Ordinal);
         var site = new List<StoredFinding>();
-        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
+        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id.Value), cancellationToken);
         if (frontier is not null)
             session.Advanced.Evict(frontier);
         var sample = await RenderSample.PickAsync(session, run, frontier, run.RenderedSample, cancellationToken);
@@ -65,7 +65,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
             NotMeasured(site, "no page could be rendered (no HTML page answered 200)");
         else
         {
-            RunPipeline.PatchProgress(session, run.Id!, "render", run.PagesDone, run.PagesDiscovered, null);
+            RunPipeline.PatchProgress(session, run.Id.Value, "render", run.PagesDone, run.PagesDiscovered, null);
             await session.SaveChangesAsync(cancellationToken);
             try
             {
@@ -85,7 +85,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
         }
 
         RunPipeline.AddFindings(session, run, pages, site);
-        await pipeline.FinishStageAsync(session, outbox, run.Id!, PipelineStages.Render, cancellationToken);
+        await pipeline.FinishStageAsync(session, outbox, run.Id.Value, PipelineStages.Render, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 
@@ -117,7 +117,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
                 probe = render.RouteProbe;
                 hitsOnLoad = render.HitsOnLoad;
             }
-            await pipeline.WriteProgressAsync(run.Id!, "render", run.PagesDone, run.PagesDiscovered, page.Url, cancellationToken);
+            await pipeline.WriteProgressAsync(run.Id.Value, "render", run.PagesDone, run.PagesDiscovered, page.Url, cancellationToken);
         }
 
         var worker = serviceWorker is null ? null : await PageRenderer.ServiceWorkerAsync(network, serviceWorker, cancellationToken);

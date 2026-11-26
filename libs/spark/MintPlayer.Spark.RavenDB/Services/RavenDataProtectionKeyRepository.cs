@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client.Documents;
 
@@ -44,14 +45,20 @@ internal sealed partial class RavenDataProtectionKeyRepository : ISparkDataProte
     {
         var name = string.IsNullOrEmpty(friendlyName) ? Guid.NewGuid().ToString("N") : friendlyName;
         using var session = store.OpenSession();
-        session.Store(new KeyDocument { Xml = element.ToString(SaveOptions.DisableFormatting) }, IdPrefix + name);
+        var id = Id<KeyDocument>.FromTrusted(IdPrefix + name);
+        session.Store(new KeyDocument { Id = id, Xml = element.ToString(SaveOptions.DisableFormatting) }, id.Value);
         session.SaveChanges();
     }
 
     /// <summary>One key-ring element. Shape and name are production data — see the class remarks.</summary>
-    internal sealed class KeyDocument
+    /// <remarks>
+    /// Its id is typed (#536) and new ids are lower case (D7). The key ring is read by a prefix load, which RavenDB
+    /// matches ignoring case, so the stored <c>DataProtectionKeys/…</c> documents stay readable.
+    /// </remarks>
+    [IdKind(SparkIdKind.Natural)]
+    internal sealed partial class KeyDocument
     {
-        public string? Id { get; set; }
+        public Id<KeyDocument> Id { get; set; }
         public string Xml { get; set; } = string.Empty;
     }
 }

@@ -35,10 +35,16 @@ namespace TestApp.People
     /// target or the property means migrating both.
     /// </remarks>
     [global::System.CodeDom.Compiler.GeneratedCode("MintPlayer.Spark.Contributions.SourceGenerators", "1")]
+    [global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]
     public partial class ArtistBiographyContribution : global::MintPlayer.Spark.Contributions.IContribution, global::MintPlayer.Spark.Abstractions.IHasNaturalId
     {
         /// <summary>The document id; see <see cref="GetId"/>.</summary>
-        public string? Id { get; set; }
+        public global::MintPlayer.Spark.Abstractions.Id<ArtistBiographyContribution> Id { get; set; }
+
+        /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.Text.Json.Serialization.JsonIgnore]
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ArtistBiographyContribution>.FromTrusted(value); }
 
         /// <inheritdoc />
         public string TargetId { get; set; } = "";
@@ -58,7 +64,7 @@ namespace TestApp.People
 
         /// <summary><c>{targetId}/BiographyContributions/User/{userId}</c>; the user id keeps its own slashes.</summary>
         public static string GetId(string targetId, string userId)
-            => targetId + "/BiographyContributions/" + "User/" + userId;
+            => (targetId + "/BiographyContributions/" + "User/" + userId).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, ContributorId);
     }
@@ -69,10 +75,16 @@ namespace TestApp.People
     /// <c>{targetId}/Biography</c>.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("MintPlayer.Spark.Contributions.SourceGenerators", "1")]
+    [global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]
     public partial class ArtistBiographyCurrent : global::MintPlayer.Spark.Contributions.ICurrentContribution, global::MintPlayer.Spark.Abstractions.IHasNaturalId
     {
         /// <summary>The document id; see <see cref="GetId"/>.</summary>
-        public string? Id { get; set; }
+        public global::MintPlayer.Spark.Abstractions.Id<ArtistBiographyCurrent> Id { get; set; }
+
+        /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.Text.Json.Serialization.JsonIgnore]
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ArtistBiographyCurrent>.FromTrusted(value); }
 
         /// <summary>The document id of the target entity (part of <see cref="Id"/>).</summary>
         public string TargetId { get; set; } = "";
@@ -91,7 +103,7 @@ namespace TestApp.People
 
         /// <summary><c>{targetId}/Biography</c>.</summary>
         public static string GetId(string targetId)
-            => targetId + "/Biography";
+            => (targetId + "/Biography").ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId);
     }
@@ -175,7 +187,7 @@ namespace TestApp.People
         {
             return new global::TestApp.People.ArtistBiographyContribution
             {
-                Id = ContributionId(targetId, row, contributorId),
+                Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.People.ArtistBiographyContribution>.FromTrusted(ContributionId(targetId, row, contributorId)),
                 TargetId = targetId,
                 ContributorId = contributorId,
                 UpdatedAt = updatedAtUtc,
@@ -194,7 +206,7 @@ namespace TestApp.People
         {
             return new global::TestApp.People.ArtistBiographyCurrent
             {
-                Id = global::TestApp.People.ArtistBiographyCurrent.GetId(contribution.TargetId),
+                Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.People.ArtistBiographyCurrent>.FromTrusted(global::TestApp.People.ArtistBiographyCurrent.GetId(contribution.TargetId)),
                 TargetId = contribution.TargetId,
                 ContributorId = contribution.ContributorId,
                 ContributionId = global::TestApp.People.ArtistBiographyContribution.GetId(contribution.TargetId, contribution.ContributorId),

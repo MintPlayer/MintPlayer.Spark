@@ -24,14 +24,15 @@ namespace SeoTester.Reports;
 /// always be printed again from the run, which is kept). Not a persistent object: read through
 /// <see cref="ReportPdfEndpoint"/> only.
 /// </summary>
-public class RunReport : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public partial class RunReport : IExpiring
 {
     public const string AttachmentName = "report.pdf";
 
     /// <summary>How long a printed report is kept.</summary>
     public static readonly TimeSpan Retention = TimeSpan.FromDays(7);
 
-    public string? Id { get; set; }
+    public Id<RunReport> Id { get; set; }
     public string RunId { get; set; } = string.Empty;
     public string? OrganizationId { get; set; }
     public string Culture { get; set; } = "en";
@@ -65,7 +66,7 @@ public partial class PdfRecipient : IRecipient<PdfMessage>
         if (run is null || run.Status != AuditRunStatus.Completed || !chromium.Enabled)
             return;
         var culture = ReportPage.CultureOf(message.Culture);
-        var id = RunReport.IdFor(run.Id!, culture);
+        var id = RunReport.IdFor(run.Id.Value, culture);
         var now = time.GetUtcNow().UtcDateTime;
         if (await session.LoadAsync<RunReport>(id, cancellationToken) is not { ExpiresAtUtc: { } until } || until <= now)
         {
@@ -75,8 +76,8 @@ public partial class PdfRecipient : IRecipient<PdfMessage>
             var pdf = await PrintAsync(html, cancellationToken);
             var report = new RunReport
             {
-                Id = id,
-                RunId = run.Id!,
+                Id = Id<RunReport>.FromTrusted(id),
+                RunId = run.Id.Value,
                 OrganizationId = run.OrganizationId,
                 Culture = culture,
                 Bytes = pdf.LongLength,
@@ -99,7 +100,7 @@ public partial class PdfRecipient : IRecipient<PdfMessage>
                     UserIds = [user],
                     Title = culture == "nl" ? $"Het rapport van {run.Origin} staat klaar" : $"The report of {run.Origin} is ready",
                     Body = culture == "nl" ? "Open de melding om de PDF te downloaden." : "Open the notification to download the PDF.",
-                    Url = RunReport.DownloadUrl(run.Id!, culture),
+                    Url = RunReport.DownloadUrl(run.Id.Value, culture),
                     OrganizationId = run.OrganizationId,
                     Category = "report-ready",
                 }, cancellationToken);
@@ -156,14 +157,14 @@ public partial class ExportReportAction : SparkCustomAction
             throw new SparkValidationException(manager.GetTranslatedMessage("seo.reportUnavailable"));
 
         var culture = ReportPage.CultureOf(cultures.GetCurrentCulture());
-        var url = RunReport.DownloadUrl(run.Id!, culture);
-        if (await session.LoadAsync<RunReport>(RunReport.IdFor(run.Id!, culture), cancellationToken) is { ExpiresAtUtc: { } until } && until > time.GetUtcNow().UtcDateTime)
+        var url = RunReport.DownloadUrl(run.Id.Value, culture);
+        if (await session.LoadAsync<RunReport>(RunReport.IdFor(run.Id.Value, culture), cancellationToken) is { ExpiresAtUtc: { } until } && until > time.GetUtcNow().UtcDateTime)
         {
             args.SetResult(new { url, ready = true });
             return;
         }
         var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        await outbox.EnqueueAsync(session, new PdfMessage(run.Id!, culture, userId), cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(session, new PdfMessage(run.Id.Value, culture, userId), cancellationToken: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         args.SetResult(new { url, ready = false });
         manager.Client.Notify(manager.GetTranslatedMessage("seo.reportBeingPrinted", run.Origin), MintPlayer.Spark.Abstractions.ClientOperations.NotificationKind.Info);
@@ -200,7 +201,7 @@ internal sealed partial class ReportPdfEndpoint : IGetEndpoint
         if (report is null || report.RunId != runId || report.ExpiresAtUtc <= time.GetUtcNow().UtcDateTime
             || report.OrganizationId is null || await organizations.GetRoleAsync(report.OrganizationId, userId, ct) is null)
             return Results.NotFound();
-        var attachment = await session.Advanced.Attachments.GetAsync(report.Id!, RunReport.AttachmentName, ct);
+        var attachment = await session.Advanced.Attachments.GetAsync(report.Id.Value, RunReport.AttachmentName, ct);
         if (attachment is null)
             return Results.NotFound();
         using var buffer = new MemoryStream();

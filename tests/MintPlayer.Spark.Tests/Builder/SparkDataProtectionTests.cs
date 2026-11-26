@@ -106,7 +106,7 @@ public class SparkDataProtectionTests : SparkTestDriver
             RavenDataProtectionKeyRepository.IdPrefix);
 
         stored.Should().ContainSingle();
-        stored[0].Id.Should().StartWith("DataProtectionKeys/");
+        stored[0].Id.Value.Should().StartWith("dataprotectionkeys/", "new ids are lower case (#536 D7)");
         session.Advanced.GetMetadataFor(stored[0])["@collection"].Should().Be("KeyDocuments");
     }
 

@@ -54,8 +54,9 @@ public class ManifestScanSchedulingTests : CoverageRavenTest
             await new ManifestScanScheduler(session, bus, NullLogger<ManifestScanScheduler>.Instance)
                 .ScheduleAccountAsync(account, waitForIndex: true);
 
-        bus.Of<ScanRepositoryManifestsMessage>().Select(m => m.RepositoryId).Should().Equal(RepoId(1));
-        bus.DeduplicationKeys.Should().ContainSingle().Which.Should().Be($"manifest-scan-{RepoId(1)}-{DateTimeOffset.UtcNow:yyyy-MM-dd}");
+        // The loaded repository's id, lower case (#536 D7).
+        bus.Of<ScanRepositoryManifestsMessage>().Select(m => m.RepositoryId).Should().Equal(RepoId(1).ToLowerInvariant());
+        bus.DeduplicationKeys.Should().ContainSingle().Which.Should().Be($"manifest-scan-{RepoId(1).ToLowerInvariant()}-{DateTimeOffset.UtcNow:yyyy-MM-dd}");
     }
 
     [Fact]

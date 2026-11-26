@@ -20,7 +20,7 @@ public static class CoverageSources
     /// </summary>
     public static async Task<string> ForCommitAsync(IAsyncDocumentSession session, Commit commit, CancellationToken cancellationToken)
     {
-        var assemblyId = CommitAssembly.DocumentId(commit.Id!);
+        var assemblyId = CommitAssembly.DocumentId(commit.Id.Value);
         return await session.Advanced.ExistsAsync(assemblyId, cancellationToken) ? assemblyId : commit.LatestBuildId!;
     }
 

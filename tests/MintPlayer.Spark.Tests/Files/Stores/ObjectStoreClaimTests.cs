@@ -158,13 +158,39 @@ public class ObjectStoreClaimTests : FilesTestHost
         (await KeysAsync(ObjectFileStore.StagingRoot)).Should().Equal(FileStore.StagingKey(committed));
     }
 
+    /// <summary>
+    /// #536 D7: an entity's files are keyed by its lower-case id, so any casing of the id finds them. An object stored before
+    /// (keyed by the id as the entity had it, e.g. <c>Accounts/github/1</c>) is moved to its lower-case key by the reconcile,
+    /// grace or not: a move loses nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_legacy_cased_key_is_moved_to_the_lower_case_one()
+    {
+        var id = await CreateCarWithAsync(Alice, "Document", "scan.pdf");
+        var fileId = (await LoadCarAsync(id)).Document!.FileId;
+        var key = FileStore.EntityKey(id, fileId);
+        FileStore.EntityKey(id.ToUpperInvariant(), fileId).Should().Be(key);
+        var legacyId = char.ToUpperInvariant(id[0]) + id[1..];
+        var legacy = ObjectFileStore.EntitiesRoot
+            + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(legacyId)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+            + "/" + fileId;
+        await FileStore.CopyAsync(key, legacy, CancellationToken.None);
+        await FileStore.DeleteAsync(key, CancellationToken.None);
+
+        var deleted = await Factory.GetService<FilesReconciler>().ReconcileAsync(CancellationToken.None);
+
+        deleted.Should().BeEmpty();
+        (await KeysAsync(ObjectFileStore.EntitiesRoot)).Should().Equal(key);
+        (await ReadAsync(key)).Should().Equal(FileSnifferTests.Fixture("scan.pdf"));
+    }
+
     /// <summary>A staged object whose upload was claimed, but whose after-commit delete never ran (a crash).</summary>
     private async Task<string> ClaimedStagedObjectAsync()
     {
         var (token, _) = await StageAsync(Alice, "Document", "scan.pdf");
         using (var session = Store.OpenAsyncSession())
         {
-            var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token));
+            var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value);
             upload!.State = SparkFileUploadState.Claimed;
             await session.SaveChangesAsync();
         }

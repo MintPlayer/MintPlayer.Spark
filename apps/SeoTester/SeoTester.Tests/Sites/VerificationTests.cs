@@ -24,15 +24,15 @@ public class VerificationTests(SeoTesterHostFixture host)
         var site = await SeedSiteAsync(host, Acme);
         host.Dns.Txt[OwnershipProof.RecordName(site.Host)] = ["unrelated", OwnershipProof.ExpectedValue(site.VerificationToken!)];
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id!, Ann);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id.Value, Ann);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("Verified");
-        var stored = (await LoadDocumentAsync<Site>(host, site.Id!))!;
+        var stored = (await LoadDocumentAsync<Site>(host, site.Id.Value))!;
         stored.IsVerified.Should().BeTrue();
         stored.VerificationMethod.Should().Be("Dns");
         stored.VerifiedAtUtc.HasValue.Should().BeTrue();
-        (await LogKindsAsync(site.Id!)).Should().Contain(AuditLogKinds.SiteVerified);
+        (await LogKindsAsync(site.Id.Value)).Should().Contain(AuditLogKinds.SiteVerified);
     }
 
     [Fact]
@@ -46,14 +46,14 @@ public class VerificationTests(SeoTesterHostFixture host)
         host.Web.Redirect(redirected.Origin + "/", "https://attacker.example.org/");
         host.Web.Page("https://attacker.example.org/", $"<html><head>{OwnershipProof.MetaTag(redirected.VerificationToken!)}</head></html>");
 
-        await ActionAsync(host, SiteTypeId, "Site", "VerifySite", file.Id!, Ann);
-        await ActionAsync(host, SiteTypeId, "Site", "VerifySite", meta.Id!, Ann);
-        var (_, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", redirected.Id!, Ann);
+        await ActionAsync(host, SiteTypeId, "Site", "VerifySite", file.Id.Value, Ann);
+        await ActionAsync(host, SiteTypeId, "Site", "VerifySite", meta.Id.Value, Ann);
+        var (_, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", redirected.Id.Value, Ann);
 
-        (await LoadDocumentAsync<Site>(host, file.Id!))!.VerificationMethod.Should().Be("WellKnownFile");
-        (await LoadDocumentAsync<Site>(host, meta.Id!))!.VerificationMethod.Should().Be("MetaTag");
+        (await LoadDocumentAsync<Site>(host, file.Id.Value))!.VerificationMethod.Should().Be("WellKnownFile");
+        (await LoadDocumentAsync<Site>(host, meta.Id.Value))!.VerificationMethod.Should().Be("MetaTag");
         body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("NoProof", raw);
-        (await LoadDocumentAsync<Site>(host, redirected.Id!))!.IsVerified.Should().BeFalse("a proof served by another origin proves nothing");
+        (await LoadDocumentAsync<Site>(host, redirected.Id.Value))!.IsVerified.Should().BeFalse("a proof served by another origin proves nothing");
     }
 
     [Fact]
@@ -61,13 +61,13 @@ public class VerificationTests(SeoTesterHostFixture host)
     {
         var site = await SeedSiteAsync(host, Acme);
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id!, Ann);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id.Value, Ann);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("NoProof");
         raw.Should().Contain("_seotester." + site.Host);
         raw.Should().Contain(site.VerificationToken!);
-        (await LoadDocumentAsync<Site>(host, site.Id!))!.ShouldSatisfy(s => !s.IsVerified && s.VerificationCheckedAtUtc != null);
+        (await LoadDocumentAsync<Site>(host, site.Id.Value))!.ShouldSatisfy(s => !s.IsVerified && s.VerificationCheckedAtUtc != null);
     }
 
     [Fact]
@@ -76,9 +76,9 @@ public class VerificationTests(SeoTesterHostFixture host)
         var site = await SeedSiteAsync(host, Acme);
         host.Dns.Txt[OwnershipProof.RecordName(site.Host)] = [OwnershipProof.ExpectedValue(site.VerificationToken!)];
 
-        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id!, Max)).Status.Should().Be(HttpStatusCode.NotFound);
-        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id!, Bob)).Status.Should().Be(HttpStatusCode.NotFound);
-        (await LoadDocumentAsync<Site>(host, site.Id!))!.IsVerified.Should().BeFalse();
+        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id.Value, Max)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id.Value, Bob)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await LoadDocumentAsync<Site>(host, site.Id.Value))!.IsVerified.Should().BeFalse();
     }
 
     /// <summary>
@@ -92,18 +92,18 @@ public class VerificationTests(SeoTesterHostFixture host)
         var site = await SeedSiteAsync(host, Acme, hostName: held.Host);
         host.Dns.Txt[OwnershipProof.RecordName(site.Host)] = [OwnershipProof.ExpectedValue(site.VerificationToken!), OwnershipProof.ExpectedValue(held.VerificationToken!)];
 
-        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id!, Ann);
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "VerifySite", site.Id.Value, Ann);
 
         status.Should().Be(HttpStatusCode.OK, raw);
         body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("ClaimRequested");
-        (await LoadDocumentAsync<Site>(host, site.Id!))!.IsVerified.Should().BeFalse();
+        (await LoadDocumentAsync<Site>(host, site.Id.Value))!.IsVerified.Should().BeFalse();
         using var session = host.Database.OpenAsyncSession();
         var requests = await session.Query<OrganizationInvitation>()
             .Customize(c => c.WaitForNonStaleResults())
             .Where(i => i.OrganizationId == Globex)
             .ToListAsync();
         requests.Should().Contain(i => i.Kind == OrganizationInvitationKind.JoinRequest && i.UserId == Ann);
-        (await LogKindsAsync(site.Id!)).Should().Contain(AuditLogKinds.SiteClaimRequested);
+        (await LogKindsAsync(site.Id.Value)).Should().Contain(AuditLogKinds.SiteClaimRequested);
     }
 
     [Fact]
@@ -112,19 +112,19 @@ public class VerificationTests(SeoTesterHostFixture host)
         var kept = await SeedSiteAsync(host, Acme, verified: true);
         var lost = await SeedSiteAsync(host, Acme, verified: true);
         host.Dns.Txt[OwnershipProof.RecordName(kept.Host)] = [OwnershipProof.ExpectedValue(kept.VerificationToken!)];
-        await BackdateCheckAsync(kept.Id!, lost.Id!);
+        await BackdateCheckAsync(kept.Id.Value, lost.Id.Value);
 
         var failures = await host.Factory.Services.GetRequiredService<MintPlayer.Spark.Settings.ISparkSettings>().GetAsync(SeoSettings.VerificationFailuresBeforeWithdrawal);
         for (var pass = 1; pass <= failures; pass++)
         {
-            (await LoadDocumentAsync<Site>(host, lost.Id!))!.IsVerified.Should().BeTrue($"still verified before re-check {pass}");
+            (await LoadDocumentAsync<Site>(host, lost.Id.Value))!.IsVerified.Should().BeTrue($"still verified before re-check {pass}");
             await RecheckAsync();
-            await BackdateCheckAsync(kept.Id!, lost.Id!);
+            await BackdateCheckAsync(kept.Id.Value, lost.Id.Value);
         }
 
-        (await LoadDocumentAsync<Site>(host, kept.Id!))!.ShouldSatisfy(s => s.IsVerified && s.VerificationFailures == 0);
-        (await LoadDocumentAsync<Site>(host, lost.Id!))!.ShouldSatisfy(s => !s.IsVerified && s.VerificationMethod == null);
-        (await LogKindsAsync(lost.Id!)).Should().Contain(AuditLogKinds.VerificationWithdrawn);
+        (await LoadDocumentAsync<Site>(host, kept.Id.Value))!.ShouldSatisfy(s => s.IsVerified && s.VerificationFailures == 0);
+        (await LoadDocumentAsync<Site>(host, lost.Id.Value))!.ShouldSatisfy(s => !s.IsVerified && s.VerificationMethod == null);
+        (await LogKindsAsync(lost.Id.Value)).Should().Contain(AuditLogKinds.VerificationWithdrawn);
     }
 
     private async Task RecheckAsync()

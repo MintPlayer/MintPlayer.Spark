@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using CodeCoverage.Versioning.Versions;
@@ -10,11 +11,12 @@ namespace CodeCoverage.PlatformLifecycle;
 /// components' major.minor, and the companion ranges use nothing finer (<c>&lt;=18.12</c>). Written only by
 /// <c>PlatformLifecycleCronJob</c>; the dependency planner loads all of them in one request.
 /// </summary>
-public sealed class SdkBandComponents
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class SdkBandComponents
 {
     public const string Prefix = "SdkBandComponents/";
 
-    public string? Id { get; set; }
+    public Id<SdkBandComponents> Id { get; set; }
 
     /// <summary>The feature band: <c>11.0.1xx</c>.</summary>
     public string Band { get; set; } = string.Empty;

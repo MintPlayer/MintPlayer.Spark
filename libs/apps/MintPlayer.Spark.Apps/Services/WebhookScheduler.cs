@@ -30,33 +30,34 @@ internal sealed partial class WebhookScheduler
     /// </summary>
     public async Task ScheduleAsync(IAsyncDocumentSession session, WebhookDelivery delivery, bool bypassChain, CancellationToken cancellationToken)
     {
+        var id = delivery.Id.Value;
         if (!Ordered || bypassChain)
         {
-            await session.StoreAsync(delivery, delivery.Id, cancellationToken);
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = delivery.Id! }, cancellationToken: cancellationToken);
+            await session.StoreAsync(delivery, id, cancellationToken);
+            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
             return;
         }
 
         delivery.Ordered = true;
-        await session.StoreAsync(delivery, delivery.Id, cancellationToken);
+        await session.StoreAsync(delivery, id, cancellationToken);
         var chainId = WebhookChain.IdFor(delivery.EndpointId);
-        var chain = await session.LoadAsync<WebhookChain>(chainId, cancellationToken);
+        var chain = await session.LoadAsync<WebhookChain>(chainId.Value, cancellationToken);
         if (chain is null)
         {
             chain = new WebhookChain { Id = chainId };
-            await session.StoreAsync(chain, chainId, cancellationToken);
+            await session.StoreAsync(chain, chainId.Value, cancellationToken);
         }
         if (chain.InFlight is null && !chain.Halted)
         {
-            chain.InFlight = delivery.Id;
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = delivery.Id! }, cancellationToken: cancellationToken);
+            chain.InFlight = id;
+            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
         }
         else
         {
             // Kept in event order (the id's time key sorts newest first): a fan-out retried after a later event's
-            // still lands ahead of it.
-            var index = chain.Waiting.FindIndex(w => string.CompareOrdinal(w, delivery.Id) < 0);
-            chain.Waiting.Insert(index < 0 ? chain.Waiting.Count : index, delivery.Id!);
+            // still lands ahead of it. Ignoring case: one queued before #536 waits as "WebhookDeliveries/…".
+            var index = chain.Waiting.FindIndex(w => StringComparer.OrdinalIgnoreCase.Compare(w, id) < 0);
+            chain.Waiting.Insert(index < 0 ? chain.Waiting.Count : index, id);
         }
     }
 
@@ -67,7 +68,7 @@ internal sealed partial class WebhookScheduler
     public Task CompleteAsync(WebhookDelivery delivery, bool halt, CancellationToken cancellationToken)
         => !delivery.Ordered ? Task.CompletedTask : WithChainAsync(delivery.EndpointId, (session, chain) =>
         {
-            if (chain.InFlight != delivery.Id)
+            if (!string.Equals(chain.InFlight, delivery.Id.Value, StringComparison.OrdinalIgnoreCase))
                 return Task.FromResult(false);
             if (halt)
             {
@@ -117,7 +118,7 @@ internal sealed partial class WebhookScheduler
         {
             using var session = store.OpenAsyncSession();
             session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
-            var chain = await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpointPublicId), cancellationToken);
+            var chain = await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpointPublicId).Value, cancellationToken);
             if (chain is null || !await change(session, chain))
                 return;
             try

@@ -22,7 +22,7 @@ public class EntityWebhookEventTests : AppsTestHost
     {
         var ann = await SeedUserAsync("ann");
         var acme = await SeedOrganizationAsync("Acme", ann);
-        var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.Organization(acme.Id!), ["note.created", "note.updated", "note.deleted"]);
+        var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.Organization(acme.Id.Value), ["note.created", "note.updated", "note.deleted"]);
 
         var (created, body) = await SendAsync("/spark/po/create", Wire.Typed(NoteTypeId, new
         {

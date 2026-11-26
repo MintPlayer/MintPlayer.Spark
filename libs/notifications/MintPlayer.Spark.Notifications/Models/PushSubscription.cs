@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Notifications.Models;
 
@@ -9,9 +10,10 @@ namespace MintPlayer.Spark.Notifications.Models;
 /// <c>PushSubscriptions/{userId}/{hash of the endpoint}</c>, so a user's devices are read by id prefix
 /// (no index), and subscribing the same browser twice updates one document.
 /// </summary>
-public class PushSubscription
+[IdKind(SparkIdKind.Natural)]
+public partial class PushSubscription
 {
-    public string? Id { get; set; }
+    public Id<PushSubscription> Id { get; set; }
 
     public string? UserId { get; set; }
 
@@ -33,8 +35,9 @@ public class PushSubscription
     public DateTime? CreatedAtUtc { get; set; }
 
 
-    public static string PrefixFor(string userId) => "PushSubscriptions/" + userId + "/";
+    /// <summary>The prefix of every device of <paramref name="userId"/>. Devices stored before #536 keep their mixed casing; RavenDB ids ignore case.</summary>
+    public static string PrefixFor(string userId) => "pushsubscriptions/" + userId + "/";
 
-    public static string IdFor(string userId, string endpoint)
-        => PrefixFor(userId) + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(endpoint)))[..32];
+    public static Id<PushSubscription> IdFor(string userId, string endpoint)
+        => Id<PushSubscription>.FromTrusted(PrefixFor(userId) + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(endpoint)))[..32]);
 }

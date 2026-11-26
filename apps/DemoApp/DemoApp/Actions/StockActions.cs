@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Library.Entities;
 using MintPlayer.Spark.Actions;
@@ -41,7 +42,7 @@ public partial class StockActions : DefaultPersistentObjectActions<Stock>, ISpar
         var stocks = new List<Stock>(300);
         foreach (var (symbol, company, price) in knownStocks)
         {
-            stocks.Add(new() { Id = $"stocks/{symbol}", Symbol = symbol, CompanyName = company, CurrentPrice = price, Change = 0m, ChangePercent = 0m });
+            stocks.Add(new() { Id = Id<Stock>.FromTrusted($"stocks/{symbol}"), Symbol = symbol, CompanyName = company, CurrentPrice = price, Change = 0m, ChangePercent = 0m });
         }
 
         // Generate remaining stocks to reach 300
@@ -49,7 +50,7 @@ public partial class StockActions : DefaultPersistentObjectActions<Stock>, ISpar
         {
             var symbol = $"STK{i:D3}";
             var price = Math.Round((decimal)(random.Next(5, 800) + random.NextDouble()), 2);
-            stocks.Add(new() { Id = $"stocks/{symbol}", Symbol = symbol, CompanyName = $"Company {symbol}", CurrentPrice = price, Change = 0m, ChangePercent = 0m });
+            stocks.Add(new() { Id = Id<Stock>.FromTrusted($"stocks/{symbol}"), Symbol = symbol, CompanyName = $"Company {symbol}", CurrentPrice = price, Change = 0m, ChangePercent = 0m });
         }
 
         var basePrices = stocks.ToDictionary(s => s.Id!, s => s.CurrentPrice);

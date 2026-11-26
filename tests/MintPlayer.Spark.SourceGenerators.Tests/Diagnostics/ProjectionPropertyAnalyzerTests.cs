@@ -46,6 +46,40 @@ public class ProjectionPropertyAnalyzerTests
         diagnostics.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("string?", false)]
+    [InlineData("string", false)]
+    [InlineData("int", true)]
+    public async Task A_projection_holds_a_typed_id_as_its_text(string projectionType, bool mismatch)
+    {
+        // #536 D23: the map writes c.Id.Value, so the index row carries the canonical string. The generated views
+        // declare string? Id for the same reason; any other type is still a mismatch.
+        var source = $$"""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            public partial class Car { public Id<Car> Id { get; set; } public string Plate { get; set; } = ""; }
+
+            public class Cars_Overview : AbstractIndexCreationTask<Car>
+            {
+                public Cars_Overview() { Map = cars => from c in cars select new { Id = c.Id.Value, c.Plate }; }
+            }
+
+            [FromIndex(typeof(Cars_Overview))]
+            public class VCar
+            {
+                public {{projectionType}} Id { get; set; }
+                public string Plate { get; set; } = "";
+            }
+            """;
+
+        var diagnostics = await GeneratorHarness.RunAnalyzerAsync(AnalyzerName, [source], [.. DefaultRefs, typeof(Id<>)]);
+
+        diagnostics.Where(d => d.Id == "SPARK001").Should().HaveCount(mismatch ? 1 : 0);
+    }
+
     [Fact]
     public async Task Ignored_property_raises_no_diagnostic_even_when_the_types_mismatch()
     {

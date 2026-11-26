@@ -79,7 +79,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         var scopeDefinitions = await OidcScopeCatalog.LoadAsync(session, requestedScopes, ct);
 
         // D6: what the user already allowed is shown as allowed, and only the rest is asked.
-        var grant = await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(userId, app.Id!), ct);
+        var grant = await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(userId, app.Id.Value), ct);
         var alreadyGranted = grant is { Status: "valid" }
             ? grant.GrantedScopes.ToHashSet(StringComparer.OrdinalIgnoreCase)
             : [];
@@ -323,7 +323,7 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
 
         request.Scopes = grantedScopes;
         request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, userId, grantedScopes, submission.Remember, ct);
-        await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, userId, app.Id, userId, context.Connection.RemoteIpAddress?.ToString(),
+        await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, userId, app.Id.Value, userId, context.Connection.RemoteIpAddress?.ToString(),
             new Dictionary<string, string> { ["scopes"] = string.Join(' ', grantedScopes), ["remembered"] = submission.Remember.ToString() }, ct);
 
         return await OidcAuthorizationFlow.IssueCodeResponseAsync(session, request, oidcIssuer.Resolve(context.Request), ct);

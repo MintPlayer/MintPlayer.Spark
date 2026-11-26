@@ -255,7 +255,7 @@ internal static class CoverageMcpSeed
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(1),
             TokenHash = TestPersonalAccessTokens.Hash(token),
             SecurityStamp = stamp,
-        }, AgentGrantIds.PersonalAccessToken(userId, tokenId));
+        }, AgentGrantIds.PersonalAccessToken(userId, tokenId).Value);
         return token;
     }
 }

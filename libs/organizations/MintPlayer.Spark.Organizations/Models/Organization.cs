@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.Organizations.Models;
 
 /// <summary>
@@ -15,10 +17,15 @@ namespace MintPlayer.Spark.Organizations.Models;
 [RequiresOrganizationRole("Delete", OrganizationRole.Owner)]
 [RequiresOrganizationRole(OrganizationActionNames.Invite, OrganizationRole.Admin)]
 [RequiresOrganizationRole(OrganizationActionNames.Leave, OrganizationRole.Viewer)]
-public class Organization
+[IdKind(SparkIdKind.Natural)]
+public partial class Organization
 {
-    /// <summary><c>Organizations/{guid}</c>, or <see cref="PersonalIdFor"/> for a personal organization.</summary>
-    public string? Id { get; set; }
+    /// <summary>
+    /// <c>organizations/{guid}</c>, or <see cref="PersonalIdFor"/> for a personal organization. Organizations created
+    /// before #536 keep their <c>Organizations/</c> casing, in their own id and in every <c>OrganizationId</c> that
+    /// refers to them: compare organization ids ignoring case.
+    /// </summary>
+    public Id<Organization> Id { get; set; }
 
     /// <summary>The name members see.</summary>
     public string Name { get; set; } = string.Empty;
@@ -33,10 +40,10 @@ public class Organization
     public DateTime? CreatedAtUtc { get; set; }
 
     /// <summary>The id of <paramref name="userId"/>'s personal organization: fixed, so creating it twice is a no-op.</summary>
-    public static string PersonalIdFor(string userId) => "Organizations/personal/" + userId;
+    public static Id<Organization> PersonalIdFor(string userId) => Id<Organization>.FromTrusted("organizations/personal/" + userId);
 
     /// <summary>A new id for a shared organization.</summary>
-    public static string NewId() => "Organizations/" + Guid.NewGuid().ToString("N");
+    public static Id<Organization> NewId() => Id<Organization>.FromTrusted("organizations/" + Guid.NewGuid().ToString("N"));
 }
 
 /// <summary>The package's custom actions (<c>App_Data/actions.json</c>).</summary>

@@ -263,7 +263,7 @@ internal sealed partial class SparkFileValueHandler : ISparkFileValueHandler
 
         if (string.IsNullOrEmpty(userId) || token.Length is 0 or > 64 || !token.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
             throw refusal;
-        var upload = await context.Session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token), cancellationToken);
+        var upload = await context.Session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value, cancellationToken);
         if (upload is null
             || upload.State != SparkFileUploadState.Committed
             || upload.ScanStatus != SparkFileScanStatus.Clean
@@ -277,7 +277,7 @@ internal sealed partial class SparkFileValueHandler : ISparkFileValueHandler
 
         // Single use, also against a concurrent save: the claim is written with the version this save read.
         upload.State = SparkFileUploadState.Claimed;
-        await context.Session.StoreAsync(upload, context.Session.GetVersion(upload), upload.Id!, cancellationToken);
+        await context.Session.StoreAsync(upload, context.Session.GetVersion(upload), upload.Id.Value, cancellationToken);
 
         var file = (SparkFile)Activator.CreateInstance(target.Element)!;
         file.FileId = Guid.NewGuid().ToString("N");

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -149,7 +150,7 @@ public partial class VersioningController : ControllerBase
         if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } forge)
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "unavailable", "This forge has no git writer access.");
 
-        using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken);
+        using var held = await locks.TryEnterAsync(repository.Id.Value, cancellationToken);
         if (held is null)
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "busy", "Another versioning run of this repository is still going.");
 
@@ -212,7 +213,7 @@ public partial class VersioningController : ControllerBase
         if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } forge)
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "unavailable", "This forge has no git writer access.");
 
-        using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken);
+        using var held = await locks.TryEnterAsync(repository.Id.Value, cancellationToken);
         if (held is null)
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "busy", "Another versioning run of this repository is still going.");
 
@@ -251,7 +252,7 @@ public partial class VersioningController : ControllerBase
         if (repository is null)
             return Forbidden("The repository is not known to CodeCoverage: install the GitHub App on it.");
 
-        var ids = tags.Distinct(StringComparer.Ordinal).ToDictionary(t => t, t => ReleaseVersion.DocumentId(repository.Id!, t), StringComparer.Ordinal);
+        var ids = tags.Distinct(StringComparer.Ordinal).ToDictionary(t => t, t => ReleaseVersion.DocumentId(repository.Id.Value, t), StringComparer.Ordinal);
         var records = await session.LoadAsync<ReleaseVersion>(ids.Values, cancellationToken);
         var refused = ids.Where(p => records.GetValueOrDefault(p.Value) is not { } r || r.Tag != p.Key || r.PlacedCommit != commit)
             .Select(p => p.Key).Order(StringComparer.Ordinal).ToList();
@@ -260,8 +261,8 @@ public partial class VersioningController : ControllerBase
 
     private VersioningRun NewRecord(Repository repository, long repoId, long runId, int runAttempt, string branch, string commit) => new()
     {
-        Id = VersioningRun.DocumentId(repository.Provider, repoId, runId, runAttempt),
-        Repository = repository.Id!,
+        Id = Id<VersioningRun>.FromTrusted(VersioningRun.DocumentId(repository.Provider, repoId, runId, runAttempt)),
+        Repository = repository.Id.Value,
         Branch = branch,
         Commit = commit,
         WorkflowRef = User.FindFirst(Oidc.WorkflowRefClaim)?.Value,
@@ -274,19 +275,19 @@ public partial class VersioningController : ControllerBase
         CancellationToken cancellationToken)
     {
         Record(record, response);
-        await session.StoreAsync(record, record.Id, cancellationToken);
+        await session.StoreAsync(record, record.Id.Value, cancellationToken);
         // #570 D11: which repository releases each package, and what each release brought, for a later backport's report.
-        await UpstreamReleases.RecordAsync(session, repository.Id!, record.Releases, cancellationToken);
+        await UpstreamReleases.RecordAsync(session, repository.Id.Value, record.Releases, cancellationToken);
         // #691 D41: saved with the run record; keyed by the run, so the action's retry of the same call sends nothing twice.
-        await webhooks.PublishAsync(VersioningRunResult.Of(record, repository, clock.GetUtcNow().UtcDateTime), repository, record.Id!, session, cancellationToken);
+        await webhooks.PublishAsync(VersioningRunResult.Of(record, repository, clock.GetUtcNow().UtcDateTime), repository, record.Id.Value, session, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         // D15: the Releases follow on the versioning lane, one at a time, so a secondary rate limit parks the message
         // instead of holding this request (and the action's fallback clock) open.
         if (record.Releases.Any(r => r.Release is not null))
-            await messageBus.BroadcastAsync(new CreateVersionReleasesMessage { RunId = record.Id! }, cancellationToken);
+            await messageBus.BroadcastAsync(new CreateVersionReleasesMessage { RunId = record.Id.Value }, cancellationToken);
         // D12: so does the cut of a release branch when a platform major moved.
         if (record.BranchCuts.Count > 0)
-            await messageBus.BroadcastAsync(new CutReleaseBranchesMessage { RunId = record.Id! }, cancellationToken);
+            await messageBus.BroadcastAsync(new CutReleaseBranchesMessage { RunId = record.Id.Value }, cancellationToken);
         await ReportAsync(repository, record.Commit, branch, response, cancellationToken);
         return StatusCode(status, response);
     }

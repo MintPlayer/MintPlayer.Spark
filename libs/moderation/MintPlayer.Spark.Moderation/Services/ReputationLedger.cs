@@ -31,8 +31,8 @@ internal sealed partial class ReputationLedger
         if (original.CompensatedById is not null || original.Kind is ReputationEventKinds.Reversal or ReputationEventKinds.Retraction)
             return null;
 
-        var id = ModerationIds.Compensation(original.Id!);
-        if (await session.Advanced.ExistsAsync(id))
+        var id = ModerationIds.Compensation(original.Id.Value);
+        if (await session.Advanced.ExistsAsync(id.Value))
             return null;
 
         // A reversal (detector, moderator, deletion, merge) of an entry that already counts is a
@@ -57,12 +57,12 @@ internal sealed partial class ReputationLedger
             // nets to zero at crediting time instead of dipping below zero first.
             CreditableAfterUtc = original.CreditableAfterUtc > nowUtc ? original.CreditableAfterUtc : nowUtc,
             Credited = creditNow,
-            CompensatesId = original.Id,
+            CompensatesId = original.Id.Value,
             RuleId = ruleId,
             CaseId = caseId,
         };
-        await session.StoreAsync(compensation, string.Empty, id);
-        original.CompensatedById = id;
+        await session.StoreAsync(compensation, string.Empty, id.Value);
+        original.CompensatedById = id.Value;
         return compensation;
     }
 
@@ -100,7 +100,7 @@ internal sealed partial class ReputationLedger
 
                 if (vote.Direction != 0)
                 {
-                    var tally = await session.LoadAsync<ModerationTally>(ModerationIds.Tally(vote.TargetId), cancellationToken);
+                    var tally = await session.LoadAsync<ModerationTally>(ModerationIds.Tally(vote.TargetId).Value, cancellationToken);
                     if (tally is not null)
                     {
                         if (vote.Direction > 0) tally.Up = Math.Max(0, tally.Up - 1);
@@ -162,7 +162,7 @@ internal sealed partial class ReputationLedger
             // Derived data: the last computation wins, no concurrency check.
             using var session = documentStore.OpenAsyncSession();
             var summary = await ComputeAsync(session, userId, cancellationToken);
-            await session.StoreAsync(summary, ModerationIds.Summary(userId), cancellationToken);
+            await session.StoreAsync(summary, ModerationIds.Summary(userId).Value, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
     }

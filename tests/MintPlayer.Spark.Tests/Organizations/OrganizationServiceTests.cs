@@ -31,9 +31,9 @@ public class OrganizationServiceTests : OrganizationsTestHost
         first.IsPersonal.Should().BeTrue();
         again.Id.Should().Be(first.Id);
         racing.Select(o => o.Id).Distinct().Should().Equal(first.Id);
-        var members = await MembersAsync(first.Id!);
+        var members = await MembersAsync(first.Id.Value);
         members.Should().ContainSingle().Which.Role.Should().Be(OrganizationRole.Owner);
-        (await Organizations().GetRoleAsync(first.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
+        (await Organizations().GetRoleAsync(first.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Owner);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
 
         organization.Name.Should().Be("Acme");
         organization.IsPersonal.Should().BeFalse();
-        (await MembersAsync(organization.Id!)).Should().ContainSingle()
+        (await MembersAsync(organization.Id.Value)).Should().ContainSingle()
             .Which.Should().Match(m => ((OrganizationMembership)m!).UserId == ann.Id && ((OrganizationMembership)m!).Role == OrganizationRole.Owner && ((OrganizationMembership)m!).UserName == "ann");
     }
 
@@ -58,7 +58,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var bob = await SeedUserAsync("bob");
         var acme = await SeedOrganizationAsync("Acme", ann);
 
-        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Member, ann.Id!);
 
         var (invitationId, token, mail) = LastLink("bob@test.local");
         mail.Template.Should().Be(OrganizationMailTemplates.Invitation);
@@ -78,7 +78,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
 
         outcome.Accepted.Should().BeTrue();
         outcome.OrganizationName.Should().Be("Acme");
-        (await Organizations().GetRoleAsync(acme.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(acme.Id.Value, bob.Id!)).Should().Be(OrganizationRole.Member);
         (await LoadAsync<OrganizationInvitation>(invitationId)).Should().BeNull("a link is spent by accepting it");
     }
 
@@ -89,16 +89,16 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var bob = await SeedUserAsync("bob");
         var eve = await SeedUserAsync("eve");
         var acme = await SeedOrganizationAsync("Acme", ann);
-        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Viewer, ann.Id!);
         var (invitationId, token, _) = LastLink("bob@test.local");
 
         var forged = await Organizations().AcceptAsync(invitationId, token + "x", bob.Id!);
         var wrongId = await Organizations().AcceptAsync("OrganizationInvitations/nope", token, bob.Id!);
-        var otherCollection = await Organizations().AcceptAsync(acme.Id!, token, bob.Id!);
+        var otherCollection = await Organizations().AcceptAsync(acme.Id.Value, token, bob.Id!);
         (await Organizations().AcceptAsync(invitationId, token, bob.Id!)).Accepted.Should().BeTrue();
         var used = await Organizations().AcceptAsync(invitationId, token, eve.Id!);
 
-        await Organizations().InviteAsync(acme.Id!, "eve@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "eve@test.local", OrganizationRole.Viewer, ann.Id!);
         var (expiringId, expiringToken, _) = LastLink("eve@test.local");
         using (var session = Store.OpenAsyncSession())
         {
@@ -109,7 +109,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
 
         foreach (var refusal in new[] { forged, wrongId, otherCollection, used, expired })
             refusal.Should().Be(OrganizationAcceptance.Invalid);
-        (await Organizations().GetRoleAsync(acme.Id!, eve.Id!)).HasValue.Should().BeFalse();
+        (await Organizations().GetRoleAsync(acme.Id.Value, eve.Id!)).HasValue.Should().BeFalse();
         (await LoadAsync<OrganizationInvitation>(expiringId)).Should().NotBeNull("an expired invitation lingers until the sweep; the check refused it");
     }
 
@@ -120,12 +120,12 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var bob = await SeedUserAsync("bob");
         var acme = await SeedOrganizationAsync("Acme", ann);
 
-        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Viewer, ann.Id!);
         var (firstId, firstToken, _) = LastLink("bob@test.local");
-        await Organizations().InviteAsync(acme.Id!, "BOB@test.local", OrganizationRole.Admin, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "BOB@test.local", OrganizationRole.Admin, ann.Id!);
 
         (await Organizations().AcceptAsync(firstId, firstToken, bob.Id!)).Accepted.Should().BeFalse("the first link was replaced");
-        (await InvitationsAsync(acme.Id!)).Should().ContainSingle().Which.Role.Should().Be(OrganizationRole.Admin);
+        (await InvitationsAsync(acme.Id.Value)).Should().ContainSingle().Which.Role.Should().Be(OrganizationRole.Admin);
     }
 
     [Fact]
@@ -137,10 +137,10 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var ada = await SeedUserAsync("ada");
         var acme = await SeedOrganizationAsync("Acme", ann, (vic, OrganizationRole.Viewer), (max, OrganizationRole.Member), (ada, OrganizationRole.Admin));
 
-        var byViewer = () => Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, vic.Id!);
-        var byMember = () => Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, max.Id!);
-        var asOwner = () => Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Owner, ann.Id!);
-        var badAddress = () => Organizations().InviteAsync(acme.Id!, "not an address", OrganizationRole.Viewer, ann.Id!);
+        var byViewer = () => Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Viewer, vic.Id!);
+        var byMember = () => Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Viewer, max.Id!);
+        var asOwner = () => Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Owner, ann.Id!);
+        var badAddress = () => Organizations().InviteAsync(acme.Id.Value, "not an address", OrganizationRole.Viewer, ann.Id!);
 
         await byViewer.Should().ThrowAsync<SparkRowLevelAccessDeniedException>();
         await byMember.Should().ThrowAsync<SparkRowLevelAccessDeniedException>();
@@ -148,7 +148,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
         await badAddress.Should().ThrowAsync<SparkValidationException>();
         Mailer.Sent.Should().BeEmpty();
 
-        await Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Admin, ada.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Admin, ada.Id!);
         Mailer.Sent.Should().ContainSingle();
     }
 
@@ -164,7 +164,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var rex = await SeedUserAsync("rex");
         var acme = await SeedOrganizationAsync("Acme", ann, (ole, OrganizationRole.Owner), (ada, OrganizationRole.Admin), (max, OrganizationRole.Member));
 
-        (await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!)).Should().BeTrue();
+        (await Organizations().RequestToJoinAsync(acme.Id.Value, rex.Id!)).Should().BeTrue();
 
         Mailer.Sent.Select(m => m.To).OrderBy(t => t).Should().Equal("ann@test.local", "ole@test.local");
         var (requestId, token, mail) = LastLink("ann@test.local");
@@ -180,8 +180,8 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var outcome = await Organizations().AcceptAsync(requestId, token, ada.Id!);
 
         outcome.Accepted.Should().BeTrue();
-        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
-        (await Organizations().GetRoleAsync(acme.Id!, ada.Id!)).Should().Be(OrganizationRole.Admin, "the approver does not change");
+        (await Organizations().GetRoleAsync(acme.Id.Value, rex.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(acme.Id.Value, ada.Id!)).Should().Be(OrganizationRole.Admin, "the approver does not change");
         (await Organizations().AcceptAsync(requestId, token, ann.Id!)).Should().Be(OrganizationAcceptance.Invalid, "the link is spent");
     }
 
@@ -192,7 +192,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var max = await SeedUserAsync("max");
         var acme = await SeedOrganizationAsync("Acme", ann, (max, OrganizationRole.Member));
 
-        (await Organizations().RequestToJoinAsync(acme.Id!, max.Id!)).Should().BeFalse();
+        (await Organizations().RequestToJoinAsync(acme.Id.Value, max.Id!)).Should().BeFalse();
         Mailer.Sent.Should().BeEmpty();
     }
 
@@ -206,17 +206,17 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var rex = await SeedUserAsync("rex", emailConfirmed: false);
         var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
 
-        var unconfirmed = () => Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var unconfirmed = () => Organizations().RequestToJoinAsync(acme.Id.Value, rex.Id!);
         await unconfirmed.Should().ThrowAsync<SparkValidationException>().WithMessage(SparkOrganizations.RequesterUnconfirmedProblem);
         Mailer.Sent.Should().BeEmpty();
-        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+        (await InvitationsAsync(acme.Id.Value)).Should().BeEmpty();
 
         await ConfirmEmailAsync(rex.Id!);
-        (await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!)).Should().BeTrue();
+        (await Organizations().RequestToJoinAsync(acme.Id.Value, rex.Id!)).Should().BeTrue();
         var (requestId, token, _) = LastLink("ann@test.local");
 
         (await Organizations().AcceptAsync(requestId, token, ada.Id!)).Accepted.Should().BeTrue();
-        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(acme.Id.Value, rex.Id!)).Should().Be(OrganizationRole.Member);
     }
 
     // ---- invitations bind to their address (D43) -----------------------------------------------------
@@ -228,18 +228,18 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var bob = await SeedUserAsync("bob");
         var eve = await SeedUserAsync("eve");
         var acme = await SeedOrganizationAsync("Acme", ann);
-        await Organizations().InviteAsync(acme.Id!, "Bob@Test.local ", OrganizationRole.Member, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "Bob@Test.local ", OrganizationRole.Member, ann.Id!);
         var (invitationId, token, _) = LastLink("Bob@Test.local");
 
         var byEve = await Organizations().AcceptAsync(invitationId, token, eve.Id!);
 
         byEve.Should().Be(OrganizationAcceptance.OtherAddress);
         byEve.Reason.Should().Be(OrganizationAcceptance.OtherAddressReason);
-        (await Organizations().GetRoleAsync(acme.Id!, eve.Id!)).HasValue.Should().BeFalse();
+        (await Organizations().GetRoleAsync(acme.Id.Value, eve.Id!)).HasValue.Should().BeFalse();
         (await LoadAsync<OrganizationInvitation>(invitationId)).Should().NotBeNull("a refusal does not spend the link");
 
         (await Organizations().AcceptAsync(invitationId, token, bob.Id!)).Accepted.Should().BeTrue("the address matches the way Identity normalizes it");
-        (await Organizations().GetRoleAsync(acme.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(acme.Id.Value, bob.Id!)).Should().Be(OrganizationRole.Member);
     }
 
     [Fact]
@@ -250,11 +250,11 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var uma = await SeedUserAsync("uma", emailConfirmed: false);
         var acme = await SeedOrganizationAsync("Acme", ann);
-        await Organizations().InviteAsync(acme.Id!, "uma@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "uma@test.local", OrganizationRole.Viewer, ann.Id!);
         var (invitationId, token, _) = LastLink("uma@test.local");
 
         (await Organizations().AcceptAsync(invitationId, token, uma.Id!)).Accepted.Should().BeTrue();
-        (await Organizations().GetRoleAsync(acme.Id!, uma.Id!)).Should().Be(OrganizationRole.Viewer);
+        (await Organizations().GetRoleAsync(acme.Id.Value, uma.Id!)).Should().Be(OrganizationRole.Viewer);
     }
 
     [Fact]
@@ -263,11 +263,11 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann", emailConfirmed: false);
         var acme = await SeedOrganizationAsync("Acme", ann);
 
-        var invite = () => Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+        var invite = () => Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Member, ann.Id!);
 
         await invite.Should().ThrowAsync<SparkValidationException>().WithMessage(SparkOrganizations.InviterUnconfirmedProblem);
         Mailer.Sent.Should().BeEmpty();
-        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+        (await InvitationsAsync(acme.Id.Value)).Should().BeEmpty();
     }
 
     [Fact]
@@ -277,10 +277,10 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var acme = await SeedOrganizationAsync("Acme", ann);
         await ConfirmEmailAsync(ann.Id!);
 
-        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "bob@test.local", OrganizationRole.Member, ann.Id!);
 
         Mailer.Sent.Select(m => m.To).Should().Equal("bob@test.local");
-        (await InvitationsAsync(acme.Id!)).Should().ContainSingle(i => i.Email == "bob@test.local");
+        (await InvitationsAsync(acme.Id.Value)).Should().ContainSingle(i => i.Email == "bob@test.local");
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public class OrganizationServiceTests : OrganizationsTestHost
         operations.Should().ContainSingle(o => o.GetProperty("type").GetString() == "notify"
             && o.GetProperty("message").GetString() == SparkOrganizations.InviterUnconfirmedProblem, "the refusal says why, before any prompt");
         Mailer.Sent.Should().BeEmpty();
-        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+        (await InvitationsAsync(acme.Id.Value)).Should().BeEmpty();
     }
 
     private async Task ConfirmEmailAsync(string userId)
@@ -318,16 +318,16 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var max = await SeedUserAsync("max");
         var acme = await SeedOrganizationAsync("Acme", ann, (max, OrganizationRole.Member));
 
-        var leave = () => Organizations().LeaveAsync(acme.Id!, ann.Id!);
+        var leave = () => Organizations().LeaveAsync(acme.Id.Value, ann.Id!);
         await leave.Should().ThrowAsync<SparkValidationException>().WithMessage("*Owner*");
 
-        await Organizations().TransferOwnershipAsync(acme.Id!, ann.Id!, max.Id!);
+        await Organizations().TransferOwnershipAsync(acme.Id.Value, ann.Id!, max.Id!);
 
-        (await Organizations().GetRoleAsync(acme.Id!, max.Id!)).Should().Be(OrganizationRole.Owner);
-        (await Organizations().GetRoleAsync(acme.Id!, ann.Id!)).Should().Be(OrganizationRole.Admin);
-        await Organizations().LeaveAsync(acme.Id!, ann.Id!);
-        (await Organizations().GetRoleAsync(acme.Id!, ann.Id!)).HasValue.Should().BeFalse("leaving removes access only");
-        (await LoadAsync<Organization>(acme.Id!)).Should().NotBeNull();
+        (await Organizations().GetRoleAsync(acme.Id.Value, max.Id!)).Should().Be(OrganizationRole.Owner);
+        (await Organizations().GetRoleAsync(acme.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Admin);
+        await Organizations().LeaveAsync(acme.Id.Value, ann.Id!);
+        (await Organizations().GetRoleAsync(acme.Id.Value, ann.Id!)).HasValue.Should().BeFalse("leaving removes access only");
+        (await LoadAsync<Organization>(acme.Id.Value)).Should().NotBeNull();
     }
 
     [Fact]
@@ -339,12 +339,12 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var out_ = await SeedUserAsync("out");
         var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin), (max, OrganizationRole.Member));
 
-        var byAdmin = () => Organizations().TransferOwnershipAsync(acme.Id!, ada.Id!, max.Id!);
-        var toOutsider = () => Organizations().TransferOwnershipAsync(acme.Id!, ann.Id!, out_.Id!);
+        var byAdmin = () => Organizations().TransferOwnershipAsync(acme.Id.Value, ada.Id!, max.Id!);
+        var toOutsider = () => Organizations().TransferOwnershipAsync(acme.Id.Value, ann.Id!, out_.Id!);
 
         await byAdmin.Should().ThrowAsync<SparkRowLevelAccessDeniedException>();
         await toOutsider.Should().ThrowAsync<SparkValidationException>();
-        (await Organizations().GetRoleAsync(acme.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
+        (await Organizations().GetRoleAsync(acme.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Owner);
     }
 
     [Fact]
@@ -355,20 +355,20 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var ada = await SeedUserAsync("ada");
         var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
-        await Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, ann.Id!);
+        await Organizations().InviteAsync(acme.Id.Value, "x@test.local", OrganizationRole.Viewer, ann.Id!);
         var other = await SeedOrganizationAsync("Other", ann);
 
-        var byAdmin = () => Organizations().DeleteAsync(acme.Id!, ada.Id!);
+        var byAdmin = () => Organizations().DeleteAsync(acme.Id.Value, ada.Id!);
         await byAdmin.Should().ThrowAsync<SparkRowLevelAccessDeniedException>("deleting is the Owner's (D23)");
         sites.Deleted.Should().BeEmpty();
 
-        await Organizations().DeleteAsync(acme.Id!, ann.Id!);
+        await Organizations().DeleteAsync(acme.Id.Value, ann.Id!);
 
-        sites.Deleted.Should().Equal(acme.Id!);
-        (await LoadAsync<Organization>(acme.Id!)).Should().BeNull();
-        (await MembersAsync(acme.Id!)).Should().BeEmpty();
-        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
-        (await MembersAsync(other.Id!)).Should().ContainSingle("another organization is untouched");
+        sites.Deleted.Should().Equal(acme.Id.Value);
+        (await LoadAsync<Organization>(acme.Id.Value)).Should().BeNull();
+        (await MembersAsync(acme.Id.Value)).Should().BeEmpty();
+        (await InvitationsAsync(acme.Id.Value)).Should().BeEmpty();
+        (await MembersAsync(other.Id.Value)).Should().ContainSingle("another organization is untouched");
     }
 
     [Fact]
@@ -378,11 +378,11 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var acme = await SeedOrganizationAsync("Acme", ann);
 
-        var delete = () => Organizations().DeleteAsync(acme.Id!, ann.Id!);
+        var delete = () => Organizations().DeleteAsync(acme.Id.Value, ann.Id!);
 
         await delete.Should().ThrowAsync<InvalidOperationException>();
-        (await LoadAsync<Organization>(acme.Id!)).Should().NotBeNull();
-        (await MembersAsync(acme.Id!)).Should().ContainSingle();
+        (await LoadAsync<Organization>(acme.Id.Value)).Should().NotBeNull();
+        (await MembersAsync(acme.Id.Value)).Should().ContainSingle();
     }
 
     [Fact]
@@ -391,18 +391,18 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var max = await SeedUserAsync("max");
         var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
-        await Organizations().InviteAsync(personal.Id!, "max@test.local", OrganizationRole.Admin, ann.Id!);
+        await Organizations().InviteAsync(personal.Id.Value, "max@test.local", OrganizationRole.Admin, ann.Id!);
         var (invitationId, token, _) = LastLink("max@test.local");
         (await Organizations().AcceptAsync(invitationId, token, max.Id!)).Accepted.Should().BeTrue();
 
-        await ((Func<Task>)(() => Organizations().LeaveAsync(personal.Id!, ann.Id!))).Should().ThrowAsync<SparkValidationException>();
-        await ((Func<Task>)(() => Organizations().DeleteAsync(personal.Id!, ann.Id!))).Should().ThrowAsync<SparkValidationException>();
-        await ((Func<Task>)(() => Organizations().TransferOwnershipAsync(personal.Id!, ann.Id!, max.Id!))).Should().ThrowAsync<SparkValidationException>();
-        (await LoadAsync<Organization>(personal.Id!)).Should().NotBeNull();
-        (await Organizations().GetRoleAsync(personal.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
+        await ((Func<Task>)(() => Organizations().LeaveAsync(personal.Id.Value, ann.Id!))).Should().ThrowAsync<SparkValidationException>();
+        await ((Func<Task>)(() => Organizations().DeleteAsync(personal.Id.Value, ann.Id!))).Should().ThrowAsync<SparkValidationException>();
+        await ((Func<Task>)(() => Organizations().TransferOwnershipAsync(personal.Id.Value, ann.Id!, max.Id!))).Should().ThrowAsync<SparkValidationException>();
+        (await LoadAsync<Organization>(personal.Id.Value)).Should().NotBeNull();
+        (await Organizations().GetRoleAsync(personal.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Owner);
 
-        await Organizations().LeaveAsync(personal.Id!, max.Id!);
-        (await Organizations().GetRoleAsync(personal.Id!, max.Id!)).HasValue.Should().BeFalse("its members leave like any other (D42)");
+        await Organizations().LeaveAsync(personal.Id.Value, max.Id!);
+        (await Organizations().GetRoleAsync(personal.Id.Value, max.Id!)).HasValue.Should().BeFalse("its members leave like any other (D42)");
     }
 
     // ---- personal organizations take members (D42) ---------------------------------------------------
@@ -415,19 +415,19 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var rex = await SeedUserAsync("rex");
         var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
 
-        await Organizations().InviteAsync(personal.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+        await Organizations().InviteAsync(personal.Id.Value, "bob@test.local", OrganizationRole.Member, ann.Id!);
         var (invitationId, invitationToken, _) = LastLink("bob@test.local");
         (await Organizations().AcceptAsync(invitationId, invitationToken, bob.Id!)).Accepted.Should().BeTrue();
 
         // F3: a second user verifying a site held in someone's personal organization asks to join it, and
         // its owner gets the acceptance-link mail.
-        (await Organizations().RequestToJoinAsync(personal.Id!, rex.Id!)).Should().BeTrue();
+        (await Organizations().RequestToJoinAsync(personal.Id.Value, rex.Id!)).Should().BeTrue();
         var (requestId, requestToken, mail) = LastLink("ann@test.local");
         mail.Template.Should().Be(OrganizationMailTemplates.JoinRequest);
         (await Organizations().AcceptAsync(requestId, requestToken, ann.Id!)).Accepted.Should().BeTrue();
 
-        (await Organizations().GetRoleAsync(personal.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
-        (await Organizations().GetRoleAsync(personal.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
-        (await Organizations().GetRoleAsync(personal.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
+        (await Organizations().GetRoleAsync(personal.Id.Value, bob.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(personal.Id.Value, rex.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(personal.Id.Value, ann.Id!)).Should().Be(OrganizationRole.Owner);
     }
 }

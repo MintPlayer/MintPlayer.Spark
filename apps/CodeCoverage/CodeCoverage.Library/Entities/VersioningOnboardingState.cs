@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Onboarding;
 
 namespace CodeCoverage.Entities;
@@ -12,9 +13,10 @@ namespace CodeCoverage.Entities;
 /// versioning run (which may race it). Both read the merge commit from the forge, so neither trusts the other.
 /// Loaded by id only (<see cref="ForRepository"/>); not indexed.
 /// </remarks>
-public class VersioningOnboardingState
+[IdKind(SparkIdKind.Natural)]
+public partial class VersioningOnboardingState
 {
-    public string? Id { get; set; }
+    public Id<VersioningOnboardingState> Id { get; set; }
 
     /// <summary>The default branch's head the onboarding commit was made on; a retry rebuilds the same commit.</summary>
     public string? BaseSha { get; set; }

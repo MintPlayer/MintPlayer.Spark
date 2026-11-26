@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using System.Text.Json;
 using CodeCoverage.Entities;
@@ -120,7 +121,7 @@ public class GitHubForgeLabelsTests
 
     private static readonly Repository Installed = new()
     {
-        Id = Repository.DocumentId(EForgeProvider.GitHub, 910040), GitHubId = 910040, Name = "widget", FullName = "acme/widget",
+        Id = Id<Repository>.FromTrusted(Repository.DocumentId(EForgeProvider.GitHub, 910040)), GitHubId = 910040, Name = "widget", FullName = "acme/widget",
         OwnerLogin = "acme", Account = AccountId,
     };
 

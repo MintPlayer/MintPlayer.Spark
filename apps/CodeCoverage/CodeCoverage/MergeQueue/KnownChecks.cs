@@ -163,7 +163,7 @@ public partial class RefreshKnownChecksRecipient : IRecipient<RefreshKnownChecks
             return;
         }
 
-        await recorder.RecordAsync(repository.Id!,
+        await recorder.RecordAsync(repository.Id.Value,
             reported.Select(check => new ForgeCheck { Name = check.Name, Kind = check.Kind, AppSlug = check.AppSlug, OnPullRequest = check.OnPullRequest }),
             cancellationToken);
     }
@@ -213,8 +213,8 @@ public partial class KnownChecksScheduler : IKnownChecksScheduler
                 if (repository.Connection == RepositoryConnection.Disconnected || repository.Archived) continue;
 
                 await messageBus.BroadcastOnceAsync(
-                    new RefreshKnownChecksMessage { RepositoryId = repository.Id! },
-                    RefreshKnownChecksMessage.DailyKey(repository.Id!, now),
+                    new RefreshKnownChecksMessage { RepositoryId = repository.Id.Value },
+                    RefreshKnownChecksMessage.DailyKey(repository.Id.Value, now),
                     cancellationToken);
                 queued++;
             }

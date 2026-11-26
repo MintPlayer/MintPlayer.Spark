@@ -1,6 +1,7 @@
 using System.Drawing;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using MintPlayer.Spark.Abstractions.Reflection;
 
 namespace MintPlayer.Spark.Storage.InMemory;
 
@@ -14,7 +15,7 @@ internal static class InMemoryJson
 {
     public static readonly JsonSerializerSettings Settings = new()
     {
-        Converters = { new StringEnumConverter(), new ColorConverter() },
+        Converters = { new StringEnumConverter(), new ColorConverter(), new IdConverter() },
         ObjectCreationHandling = ObjectCreationHandling.Replace,
         NullValueHandling = NullValueHandling.Include,
         DateParseHandling = DateParseHandling.None,
@@ -24,6 +25,21 @@ internal static class InMemoryJson
     public static string Serialize(object entity) => JsonConvert.SerializeObject(entity, Settings);
 
     public static object Deserialize(string json, Type type) => JsonConvert.DeserializeObject(json, type, Settings)!;
+
+    /// <summary><see cref="Abstractions.Id{T}"/> as its canonical string, as RavenDB stores it (#536 D23).</summary>
+    private sealed class IdConverter : JsonConverter
+    {
+        public override bool CanConvert(Type objectType) => SparkIdValues.IsId(objectType);
+
+        public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
+            => SparkIdValues.FromText(objectType, reader.TokenType == JsonToken.String ? (string?)reader.Value : null);
+
+        public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
+        {
+            if (SparkIdValues.ToText(value) is { } text) writer.WriteValue(text);
+            else writer.WriteNull();
+        }
+    }
 
     private sealed class ColorConverter : JsonConverter<Color>
     {

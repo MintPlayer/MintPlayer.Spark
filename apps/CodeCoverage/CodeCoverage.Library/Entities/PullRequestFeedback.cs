@@ -21,9 +21,10 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// </summary>
 [GenerateIndex]
-public class PullRequestFeedback
+[IdKind(SparkIdKind.Natural)]
+public partial class PullRequestFeedback
 {
-    public string? Id { get; set; }
+    public Id<PullRequestFeedback> Id { get; set; }
 
     /// <summary>The repository this pull request belongs to.</summary>
     [Reference(typeof(Repository))]

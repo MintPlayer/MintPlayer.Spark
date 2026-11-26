@@ -37,7 +37,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
 
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyDictionary<string, string?>>(
-                repositories.ToDictionary(r => r.Id!, r => r.Id == RepositoryId ? DependencyOnboardingService.Owner : null));
+                repositories.ToDictionary(r => r.Id.Value, r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase) ? DependencyOnboardingService.Owner : null));
     }
 
     private sealed class Lease : ISparkOneShotOAuthLease
@@ -126,7 +126,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
     {
         var holder = await SeedAsync();
         var f = new Fixture();
-        f.Forge.GetFileContentAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", "coverage.yml", Arg.Any<CancellationToken>())
+        f.Forge.GetFileContentAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase)), "master", "coverage.yml", Arg.Any<CancellationToken>())
             .Returns("versioning:\n  lines: {}\n");
         f.Manager.Retry.Result.Returns(
             new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false, Wire("build"), Wire("build", "e2e")) },
@@ -157,7 +157,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
 
         await f.OAuth.Received(1).AuthorizeAsync(GitHubRulesetsOAuth.ClientName,
             Arg.Is<IReadOnlyCollection<string>>(s => s.SequenceEqual(new[] { "repo" })), Arg.Any<CancellationToken>());
-        await f.Queue.Received(1).GetRulesetStateAsync(Arg.Is<Repository>(r => r.Id == RepositoryId), "master", Token, Arg.Any<CancellationToken>());
+        await f.Queue.Received(1).GetRulesetStateAsync(Arg.Is<Repository>(r => string.Equals(r.Id.Value, RepositoryId, StringComparison.OrdinalIgnoreCase)), "master", Token, Arg.Any<CancellationToken>());
         f.Manager.Retry.Received(1).Action("rulesets.chooseTitle", Arg.Any<string[]>(), "onboarding.plan", Arg.Any<PersistentObject>(),
             "rulesets.chooseMessage", true);
         f.Manager.Retry.Received(1).Action("rulesets.confirmTitle", Arg.Any<string[]>(), "rulesets.apply", null,
@@ -173,7 +173,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
 
         var result = (SetUpRulesetsResult)args.Result!;
         result.Applied.Should().ContainSingle().Which.FullName.Should().Be("acme/widget");
-        result.NotApplied.Should().ContainSingle().Which.Should().Be(new RulesetRepositoryResult(Foreign, "other-org/tool", "rulesets.reason.notManaged", []));
+        result.NotApplied.Should().ContainSingle().Which.Should().Be(new RulesetRepositoryResult(Foreign.ToLowerInvariant(), "other-org/tool", "rulesets.reason.notManaged", []));
         f.Manager.Client.Received(1).Notify(Arg.Any<string>(), NotificationKind.Success, Arg.Any<TimeSpan?>());
         f.Manager.Client.Received(1).Notify(Arg.Any<string>(), NotificationKind.Warning, Arg.Any<TimeSpan?>());
     }
@@ -188,7 +188,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         var f = new Fixture();
         RulesetRead Read(string id, string fullName)
         {
-            var repository = new Repository { Id = id, FullName = fullName, OwnerLogin = "acme", Name = fullName[5..], DefaultBranch = "master" };
+            var repository = new Repository { Id = Id<Repository>.FromTrusted(id), FullName = fullName, OwnerLogin = "acme", Name = fullName[5..], DefaultBranch = "master" };
             var state = new ForgeRulesetState(77, [], null);
             return new RulesetRead(new RulesetTarget(repository, f.Queue, "master"), state, MergeQueueRulesetPlanner.Defaults(state));
         }
@@ -201,7 +201,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
 
         var planned = await f.Setup().ChooseAsync([Read("Repositories/github/1", "acme/one"), Read("Repositories/github/2", "acme/two")], CancellationToken.None);
 
-        prompted.Select(p => p.Parent?.Id).Should().Equal("Repositories/github/1", "Repositories/github/2");
+        prompted.Select(p => p.Parent?.Id).Should().Equal("repositories/github/1", "repositories/github/2");
         prompted.Should().OnlyContain(p => p.Parent!.Name == nameof(Repository));
         // No ruleset and no classic protection: nothing is guessed from the default branch's head.
         ((string[])prompted[0][nameof(MergeQueueRulesetChoices.RequiredChecks)].Value!).Should().BeEmpty();
@@ -221,7 +221,7 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         // The merge cuts the lines with the App's token (onboarding_line_cuts_PRD D4); without the bypass SpaServices'
         // release/dotnet-10.x cut answered 422 (2026-11-12). Promoting or not makes no difference any more.
         var f = new Fixture();
-        var repository = new Repository { Id = "Repositories/github/1", FullName = "acme/one", OwnerLogin = "acme", Name = "one", DefaultBranch = "master" };
+        var repository = new Repository { Id = Id<Repository>.FromTrusted("Repositories/github/1"), FullName = "acme/one", OwnerLogin = "acme", Name = "one", DefaultBranch = "master" };
         var state = new ForgeRulesetState(77, [], null);
         f.Manager.Retry.Result.Returns(new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false, Wire("build"), Wire("build")) });
 

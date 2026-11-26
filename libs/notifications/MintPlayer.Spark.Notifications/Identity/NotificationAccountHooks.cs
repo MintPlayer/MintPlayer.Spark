@@ -16,7 +16,7 @@ internal sealed class NotificationAccountDeletion(IDocumentStore store) : ISpark
         using var session = store.OpenAsyncSession();
         foreach (var device in await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024, token: cancellationToken))
             session.Delete(device);
-        foreach (var preference in await session.Advanced.LoadStartingWithAsync<NotificationPreference>("NotificationPreferences/" + userId + "/", pageSize: 1024, token: cancellationToken))
+        foreach (var preference in await session.Advanced.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), pageSize: 1024, token: cancellationToken))
             session.Delete(preference);
         await session.SaveChangesAsync(cancellationToken);
 
@@ -55,11 +55,11 @@ internal sealed class NotificationPersonalData(IDocumentStore store) : ISparkPer
             .Take(10_000)
             .ToListAsync(cancellationToken);
         var devices = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024, token: cancellationToken);
-        var preferences = await session.Advanced.LoadStartingWithAsync<NotificationPreference>("NotificationPreferences/" + userId + "/", pageSize: 1024, token: cancellationToken);
+        var preferences = await session.Advanced.LoadStartingWithAsync<NotificationPreference>(NotificationPreference.PrefixFor(userId), pageSize: 1024, token: cancellationToken);
 
         return new
         {
-            notifications = notifications.Select(n => new { n.Id, n.OrganizationId, n.Title, n.Body, n.Url, n.Category, n.CreatedAtUtc, n.IsRead, n.ReadAtUtc }),
+            notifications = notifications.Select(n => new { Id = n.Id.Value, n.OrganizationId, n.Title, n.Body, n.Url, n.Category, n.CreatedAtUtc, n.IsRead, n.ReadAtUtc }),
             devices = devices.Select(d => new { d.Service, d.Device, d.CreatedAtUtc }),
             preferences = preferences.Select(p => new { p.OrganizationId, p.InApp, p.Email, p.Push }),
         };

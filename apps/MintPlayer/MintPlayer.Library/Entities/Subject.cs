@@ -11,7 +11,7 @@ namespace MintPlayer.Entities;
 /// </summary>
 public abstract partial class Subject : ISoftDeletable, IAuditable
 {
-    public string? Id { get; set; }
+    public Id<Subject> Id { get; set; }
 
     /// <summary>Links to this subject elsewhere: YouTube, Spotify, Wikipedia, the official site.</summary>
     /// <remarks>

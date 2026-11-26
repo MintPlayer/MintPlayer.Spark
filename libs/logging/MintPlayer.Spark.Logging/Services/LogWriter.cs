@@ -20,7 +20,7 @@ internal sealed partial class LogWriter
         for (var attempt = 1; ; attempt++)
         {
             using var session = store.OpenSession();
-            var log = await session.LoadAsync<Log>(state.Id, cancellationToken);
+            var log = await session.LoadAsync<Log>(state.Id.Value, cancellationToken);
             string expectedVersion;
             if (log is null)
             {
@@ -40,7 +40,7 @@ internal sealed partial class LogWriter
                 log.ExpiresAtUtc = expiresAtUtc;
             log.Entries.AddRange(entries);
 
-            await session.StoreAsync(log, expectedVersion, state.Id, cancellationToken);
+            await session.StoreAsync(log, expectedVersion, state.Id.Value, cancellationToken);
             try
             {
                 await session.SaveChangesAsync(cancellationToken);

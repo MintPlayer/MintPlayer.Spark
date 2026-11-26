@@ -36,10 +36,16 @@ namespace TestApp.Charts
     /// target or the property means migrating both.
     /// </remarks>
     [global::System.CodeDom.Compiler.GeneratedCode("MintPlayer.Spark.Contributions.SourceGenerators", "1")]
+    [global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]
     public partial class ChartRankingsContribution : global::MintPlayer.Spark.Contributions.IContribution, global::MintPlayer.Spark.Abstractions.IHasNaturalId
     {
         /// <summary>The document id; see <see cref="GetId"/>.</summary>
-        public string? Id { get; set; }
+        public global::MintPlayer.Spark.Abstractions.Id<ChartRankingsContribution> Id { get; set; }
+
+        /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.Text.Json.Serialization.JsonIgnore]
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ChartRankingsContribution>.FromTrusted(value); }
 
         /// <inheritdoc />
         public string TargetId { get; set; } = "";
@@ -74,7 +80,7 @@ namespace TestApp.Charts
 
         /// <summary><c>{targetId}/RankingsContributions/{Year}/{Region}/{Edition}/{Live}/User/{userId}</c>; the user id keeps its own slashes.</summary>
         public static string GetId(string targetId, int year, global::TestApp.Charts.Region region, global::System.Guid edition, bool live, string userId)
-            => targetId + "/RankingsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live) + "/User/" + userId;
+            => (targetId + "/RankingsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live) + "/User/" + userId).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Year, Region, Edition, Live, ContributorId);
     }
@@ -85,10 +91,16 @@ namespace TestApp.Charts
     /// <c>{targetId}/Rankings/{Year}/{Region}/{Edition}/{Live}</c>.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("MintPlayer.Spark.Contributions.SourceGenerators", "1")]
+    [global::MintPlayer.Spark.Abstractions.IdKind(global::MintPlayer.Spark.Abstractions.SparkIdKind.Natural)]
     public partial class ChartRankingsCurrent : global::MintPlayer.Spark.Contributions.ICurrentContribution, global::MintPlayer.Spark.Abstractions.IHasNaturalId
     {
         /// <summary>The document id; see <see cref="GetId"/>.</summary>
-        public string? Id { get; set; }
+        public global::MintPlayer.Spark.Abstractions.Id<ChartRankingsCurrent> Id { get; set; }
+
+        /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
+        [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+        [global::System.Text.Json.Serialization.JsonIgnore]
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ChartRankingsCurrent>.FromTrusted(value); }
 
         /// <summary>The document id of the target entity (part of <see cref="Id"/>).</summary>
         public string TargetId { get; set; } = "";
@@ -122,7 +134,7 @@ namespace TestApp.Charts
 
         /// <summary><c>{targetId}/Rankings/{Year}/{Region}/{Edition}/{Live}</c>.</summary>
         public static string GetId(string targetId, int year, global::TestApp.Charts.Region region, global::System.Guid edition, bool live)
-            => targetId + "/Rankings/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live);
+            => (targetId + "/Rankings/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(year) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.FormatEnum<global::TestApp.Charts.Region>(region) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(edition) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(live)).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Year, Region, Edition, Live);
     }
@@ -210,7 +222,7 @@ namespace TestApp.Charts
         {
             return new global::TestApp.Charts.ChartRankingsContribution
             {
-                Id = ContributionId(targetId, row, contributorId),
+                Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.Charts.ChartRankingsContribution>.FromTrusted(ContributionId(targetId, row, contributorId)),
                 TargetId = targetId,
                 ContributorId = contributorId,
                 UpdatedAt = updatedAtUtc,
@@ -235,7 +247,7 @@ namespace TestApp.Charts
         {
             return new global::TestApp.Charts.ChartRankingsCurrent
             {
-                Id = global::TestApp.Charts.ChartRankingsCurrent.GetId(contribution.TargetId, contribution.Year, contribution.Region, contribution.Edition, contribution.Live),
+                Id = global::MintPlayer.Spark.Abstractions.Id<global::TestApp.Charts.ChartRankingsCurrent>.FromTrusted(global::TestApp.Charts.ChartRankingsCurrent.GetId(contribution.TargetId, contribution.Year, contribution.Region, contribution.Edition, contribution.Live)),
                 TargetId = contribution.TargetId,
                 ContributorId = contribution.ContributorId,
                 ContributionId = global::TestApp.Charts.ChartRankingsContribution.GetId(contribution.TargetId, contribution.Year, contribution.Region, contribution.Edition, contribution.Live, contribution.ContributorId),

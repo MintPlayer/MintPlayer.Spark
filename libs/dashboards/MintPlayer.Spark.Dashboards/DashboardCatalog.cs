@@ -37,8 +37,8 @@ internal sealed class DashboardDefinition(string name)
     /// <summary>The values sampled into time series, by attribute name.</summary>
     public HashSet<string> History { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The backing document of the history: <c>SparkDashboards/{name}</c>.</summary>
-    public string DocumentId => DashboardStorage.DocumentId(Name);
+    /// <summary>The backing document of the history: <c>sparkdashboards/{name}</c>.</summary>
+    public string DocumentId => DashboardStorage.DocumentId(Name).Value;
 
     public void AddProvider(Type type)
     {

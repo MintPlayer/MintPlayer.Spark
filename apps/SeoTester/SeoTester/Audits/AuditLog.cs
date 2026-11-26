@@ -29,7 +29,7 @@ public sealed class AuditLog(IDocumentStore store, ISparkSettings settings, Time
             Kind = kind,
             UserId = userId,
             OrganizationId = site.OrganizationId,
-            SiteId = site.Id,
+            SiteId = site.Id.Value,
             Origin = site.Origin,
             RunId = runId,
             Verified = site.IsVerified,

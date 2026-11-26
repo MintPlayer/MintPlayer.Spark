@@ -49,14 +49,15 @@ public sealed class SparkQuotaAttribute(string name) : Attribute
 public sealed record SparkQuotaDecision(bool Allowed, int Limit, int Remaining, TimeSpan? RetryAfter);
 
 /// <summary>A quota's usage for one caller, stored at <c>SparkQuotaUsages/{quota}/{key}</c>; it expires with its last use (X1).</summary>
-public sealed class SparkQuotaUsage : IExpiring
+[IdKind(SparkIdKind.Natural)]
+public sealed partial class SparkQuotaUsage : IExpiring
 {
-    public string? Id { get; set; }
+    public Id<SparkQuotaUsage> Id { get; set; }
 
     /// <summary>The counted uses inside the window, oldest first (pruned on every write).</summary>
     public List<DateTime> Uses { get; set; } = [];
 
     public DateTime? ExpiresAtUtc { get; set; }
 
-    internal static string IdFor(string quota, string key) => "SparkQuotaUsages/" + quota + "/" + key;
+    internal static Id<SparkQuotaUsage> IdFor(string quota, string key) => Id<SparkQuotaUsage>.FromTrusted("sparkquotausages/" + quota + "/" + key);
 }

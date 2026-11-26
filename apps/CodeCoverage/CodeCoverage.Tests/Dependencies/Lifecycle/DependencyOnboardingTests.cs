@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -126,7 +127,7 @@ public class DependencyOnboardingTests : CoverageRavenTest
         var h = await OnboardableAsync();
         await h.StoreAsync(new DependencyUpdateRun
         {
-            Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId,
+            Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId,
             Onboarding = EDependencyOnboarding.Blocked, OnboardingPullRequestNumber = 12, OnboardingNote = "The onboarding pull request was closed without merging.",
         }, DependencyUpdateRun.ForRepository(RepositoryId));
 
@@ -272,13 +273,13 @@ public class DependencyOnboardingTests : CoverageRavenTest
         h.Updates.PullRequests[41] = new ForgeBotPullRequest(41, DependencyUpdateRun.RollingBranch, "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", "master", true, false, false, null);
         await h.StoreAsync(new DependencyUpdateRun
         {
-            Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId, Onboarding = EDependencyOnboarding.Done, FirstPullRequestOpened = true,
+            Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId, Onboarding = EDependencyOnboarding.Done, FirstPullRequestOpened = true,
             State = EDependencyRunState.AwaitingChecks, Run = 3, Generation = 7, PullRequestNumber = 41,
             RollingSha = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", RollingBotSha = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", WorkRefSha = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
         }, DependencyUpdateRun.ForRepository(RepositoryId));
-        var state = new DependencyUpdateState { Id = DependencyUpdateState.ForRepository(RepositoryId) };
+        var state = new DependencyUpdateState { Id = Id<DependencyUpdateState>.FromTrusted(DependencyUpdateState.ForRepository(RepositoryId)) };
         state.Holds.Add(new DependencyHold { Id = "human:lodash", Kind = EDependencyHoldKind.Human, DepNames = ["lodash"], Reason = "set by hand" });
-        await h.StoreAsync(state, state.Id);
+        await h.StoreAsync(state, state.Id.Value);
         return h;
     }
 
@@ -327,7 +328,7 @@ public class DependencyOnboardingTests : CoverageRavenTest
         var h = await OnboardableAsync();
         await h.StoreAsync(new DependencyUpdateRun
         {
-            Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId,
+            Id = Id<DependencyUpdateRun>.FromTrusted(DependencyUpdateRun.ForRepository(RepositoryId)), Repository = RepositoryId,
             Onboarding = EDependencyOnboarding.Blocked, OnboardingPullRequestNumber = 12,
         }, DependencyUpdateRun.ForRepository(RepositoryId));
         await SwitchOffAsync(h);

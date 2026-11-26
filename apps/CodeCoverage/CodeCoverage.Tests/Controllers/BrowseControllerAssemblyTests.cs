@@ -95,7 +95,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
 
         var tree = (BrowseController.TreeResponse)((OkObjectResult)
             (await controller.GetTree("github", "owner", "repo", Sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
-        tree.BuildId.Should().Be(assemblyId);
+        tree.BuildId.Should().Be(assemblyId.ToLowerInvariant(), "the id of the loaded assembly, lower case (#536 D7)");
         var entries = tree.Entries.ToDictionary(e => e.Name);
         entries.Should().HaveCount(2);
         entries["a.cs"].Origin.Should().Be(FileOrigin.Measured);

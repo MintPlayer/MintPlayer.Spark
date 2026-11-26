@@ -87,8 +87,8 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().Equal(202601010001, 202601010002, 202601010003);
 
         using var session = Store.OpenAsyncSession();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001))).Should().BeTrue();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010003))).Should().BeTrue();
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001).Value)).Should().BeTrue();
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010003).Value)).Should().BeTrue();
         (await session.Advanced.ExistsAsync("seeded/1")).Should().BeTrue("the migration's own writes were persisted");
     }
 
@@ -116,10 +116,10 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().Equal(202601010001L);
 
         using var session = Store.OpenAsyncSession();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001))).Should().BeTrue();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010002)))
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001).Value)).Should().BeTrue();
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010002).Value))
             .Should().BeFalse("a migration that threw must not be marked applied");
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010003))).Should().BeFalse();
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010003).Value)).Should().BeFalse();
     }
 
     private const string LockKey = "spark/migrations/lock";
@@ -159,7 +159,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().Equal(202601010001, 202601010002);
 
         using var session = Store.OpenAsyncSession();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001))).Should().BeTrue();
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001).Value)).Should().BeTrue();
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().Equal(202601010001, 202601010002, 202601010003);
 
         using var session = Store.OpenAsyncSession();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010003)))
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010003).Value))
             .Should().BeTrue("the later run re-acquired the released lock and applied the new migration");
     }
 
@@ -219,7 +219,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().BeEmpty("the lock holder is the one applying them");
 
         using var session = Store.OpenAsyncSession();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001)))
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001).Value))
             .Should().BeFalse();
     }
 
@@ -240,7 +240,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
             {
                 await seed.StoreAsync(
                     new SparkMigrationRecord { Version = version, Name = "x", AppliedOnUtc = DateTimeOffset.UtcNow },
-                    SparkMigrationRunner.MarkerId(version));
+                    SparkMigrationRunner.MarkerId(version).Value);
             }
 
             await seed.SaveChangesAsync();
@@ -267,7 +267,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().Equal(202601010001, 202601010002);
 
         using var session = Store.OpenAsyncSession();
-        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001)))
+        (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001).Value))
             .Should().BeTrue("an expired lease is taken over so the run proceeds");
     }
 }

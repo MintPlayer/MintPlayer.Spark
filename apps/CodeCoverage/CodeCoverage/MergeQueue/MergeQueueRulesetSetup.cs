@@ -76,7 +76,7 @@ public sealed record RulesetPlanned(RulesetTarget Target, MergeQueueRulesetPlan 
 /// <summary>One repository's outcome: what was done (<paramref name="Steps"/>), or why nothing was.</summary>
 public sealed record RulesetRepositoryResult(string RepositoryId, string FullName, string Message, IReadOnlyList<ForgeRulesetApplied> Steps)
 {
-    public static RulesetRepositoryResult Failure(Repository repository, string message) => new(repository.Id!, repository.FullName, message, []);
+    public static RulesetRepositoryResult Failure(Repository repository, string message) => new(repository.Id.Value, repository.FullName, message, []);
 }
 
 [Register(typeof(IMergeQueueRulesetSetup), ServiceLifetime.Scoped)]
@@ -156,7 +156,7 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpRulesets), cancellationToken: cancellationToken);
             // The parent makes the RequiredChecks picker query this repository's checks (CustomQueryArgs.Parent), and its
             // "Add new" confirm run against it.
-            form.Parent = new PersistentObject { Id = repository.Id, Name = nameof(Repository), ObjectTypeId = Guid.Empty };
+            form.Parent = new PersistentObject { Id = repository.Id.Value, Name = nameof(Repository), ObjectTypeId = Guid.Empty };
             form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = r.Defaults.RequiredApprovals;
             form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = r.Defaults.AdminsMayMergeByPullRequest ?? false;
             form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value = r.Defaults.RequiredChecks.ToArray();
@@ -235,7 +235,7 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             try
             {
                 var steps = await queue.ApplyRulesetPlanAsync(repository, branch, plan, accessToken, cancellationToken);
-                applied.Add(new RulesetRepositoryResult(repository.Id!, repository.FullName, string.Join(" ", steps.Select(s => s.Description)), [.. steps]));
+                applied.Add(new RulesetRepositoryResult(repository.Id.Value, repository.FullName, string.Join(" ", steps.Select(s => s.Description)), [.. steps]));
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {

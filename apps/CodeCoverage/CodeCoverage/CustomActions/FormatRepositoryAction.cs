@@ -48,7 +48,7 @@ public abstract partial class FormattingActionBase : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var ids = args.SelectedItems.Select(i => i.Id).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (ids.Count == 0)
             return;
 
@@ -62,16 +62,16 @@ public abstract partial class FormattingActionBase : SparkCustomAction
         var ready = new List<(Repository Repository, FormattingTarget Target)>();
         foreach (var repository in repositories)
         {
-            if (managed.GetValueOrDefault(repository.Id!) is null)
+            if (managed.GetValueOrDefault(repository.Id.Value) is null)
             {
-                results.Add(new(repository.Id!, repository.FullName, false, manager.GetTranslatedMessage("formatting.reason.notManaged")));
+                results.Add(new(repository.Id.Value, repository.FullName, false, manager.GetTranslatedMessage("formatting.reason.notManaged")));
                 continue;
             }
             var (target, refusal) = await onboarding.FormattingTargetAsync(repository, cancellationToken);
             if (target is null)
-                results.Add(new(repository.Id!, repository.FullName, false, refusal ?? manager.GetTranslatedMessage("formatting.reason.unreadable")));
+                results.Add(new(repository.Id.Value, repository.FullName, false, refusal ?? manager.GetTranslatedMessage("formatting.reason.unreadable")));
             else if (target.Workflow is null)
-                results.Add(new(repository.Id!, repository.FullName, false, manager.GetTranslatedMessage("formatting.reason.notSetUp")));
+                results.Add(new(repository.Id.Value, repository.FullName, false, manager.GetTranslatedMessage("formatting.reason.notSetUp")));
             else
                 ready.Add((repository, target));
         }
@@ -108,8 +108,8 @@ public abstract partial class FormattingActionBase : SparkCustomAction
                 Branch = target.Branch, Sha = target.Sha, Exclude = [.. FormattingWorkflow.Exclude(target.Workflow)],
             }, cancellationToken);
             results.Add(started
-                ? new(repository.Id!, repository.FullName, true, manager.GetTranslatedMessage("formatting.started"))
-                : new(repository.Id!, repository.FullName, false, manager.GetTranslatedMessage("formatting.reason.running")));
+                ? new(repository.Id.Value, repository.FullName, true, manager.GetTranslatedMessage("formatting.started"))
+                : new(repository.Id.Value, repository.FullName, false, manager.GetTranslatedMessage("formatting.reason.running")));
         }
 
         foreach (var result in results)

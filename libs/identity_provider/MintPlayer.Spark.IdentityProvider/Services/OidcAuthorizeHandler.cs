@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
@@ -248,7 +249,7 @@ internal sealed class OidcAuthorizeHandler(
 
         // Load the user's standing grant once: both the implicit branch and the skip-consent check
         // below need it, and the implicit branch used to run without consulting it at all.
-        var existingAuth = await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(userId, app.Id!), ct);
+        var existingAuth = await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(userId, app.Id.Value), ct);
         var withdrawn = existingAuth is not null && existingAuth.Status != "valid";
 
         // D6, incremental authorization: the client asks for what it needs now and gets what was
@@ -278,7 +279,7 @@ internal sealed class OidcAuthorizeHandler(
         if (!forceConsent && existingAuth is not null && existingAuth.RemembersConsentAt(DateTime.UtcNow)
             && requestedScopes.All(s => existingAuth.GrantedScopes.Contains(s, StringComparer.OrdinalIgnoreCase)))
         {
-            request.AuthorizationId = existingAuth.Id!;
+            request.AuthorizationId = existingAuth.Id.Value;
             return await OidcAuthorizationFlow.IssueCodeResponseAsync(session, request, issuer, ct);
         }
 
@@ -338,9 +339,9 @@ internal sealed class OidcAuthorizeHandler(
 
         var request = new OidcToken
         {
-            Id = OidcRequestReference.DocumentId(requestId),
+            Id = Id<OidcToken>.FromTrusted(OidcRequestReference.DocumentId(requestId)),
             Type = OidcTokenTypes.AuthorizationRequest,
-            ApplicationId = app.Id!,
+            ApplicationId = app.Id.Value,
             Subject = userId,
             RedirectUri = p.RedirectUri,
             Scopes = scopes,

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Storage.InMemory;
@@ -103,8 +104,13 @@ internal sealed class InMemorySparkSession : ISparkSession
         return Task.FromResult(rows);
     }
 
-    public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+    public Task<bool> ExistsAsync<T>(Id<T> id, CancellationToken cancellationToken = default) where T : class
+        => ExistsAsync(typeof(T), id.Value, cancellationToken);
+
+    public Task<bool> ExistsAsync(Type entityType, string id, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrEmpty(id))
+            return Task.FromResult(false);
         if (tracked.TryGetValue(id, out var known))
             return Task.FromResult(!known.Deleted);
         Request();
@@ -210,7 +216,10 @@ internal sealed class InMemorySparkSession : ISparkSession
         ids[entity] = id;
     }
 
-    public void Delete(string id, string? expectedVersion = null)
+    public void Delete<T>(Id<T> id, string? expectedVersion = null) where T : class
+        => Delete(typeof(T), id.Value, expectedVersion);
+
+    public void Delete(Type entityType, string id, string? expectedVersion = null)
     {
         if (tracked.TryGetValue(id, out var known))
         {
@@ -224,6 +233,9 @@ internal sealed class InMemorySparkSession : ISparkSession
 
     public void Delete(object entity)
     {
+        // A string here is an id meant for Delete(Type, id): the untyped Delete(string) is gone (#536 D27).
+        if (entity is string)
+            throw new ArgumentException("Delete(object) takes an entity; delete by id with Delete<T>(Id<T>) or Delete(Type, string).", nameof(entity));
         if (!ids.TryGetValue(entity, out var id))
             throw new InvalidOperationException($"{entity.GetType().Name} is not associated with the session; it cannot be deleted.");
         Delete(id);
@@ -283,7 +295,10 @@ internal sealed class InMemorySparkSession : ISparkSession
     public string? GetVersion(object entity)
         => ids.TryGetValue(entity, out var id) && tracked.TryGetValue(id, out var row) ? row.Version : null;
 
-    public Task<IReadOnlyDictionary<string, string>> GetVersionsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyDictionary<string, string>> GetVersionsAsync<T>(IEnumerable<Id<T>> ids, CancellationToken cancellationToken = default) where T : class
+        => GetVersionsAsync(typeof(T), ids.Select(id => id.Value), cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, string>> GetVersionsAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in ids.Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.OrdinalIgnoreCase))
