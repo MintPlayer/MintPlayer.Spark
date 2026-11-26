@@ -1,6 +1,8 @@
 using System.Xml.Linq;
+using Microsoft.EntityFrameworkCore;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Relational.Model;
 using MintPlayer.Spark.Relational.Storage;
 using MintPlayer.Spark.Relational.Tests._Infrastructure;
 
@@ -116,6 +118,52 @@ public abstract class RelationalFrameworkStoreTests : IAsyncLifetime
         using var read = Store.OpenSession();
         (await read.ExistsAsync(typeof(RelToken), "reltokens/defaulted")).Should().BeFalse();
         (await read.ExistsAsync(typeof(RelToken), "reltokens/later")).Should().BeTrue();
+    }
+
+    [SkippableFact]
+    public async Task A_row_that_stops_matching_before_the_delete_stays_and_leaves_no_tombstone()
+    {
+        var now = new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        using (new RelationalExpiration(Store).InstallStamper(t => t == typeof(RelToken) ? TimeSpan.FromHours(1) : null, new FixedTime(now)))
+        using (var session = Store.OpenSession())
+        {
+            await session.StoreAsync(new RelToken { ExpiresAtUtc = now.UtcDateTime.AddHours(-1) }, "reltokens/gone");
+            await session.StoreAsync(new RelToken { ExpiresAtUtc = now.UtcDateTime.AddHours(-1) }, "reltokens/extended");
+            await session.SaveChangesAsync();
+        }
+
+        // The ids are read first; before the delete runs, another writer extends one row, so it no longer matches.
+        var filtered = 0;
+        await using (var db = Store.NewContext())
+        {
+            var deleted = await RelationalTombstones.DeleteAsync<RelToken>(db, q =>
+            {
+                if (++filtered == 2)
+                {
+                    using var other = Store.NewContext();
+                    other.Set<RelToken>().Where(t => t.Id == "reltokens/extended")
+                        .ExecuteUpdate(s => s.SetProperty(t => EF.Property<DateTimeOffset?>(t, SparkDbContext.ExpiresProperty), now.AddDays(1)));
+                }
+                return q.Where(x => EF.Property<DateTimeOffset?>(x, SparkDbContext.ExpiresProperty) <= now);
+            }, now, default);
+            deleted.Should().Be(1);
+        }
+
+        await using var check = Store.NewContext();
+        (await check.Set<SparkTombstoneRow>().Select(t => t.DocumentId).ToListAsync()).Should().Equal(["reltokens/gone"]);
+        using var read = Store.OpenSession();
+        (await read.ExistsAsync(typeof(RelToken), "reltokens/extended")).Should().BeTrue();
+    }
+
+    [SkippableFact]
+    public async Task An_atomic_put_refused_for_another_reason_than_a_taken_key_throws()
+    {
+        var values = new RelationalAtomicValues(Store);
+        (await values.TryPutAsync("taken", "one", 0)).Should().NotBeNull();
+        (await values.TryPutAsync("taken", "two", 0)).Should().BeNull();
+
+        // A key longer than the column is no other writer's: the HiLo loop would retry it forever.
+        await values.Invoking(v => v.TryPutAsync(new string('k', SparkFrameworkSchema.KeyLength + 1), "value", 0)).Should().ThrowAsync<DbUpdateException>();
     }
 
     private sealed class FixedTime(DateTimeOffset now) : TimeProvider

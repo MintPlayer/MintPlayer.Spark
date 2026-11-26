@@ -33,9 +33,10 @@ public sealed class RelationalAtomicValues : ISparkAtomicValues
                 await db.SaveChangesAsync(cancellationToken);
                 return new SparkAtomicValue(key, value, 1);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (ex.InnerException is { } inner && db.Setup.Dialect.Classify(inner) is { Kind: SparkConstraintKind.Unique })
             {
-                // The key exists: another writer put it first (or it was never deleted).
+                // The key exists: another writer put it first (or it was never deleted). Any other failure is no other
+                // writer's, and throws: a caller that retries on null (the HiLo reservation) would retry it forever.
                 return null;
             }
         }

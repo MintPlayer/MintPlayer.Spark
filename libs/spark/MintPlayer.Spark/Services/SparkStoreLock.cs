@@ -89,14 +89,24 @@ internal sealed partial class SparkStoreLock : ISparkStoreLock
                 {
                     var next = time.GetUtcNow() + timeToLive;
                     var renewed = await values.TryPutAsync(current.Key, Format(holder, next), current.Version, stop.Token);
-                    if (renewed is null)
+                    if (renewed is not null)
                     {
-                        lost.Cancel();   // somebody else holds it now
-                        return;
+                        current = renewed;
+                        expires = next;
+                        continue;
                     }
 
-                    current = renewed;
-                    expires = next;
+                    // A renewal that timed out may still have been applied, at a version this lease never saw. A value
+                    // that names this holder is that renewal: only this lease writes its holder.
+                    if (await values.GetAsync(current.Key, stop.Token) is { } now && now.Value.StartsWith(holder + "|", StringComparison.Ordinal))
+                    {
+                        current = now;
+                        expires = ExpiresAt(now.Value) ?? expires;
+                        continue;
+                    }
+
+                    lost.Cancel();   // somebody else holds it now
+                    return;
                 }
                 catch (OperationCanceledException) when (stop.IsCancellationRequested)
                 {

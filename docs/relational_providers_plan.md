@@ -14,6 +14,30 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     met #713's own changes, the result kept both: `QueryResultProjector` merges versions ignoring case (#713's etag
     fix), and #713's tests came along (`IdValueTests`, `QueryRowEtagCasingTests`, now on `RavenSparkTestDriver`,
     and the `[IdKind(Natural)]` conformance case). The PRD now keeps only the relational side of D7, D23 and D27.
+  - **Three-part review (owner's request, 2026-11-26).** Three read-only reviewers covered the storage ports, the
+    library ports (M6–M8) and the relational providers. Every finding was checked in the code before it was reported.
+    Three defects new in this PR were fixed, each red first:
+    - **`RelationalTombstones.DeleteAsync` tombstoned rows it did not delete.** It reads the ids, then deletes
+      `filter AND key IN (…)` per chunk, but it tombstoned (and revised, or purged the revisions of) every row it had
+      read. A row that stopped matching in between, for example one whose expiry a writer extended during the sweep,
+      stayed live but showed as deleted in the change feed. Now, when a chunk deletes fewer rows than it read, the
+      chunk's rows still present are read back inside the transaction, and only the removed ones get a tombstone.
+      Red: `A_row_that_stops_matching_before_the_delete_stays_and_leaves_no_tombstone` found tombstones for `gone`
+      and `extended`; green on LocalDB.
+    - **`RelationalAtomicValues.TryPutAsync` read every save failure as "taken".** Any `DbUpdateException` returned
+      `null`, so the HiLo reservation loop retried a timeout or a refused insert forever, and the store lock reported a
+      free key as held. Only a unique violation (`dialect.Classify`) is "taken" now; anything else throws. Red:
+      `An_atomic_put_refused_for_another_reason_than_a_taken_key_throws`, where a key longer than the column returned
+      `null`; green on LocalDB, and `SqlServerAtomicValuesConformanceTests` 6/6.
+    - **`SparkStoreLock` lost its lease after a renewal that timed out but was applied.** The lease kept the old
+      version, so the next renewal's compare-and-swap failed and `Lost` fired while nobody else held the key. A
+      failed renewal now reads the value back and keeps the lease when it names this holder (only this lease writes
+      it). Red: `A_renewal_the_store_applied_but_never_answered_keeps_the_lease`; `SparkStoreLockTests` 10/10.
+    - Reported, not fixed:
+      - Two minor new findings left to the owner: `StoreSearchProvider` reads an unordered `take × 4` window before
+        its whole-word match, and `OidcKeyRing`'s background reload logs a lost Data Protection ring as a warning.
+      - One finding already on master: a RavenDB reservation can be taken over while its owner's save is in flight;
+        master's `UserStore` has the same takeover.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).

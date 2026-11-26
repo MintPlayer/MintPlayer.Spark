@@ -20,7 +20,8 @@ internal static class RelationalTombstones
     /// <summary>
     /// <c>DELETE</c> of the rows <paramref name="filter"/> selects, with a tombstone each, in one transaction on
     /// <paramref name="db"/>, a context of its own: its <c>SaveChanges</c> writes the tombstones and nothing else. The
-    /// ids are read first; each delete is <c>filter AND key IN (…)</c>, so a row that stopped matching in between stays.
+    /// ids are read first; each delete is <c>filter AND key IN (…)</c>, so a row that stopped matching in between stays,
+    /// and only the rows the delete removed get a tombstone.
     /// </summary>
     public static async Task<int> DeleteAsync<T>(SparkDbContext db, Func<IQueryable<T>, IQueryable<T>> filter, DateTimeOffset now, CancellationToken cancellationToken)
         where T : class
@@ -34,11 +35,13 @@ internal static class RelationalTombstones
         var touched = new List<RelationalRevisions.Touched>();
         foreach (var chunk in rows.Chunk(Chunk))
         {
-            var count = await RelationalSparkSession.WhereKeyIn(filter(db.Set<T>()), table, [.. chunk.Select(r => r.Key)]).ExecuteDeleteAsync(cancellationToken);
+            object[] keys = [.. chunk.Select(r => r.Key)];
+            var count = await RelationalSparkSession.WhereKeyIn(filter(db.Set<T>()), table, keys).ExecuteDeleteAsync(cancellationToken);
             if (count == 0)
                 continue;
             deleted += count;
-            foreach (var row in chunk)
+            var gone = count == chunk.Length ? chunk : await DeletedAsync<T>(db, table, chunk, keys, cancellationToken);
+            foreach (var row in gone)
             {
                 var id = SparkIdValues.ToText(row.Key)!;
                 db.Add(For(table, id, now));
@@ -55,6 +58,19 @@ internal static class RelationalTombstones
         await RelationalRevisions.ApplyAsync(db, touched, now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return deleted;
+    }
+
+    /// <summary>
+    /// The rows of <paramref name="chunk"/> the delete removed, when it removed fewer than were read: a row that stopped
+    /// matching in between is still there, and must get no tombstone and no delete revision. Inside the deleting
+    /// transaction, the chunk's rows still present are exactly the ones it left.
+    /// </summary>
+    private static async Task<KeyVersion[]> DeletedAsync<T>(SparkDbContext db, SparkTable table, KeyVersion[] chunk, object[] keys, CancellationToken cancellationToken)
+        where T : class
+    {
+        var left = await RelationalSparkSession.WhereKeyIn(db.Set<T>().AsNoTracking(), table, keys).Select(KeyAndVersion<T>(table)).ToListAsync(cancellationToken);
+        var kept = left.Select(r => r.Key).ToHashSet();
+        return [.. chunk.Where(r => !kept.Contains(r.Key))];
     }
 
     /// <summary><c>x =&gt; new KeyVersion { Key = (object)x.Id, Version = EF.Property&lt;long&gt;(x, "Version") }</c>.</summary>

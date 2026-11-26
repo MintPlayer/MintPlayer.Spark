@@ -110,4 +110,41 @@ public class SparkStoreLockTests
         lease.Lost.IsCancellationRequested.Should().BeTrue("the renewal found another holder");
         (await values.GetAsync("lock/h"))!.Value.Should().Be(theirs);
     }
+
+    [Fact]
+    public async Task A_renewal_the_store_applied_but_never_answered_keeps_the_lease()
+    {
+        var ttl = TimeSpan.FromMilliseconds(600);
+        var unanswered = new UnansweredOnce(values);
+        await using var lease = await new SparkStoreLock(unanswered, TimeProvider.System).TryAcquireAsync("lock/i", ttl);
+        unanswered.Armed = true;
+
+        await Task.Delay(ttl * 3);
+
+        unanswered.Lost.Should().Be(1, "one renewal timed out after the store applied it");
+        lease!.Lost.IsCancellationRequested.Should().BeFalse("the version that renewal wrote is this holder's own");
+        (await locks.TryAcquireAsync("lock/i", ttl)).Should().BeNull("the holder kept renewing");
+    }
+
+    /// <summary>Applies the next put once <see cref="Armed"/>, then throws as a timed-out call does: the answer is lost.</summary>
+    private sealed class UnansweredOnce(ISparkAtomicValues inner) : ISparkAtomicValues
+    {
+        public volatile bool Armed;
+        public int Lost;
+
+        public Task<SparkAtomicValue?> GetAsync(string key, CancellationToken cancellationToken = default) => inner.GetAsync(key, cancellationToken);
+
+        public async Task<SparkAtomicValue?> TryPutAsync(string key, string value, long expectedVersion, CancellationToken cancellationToken = default)
+        {
+            var put = await inner.TryPutAsync(key, value, expectedVersion, cancellationToken);
+            if (!Armed)
+                return put;
+            Armed = false;
+            Interlocked.Increment(ref Lost);
+            throw new TimeoutException("The store applied the put, but its answer never came.");
+        }
+
+        public Task<bool> TryDeleteAsync(string key, long expectedVersion, CancellationToken cancellationToken = default)
+            => inner.TryDeleteAsync(key, expectedVersion, cancellationToken);
+    }
 }
