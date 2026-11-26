@@ -51,7 +51,9 @@ internal sealed partial class QueryResultProjector : IQueryResultProjector
         RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default)
     {
         // Versions are read per entity type (#536 D27): a relational store answers from the type's table.
-        var etags = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Ignoring case like RavenDB's ids: it keys a version by the stored id, and a document stored before typed ids
+        // keeps its casing there ("People/…") while its typed row id is lower case (D7).
+        var etags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in rows.Rows.Where(row => !string.IsNullOrEmpty(row.Id)).GroupBy(row => row.ObjectTypeId))
         {
             if (modelLoader.GetEntityType(group.Key)?.ClrType is not { Length: > 0 } clrType
