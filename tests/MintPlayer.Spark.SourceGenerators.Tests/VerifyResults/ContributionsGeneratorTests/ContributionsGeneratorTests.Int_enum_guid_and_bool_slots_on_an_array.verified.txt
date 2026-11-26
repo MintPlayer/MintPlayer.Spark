@@ -45,7 +45,7 @@ namespace TestApp.Charts
         /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
         [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
         [global::System.Text.Json.Serialization.JsonIgnore]
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ChartRankingsContribution>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ChartRankingsContribution>.FromTrusted(value); }
 
         /// <inheritdoc />
         public string TargetId { get; set; } = "";
@@ -100,7 +100,7 @@ namespace TestApp.Charts
         /// <summary>The document id RavenDB reads and writes: <c>Id</c> as its canonical string (#536 D23 rule 6).</summary>
         [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
         [global::System.Text.Json.Serialization.JsonIgnore]
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ChartRankingsCurrent>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = global::MintPlayer.Spark.Abstractions.Id<ChartRankingsCurrent>.FromTrusted(value); }
 
         /// <summary>The document id of the target entity (part of <see cref="Id"/>).</summary>
         public string TargetId { get; set; } = "";

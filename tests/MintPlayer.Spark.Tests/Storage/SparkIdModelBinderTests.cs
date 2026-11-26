@@ -22,7 +22,7 @@ public class SparkIdModelBinderTests
     {
         public Id<BoundPerson> Id { get; set; }
 
-        private string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<BoundPerson>.FromTrusted(value); }
+        internal string? __DocumentId { get => Id.IsEmpty ? null : Id.Value; set => Id = Id<BoundPerson>.FromTrusted(value); }
     }
 
     private readonly IServiceProvider services;

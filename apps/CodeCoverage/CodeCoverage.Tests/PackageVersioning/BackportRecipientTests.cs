@@ -549,7 +549,7 @@ public class BackportRecipientTests : CoverageRavenTest
 
         var signal = outbox.Messages.Select(m => m.Message).OfType<MergeQueueSignalMessage>().Single();
         (signal.RepositoryId, signal.Kind, signal.Number, signal.Command, signal.Source, signal.Actor)
-            .Should().Be((RepositoryId, EMergeQueueSignal.Command, 1000, EMergeQueueCommand.Enqueue, EMergeQueueCommandSource.Backports, BackportRegenerationEngine.QueueActor));
+            .Should().Be((RepositoryId.ToLowerInvariant(), EMergeQueueSignal.Command, 1000, EMergeQueueCommand.Enqueue, EMergeQueueCommandSource.Backports, BackportRegenerationEngine.QueueActor));
         forge.Comments.Single().Body.Should().Contain("- `release/8.x`: #1000, handed to the merge queue");
         // The approval floor and a writer's approval know it as the App's own backport.
         using var check = store.OpenAsyncSession();
