@@ -1,8 +1,8 @@
 # Typed ids: `Id<T>` on RavenDB and InMemory (#536, part 1)
 
 > The first part of #536, split out of #697: every entity id becomes an `Id<T>`, on the stores Spark has today. The
-> SQL Server and PostgreSQL providers follow in #697, whose `docs/relational_providers_PRD.md` holds the decisions this
-> part implements (D7, D23, D27).
+> SQL Server and PostgreSQL providers follow in #697. The decisions this part implements (D7, D23, D27, O15) are in
+> `docs/typed_ids_PRD.md`, and how it was built is in `docs/typed_ids_plan.md`.
 
 **Packages:** the NuGet packages get a minor with breaking changes. The versioning engine computes the numbers from the
 tags, and everything ships once the merged pull request is backported to `release/dotnet-11.x`.
