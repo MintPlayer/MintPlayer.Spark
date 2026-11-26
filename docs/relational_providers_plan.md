@@ -7,6 +7,13 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 ## 1. Status (2026-11-26)
 
 - **Now (2026-11-26): M1–M9, O13 and O18–O21 are built.**
+  - **Split (owner, 2026-11-26).** Typed ids (M2) shipped first as #713, with its own
+    [PRD](typed_ids_PRD.md) and [plan](typed_ids_plan.md). After it merged, this branch was rebuilt on master: #697's
+    commits were cherry-picked in order without the 22 M2 commits, which master now holds squashed. One commit
+    became empty and was dropped (the `DashboardHistoryTests` conventions fix, already in #713). Where a later commit
+    met #713's own changes, the result kept both: `QueryResultProjector` merges versions ignoring case (#713's etag
+    fix), and #713's tests came along (`IdValueTests`, `QueryRowEtagCasingTests`, now on `RavenSparkTestDriver`,
+    and the `[IdKind(Natural)]` conformance case). The PRD now keeps only the relational side of D7, D23 and D27.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).
@@ -526,6 +533,159 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       gate tests. Relational 122/122 on both servers, SourceGenerators 742/742.
   - Order: the core pieces in `libs/` first (the struct, the model registry, the generator for `__DocumentId`, JSON,
     the route binder), then the feature libraries, then the apps.
+  - **Shipped as #713 (2026-11-26).** M2 was split out and merged first; its own record is
+    [`typed_ids_plan.md`](typed_ids_plan.md), which also has the fixes it needed and #713's review finding (grid rows
+    of pre-upgrade documents lost their etag). The records below are the history of how M2 was built on this branch.
+  - **M2a, the foundations (2026-11-24):**
+    - `Id<T>`, `ISparkId`, `SparkIdKind` and `[IdKind]` live in `MintPlayer.Spark.Attributes`, the dependency-free
+      package entity libraries reference. The struct carries its System.Text.Json converter as an attribute.
+    - `ISparkIds` (`NewAsync`, `Parse`, `TryParse`, `Canonicalize`, `KindOf`) is implemented by core's `SparkIds`.
+      The app model's overrides go in `SparkIdOptions.Kinds`, and the provider's HiLo is `ISparkIntegerIdSource`.
+    - `SparkIdValues` (Abstractions) is the reflective bridge between string and `Id<T>` that core's mapper, row
+      security and query executor use. It lets entities convert one at a time.
+    - RavenDB: `UseTypedIds()` covers the `__DocumentId` identity, lowercase prefixes and an `ISparkId` query value
+      converter. A Newtonsoft converter plus a contract resolver drop the own `Id` from the body. The execution-time
+      `RavenIdQueryRewriter` handles `x.Id ==`, `OrderBy` and `Contains` → `In`. `RavenIntegerIdSource` is the HiLo.
+    - InMemory reads and writes `Id<T>` and lowers new ids.
+    - `DocumentIdGenerator` (LibraryGenerators) emits the private `__DocumentId`; a non-partial entity is SPARK064.
+    - Tests: `SparkIdConformanceTests` (both providers) and `DocumentIdGeneratorTests`.
+    - **Deviations from D23, found while building it:**
+      - `FromTrusted` is public, hidden by `[EditorBrowsable(Never)]`. Generated code in an app's assembly can't call
+        an internal member. It lowers, so it can't produce a non-canonical id.
+      - A Guid key is canonical in its `D` form, not `N`: every id RavenDB generated so far has that form, so parsing
+        never moves a stored id (O15).
+      - A reference compared with an `Id<T>` value needs no rewrite. One `RegisterQueryValueConverter<ISparkId>`
+        covers every `T`, because RavenDB matches converters by the value's runtime type.
+  - **M2b, the typed contract (D27, e753252e6):**
+    - `ExistsAsync`, `Delete` and `GetVersionsAsync` each have a typed form (`Id<T>`) and a `Type` form. The untyped
+      string members are gone.
+    - Framework sites pass the runtime type. `QueryResultProjector` reads versions per `ObjectTypeId` through the model
+      loader.
+    - Most of the ~80 sites in the inventory turned out to be raw RavenDB sessions, which keep their own API.
+    - Found while building it: with `Delete(string)` gone, an id bound to `Delete(object entity)` without a compile
+      error (`DeleteDocumentUncheckedAsync` did). Both providers now refuse a string there.
+  - **S-ID6 (dee4c6778, PRD §8.13):** index maps over typed ids go through `RavenIndexIdRewriter`, which both Spark
+    index bases apply. A raw `AbstractIndexCreationTask` on a converted entity moves to a Spark base.
+  - **M2c, the entity conversion, one library per commit.** For each library:
+    - add the LibraryGenerators analyzer reference
+    - make the entities `partial` with `Id<Self>` and the right kind (`[IdKind(SparkIdKind.Natural)]` for built
+      ids)
+    - make the id builders return `Id<T>`, and pass `.Value` to raw RavenDB sessions (SPARK065 catches an id passed
+      as an entity)
+    - type the references as `Id<T>`
+    - run the library's test classes
+
+    Legacy ids keep their stored casing (O15, no re-key) and RavenDB ids ignore case, so they still load. App code
+    that compares a stored id string with a new lowercase one compares with `OrdinalIgnoreCase`
+    (CodeCoverage's `CommandLifecycle.LinkLogAsync`).
+
+    **Replication keeps string ids.** It is RavenDB-only by design (PRD §2.6): its documents (`SparkSyncAction`,
+    `ModuleInformation`) never pass through `ISparkSession` or a relational store. And `SyncActionRetrySweeper`
+    projects `.Select(a => a.Id)` from a raw RavenDB index query, which works only while `Id` is RavenDB's identity
+    property. The index rewriter covers index maps, not query projections.
+
+    **Messaging converts in M7, with its port.** Its ids run through the feeder's projection of
+    `SparkMessages_ByPriority.Entry.Id`, the claim's `StoreAsync(…, changeVector, id)` and the subscription batches.
+    M7 rewrites exactly that code onto the neutral subscription, lease and claim contracts, so converting it now would
+    mean doing the same work twice.
+
+    **References stay strings in this pass.** Only an entity's own `Id` is typed. A reference to another document
+    (`IOrganizationOwned.OrganizationId`, `OrganizationMembership.OrganizationId`, a webhook owner's key) and the
+    service APIs that take one (`ISparkOrganizations`) keep `string`; the caller passes `.Value`. Typing references is
+    its own pass once every library's own ids are typed. A legacy reference keeps its stored casing
+    ("Organizations/…"), so where a wire id is compared with one, it is taken from the reference
+    (`CurrentOrganization.DescribeAsync` and `OrganizationWebhookOwnerProvider` key their answers by the membership's
+    `OrganizationId`, not by the loaded `Id`).
+
+    **Id lists inside documents hold the stored casing.** Apps' owner registry (`EndpointIds`, `AppIds`,
+    `InstallationIds`), an App's `InstallationIds` and a webhook chain's `InFlight`/`Waiting` keep ids as strings. An
+    entry written before #536 is mixed case, the loaded entity's id lower case. So a `Remove` is a `RemoveAll` ignoring
+    case, `chain.InFlight` is compared ignoring case, and the chain's ordering (`Waiting` sorted by the id's time key)
+    uses `StringComparer.OrdinalIgnoreCase`, which orders old and new entries alike. The owner registry's id hashes the
+    owner key as given (`WebhookOwner.IdToken`), so the key must come from a stored reference, never a loaded id.
+
+    **Two traps found on the way.**
+    - `session.Delete(Id<T>)` compiles: it binds to RavenDB's `Delete<T>(T entity)` and throws "not associated with
+      the session" at run time. SPARK065 catches it, but only in projects that load the LibraryGenerators analyzer;
+      test projects don't, so two tests hit it (`LiveSocketTests`, `SeoToolsTests`). RavenDB's attachment API has the
+      same shape (`Attachments.GetAsync(object entity, string name)`, `FileImageProcessingTests`), and so does any
+      `object` parameter (`QueryParameters`, an anonymous export). Grep for them after each library; the compiler
+      will not help.
+    - The generated `SparkDocumentIds.g.cs` declares `string?` and warned CS8669 in a project without nullable
+      (Apps), so it now writes `#nullable enable` itself.
+
+    Done: Settings (220b35ae6), Logging (a43dce064), Boards (e56962ec6), Notifications (9cfcb21ff), Migrations
+    (63cc13d43), Organizations (885d4c2a1), Apps (01e9503a5), Mail and Files (6b10c49a3), Mcp
+    (0b6451397; the plan-id pattern accepts the legacy `McpPlans/` ignoring case). Replication stays and Messaging moves
+    to M7 (above), Moderation (ed3b9a775; case ids accepted ignoring case, a query projecting `v.Id` reads the
+    documents instead, since a typed id is no field RavenDB can project), Contributions (its own shape marker; the
+    classes its generator emits, `{X}Contribution` and `{X}Current`, are app entities in the app's assembly, so the
+    emitter switches to `Id<Self>` with QnA, the app that declares them), Authorization's agent grants and pending
+    external logins (`AgentGrantIds` returns `Id<AgentGrant>`; a user's grants are listed by a prefix RavenDB matches
+    ignoring case). **`SparkUser` and `SparkRole` stay strings in this pass:** they are base classes every app derives
+    its user from, and their id is ASP.NET Identity's string (`IUserStore.GetUserIdAsync`, the `sub` and
+    `NameIdentifier` claims, `ICurrentUser.Id`), which every library takes as a reference. Typing them belongs with the
+    reference pass. IdentityProvider (907efe6cd): the seven OIDC documents. **Two ids are hashes of another id**
+    (`OidcGrantReference` hashes the application id, `OidcRefreshFamilies` the origin token id). A loaded id is
+    now lower case, so hashing it as loaded would have moved every production grant and refresh family to a new
+    document id, silently: the "already consented" check would miss and code replay would find no family. Both
+    hash the pre-#536 form (`OidcApplications/{key}`, `OidcTokens/{hex}`), which is what every id held before.
+    The 3 failing tests that showed it: `Re_consenting_does_not_restore_the_old_scope_set` (its probe copies the
+    hash) and two `OidcOperationsTests` (`IncrementalTimeSeriesFor(Id<T>)` binds to the entity overload, another
+    silent trap). The stored `ApplicationId`s are `OidcApplications/…`, so the token, refresh, introspection,
+    revocation, device and token-exchange ownership checks, plus Apps' installation-token check, compare
+    ignoring case; with `Ordinal`, every refresh token issued before the deploy would have been refused.
+    848 IdP/Mcp/Apps tests and SparkId.Tests green. Dashboards and core's data-protection keys (both natural;
+    the key ring's prefix load and the dashboard's load ignore case, so production's `DataProtectionKeys/…`
+    still decrypt, per the SP-B compatibility tests). **Every library document is now typed**, except
+    `SparkUser`/`SparkRole` (above). HR, Fleet, QnA and DemoApp are typed (all Guid; HR 7, Fleet 6, QnA 5,
+    DemoApp 1 tests green). Contributions came with them: `ContributionsEmitter` emits `Id<T>` and its own
+    `__DocumentId` on both generated types (generators can't see each other's output), and `GetId` lower-cases,
+    so the stored id equals the entity's. Rows written before keep their casing, so the line-diff options'
+    `compareIdPattern` matches any case (`ContributionDescriptor.AnyCase`) and ng-spark's `lineDiffTextOf`
+    matches the row key ignoring case (Spark.Tests Contributions 56/56, ng-spark contributions 18/18).
+    SPARK001 accepts a `string` projection of an `Id<T>` (a view's `string? Id`). SparkId's own documents
+    came with the IdP. SeoTester is typed: Site, AuditRun and AuditLogEntry are Guid, and the derived documents
+    (cooldowns, frontier, lookup caches, check definitions, pages, reports) are natural. `Patch`, `Delete` and
+    `Attachments` take `.Value`, because an `Id<T>` binds to their entity overloads. `PageResult`'s id hashes
+    the URL, not an id, so it is stable. MintPlayer is typed. **Decision: a hierarchy is typed by its root.**
+    The abstract `Subject` (Artist, Person and Song derive from it) holds `Id<Subject>`, as its TPH table does
+    (PRD D1), and the value keeps its collection prefix (`songs/313`). The migration still writes each
+    document under the plan's legacy-cased id (`plan.Add(id, …)`), and its row-key hash (`Ids.Row`) hashes
+    that same string, so a re-run reproduces production. The `Spark_Search` generator maps a typed id as
+    `d.Id.Value`, inherited ids included (test `A_typed_id_is_mapped_as_its_text_even_when_inherited`, red
+    before). MintPlayer 42, Migration 50 and SeoTester's touched classes are green. CodeCoverage is typed
+    (33 documents, all natural; the rows that are value objects, views or lookups keep `string`). **Lesson: a
+    loaded id is lower case** (the generated `__DocumentId` setter lowers it) while a stored reference keeps
+    its legacy casing (`Repository = "Repositories/github/1"`). Inside a RavenDB query `.Value` is enough (the
+    server ignores case), and a query on the typed id itself is a typed array plus `Contains` (the rewriter
+    makes it an `In`). In memory, every id comparison and id-keyed set or dictionary is now
+    `OrdinalIgnoreCase` (about 25 sites in CodeCoverage, found by auditing every `Ordinal` near an id, beyond
+    the compile errors). **Decision: a hash of an id hashes it lower case.** `DependencySlots` (the scheduled
+    run's spread minute and its dedup key) lowers the id itself, so its callers' casing can't split one
+    repository into two slots (test `The_slot_ignores_the_casing_of_the_repository_id`, red before: minute 23
+    against 40). The cost is a one-time shift at deploy: each legacy repository's minute and key move once, so
+    a deploy inside a repository's scheduled hour can trigger a second scheduled run that day. Accepted as a
+    one-off; deploying outside the scheduled hours avoids it.
+    Other `BroadcastOnceAsync` keys that carry a loaded id shift the same way, once. Prefix parsers of ids
+    ignore case too (`MergeQueue.RepositorySuffix`, `Commit`'s id parser, `CommandInvocation.LogKeyOf`,
+    `LogActions`, and the merge-queue log link, whose `LogIds.Prefix` is now `logs/` while old entries
+    store `Logs/…`). `CoverageRavenTest` never applied the app's store conventions; it now calls
+    `ApplySparkConventions`, without which RavenDB can't set an `Id<T>` ("property type is not a string").
+    **A raw `IAsyncDocumentSession` gets no id rewriting** (`RavenIdQueryRewriter` runs only in Spark's own
+    session), so on a raw session: a typed `Contains` binds to the span overload and RavenDB rejects it
+    (now RQL with `id() in ($ids)`), and `.Select(r => r.Id)` then `.OfType<string>()` silently returned
+    nothing (`SparkVisibility`'s visible repositories and the token owners' accounts: every private row was
+    hidden). Those project into a `string? Id` row now (`ProjectInto<IdRow>()`). The view and graph inputs
+    (`DependencyFleetInput`, `DependencyGraph.Build`) re-key their dictionaries ignoring case themselves.
+    Outbound keys built from a loaded id (dedup keys, the backport webhook's `Key`) are lower case from
+    deploy on. CodeCoverage.Tests: the 49 touched classes, 1063 tests, green.
+  - **The route binder (D7, M2 done):** `SparkIdModelBinderProvider` (core, registered first in `MvcOptions` by
+    `AddSparkCore`) binds an `Id<T>` or `Id<T>?` controller parameter through `ISparkIds.Canonicalize`: any
+    casing and the key alone bind to the canonical id. Text that is not an id of the entity, such as another
+    collection's id, is a model error (400). A missing value leaves the parameter unbound. **Decision: minimal APIs
+    keep taking the text and call `ids.Parse<T>`**, because a `BindAsync` on `Id<T>` would put ASP.NET types into
+    the dependency-free attributes package. Test: `SparkIdModelBinderTests` (6 tests, red first: no binder).
   - It touches the three production apps (CodeCoverage, SeoTester, MintPlayer). RavenDB stays green at the end of the
     milestone, and D23's pass-through `__DocumentId` keeps the stored document ids unchanged (S-ID4: no re-key).
   - The S2b query-seam items (`Search` takes words; captured values) and the S5 view declarations are M3's
@@ -1305,7 +1465,8 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
 
 1. ✅ **Gate spikes S-ID1, S-ID2, S-ID4, S-ID5, S2b, S3, S4, S5, S19, S20.** The PRD updated with their evidence.
    Done 2026-11-24 (PRD §8.3–8.12).
-2. **`Id<T>` and the typed contract on the existing providers** (D23, D27): RavenDB and InMemory.
+2. ✅ **`Id<T>` and the typed contract on the existing providers** (D23, D27): RavenDB and InMemory. Done 2026-11-25
+   (§1 M2a–M2c and the route binder).
    - the struct, the model registry (`ids.NewAsync/Parse`), the generator for `__DocumentId`, the JSON setup and the
      route binder
    - every entity's `Id` and reference fields in core, the feature libraries and the apps
@@ -1510,3 +1671,12 @@ during development (TDD red→green). The full suite runs once at the end, via p
     - The view SQL carries `\r\n` on Windows, so synchronize normalizes it.
   - O8 and O9 decided (owner): PostgreSQL 17 and later, with CI on 18 and the D31 behaviour tests on 17 too; a
     public `ConfigureModel(ModelBuilder)` hook in M4, and no app-supplied `DbContext`. No decision is open.
+  - The owner: "implement the remaining milestones", with the plan kept current and spikes as needed.
+  - M2a (434392530): `Id<T>`, `ISparkIds`, typed ids on RavenDB and InMemory, and `DocumentIdGenerator`.
+    `SparkIdConformanceTests` 12/12 and `DocumentIdGeneratorTests` 4/4.
+  - M2b (e753252e6): the typed `ExistsAsync`/`Delete`/`GetVersionsAsync` (D27). 70/70 across the store and id
+    conformance, the query executor, the selection resolver and sync.
+  - Spike S-ID6, PRD §8.13: RavenDB's index translator writes the own `x.Id` as a body field (null) and a reference's
+    `.Value` as a member of the stored string (index errored on every document). `RavenIndexIdRewriter` in both
+    Spark index bases fixes both: `Id(p)` and `LoadDocument(p.Ref.ToString())`, 0 index errors. A raw
+    `AbstractIndexCreationTask` on a converted entity moves to a Spark base. `RavenTypedIdIndexTests` 3/3.

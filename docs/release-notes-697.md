@@ -8,31 +8,17 @@ tags, and everything ships once the merged pull request is backported to `releas
 
 ---
 
+**Typed ids (`Id<T>`, lower-case ids, the typed session members, the `Id<T>` route binder) shipped before this, in
+#713.** Their breaking changes are in [release-notes-713.md](release-notes-713.md).
+
 ## Breaking changes
 
-1. **Entity ids are `Id<T>`, not `string`** (M2, D23). Every Spark entity's `Id` and its reference fields are typed.
-   - `Id<T>`, `[IdKind]` and `SparkIdKind` live in `MintPlayer.Spark.Attributes`. There is no public constructor:
-     make a new id with `ISparkIds.NewAsync<T>()`, and turn text into one with `ISparkIds.Parse<T>` / `TryParse<T>`.
-     `Parse` accepts the whole id or the key alone, in any casing, and rejects another collection's id.
-   - An entity must be `partial`: the LibraryGenerators analyzer emits its private `__DocumentId` (SPARK064 otherwise).
-   - **Loaded ids are lower case.** References stored before the upgrade keep their casing, so compare ids, and key
-     sets and dictionaries by them, ignoring case. A hash or key derived from a loaded id changes once at deploy.
-   - A store you build yourself (a test driver, a tool) must call `SparkStoreConfiguration.ApplySparkConventions`, or
-     RavenDB can't set an `Id<T>` ("property type is not a string").
-   - On a raw `IAsyncDocumentSession`, ids are not rewritten. A typed `Contains` fails there (use RQL
-     `id() in ($ids)`), and projecting `r.Id` to text needs a row with a `string? Id`.
-   - Stored document ids don't change: no data migration.
-   - **Files in an object store** (S3 and the other `ObjectFileStore` backends) are kept under the lower-cased entity
-     id. The files reconciler moves a legacy-cased key to its lower-case one once at startup and on every reconcile
-     (`FilesReconciler.LowerCaseLegacyKeysAsync`), so no manual step is needed.
-2. **`ISparkSession`'s untyped id members are gone** (M2, D27). `ExistsAsync`, `Delete` and `GetVersionsAsync` take an
-   `Id<T>`, or a `Type` and the id. `Delete(object)` refuses a string.
-3. **`Spark:DataProtection:Storage=RavenDb` is now `Storage=Store`** (M3, PRD §2.3). It keeps the key ring in the
+1. **`Spark:DataProtection:Storage=RavenDb` is now `Storage=Store`** (M3, PRD §2.3). It keeps the key ring in the
    application's database through whichever store provider is registered. Update test hosts and any deployment that
    sets it; `KeysPath` is unchanged.
-4. **`ISparkQueryProvider.Search` takes the words** (M3, S2b): `Search(source, properties, IReadOnlyList<string> words)`,
+2. **`ISparkQueryProvider.Search` takes the words** (M3, S2b): `Search(source, properties, IReadOnlyList<string> words)`,
    plain text with no wildcards. A provider adds its own syntax; RavenDB still wraps each word in `*`.
-5. **Spark's commands run after `Build()`, through one call** (M3, D34). `builder.SynchronizeSparkModelsIfRequested`
+3. **Spark's commands run after `Build()`, through one call** (M3, D34). `builder.SynchronizeSparkModelsIfRequested`
    (and `<TContext>`), `InitializeSparkSecurityIfRequested`, `VerifySparkSecurityIfRequested` and
    `InitializeSparkModerationIfRequested` are gone. Replace the block before `Build()` with this, after it:
    ```csharp
@@ -45,11 +31,11 @@ tags, and everything ships once the merged pull request is backported to `releas
    The flags are unchanged and `--spark-help` lists them. Building the host opens no connection, so the model and
    security commands still run in CI without a database. An unknown `--spark-` flag now exits 2 instead of starting
    the app.
-6. **`MintPlayer.Spark.Migrations` no longer references RavenDB** (M3, S15). It runs on any store provider, and the
+4. **`MintPlayer.Spark.Migrations` no longer references RavenDB** (M3, S15). It runs on any store provider, and the
    package no longer brings `RavenDB.Client` along: a migration that injects `IAsyncDocumentSession` needs the
    app's own RavenDB reference (`MintPlayer.Spark.RavenDB` brings it). The lock is now a renewed 2-minute lease
    instead of a 30-minute one, and a lock the previous version left behind is still respected until it expires.
-7. **The RavenDB test harness moved to `MintPlayer.Spark.Testing.RavenDB`** (M5, D35). `MintPlayer.Spark.Testing` is
+5. **The RavenDB test harness moved to `MintPlayer.Spark.Testing.RavenDB`** (M5, D35). `MintPlayer.Spark.Testing` is
    provider-neutral now and references no database client. Replace the package reference with
    `MintPlayer.Spark.Testing.RavenDB`, and rename the base classes:
    - `SparkTestDriver` → `RavenSparkTestDriver`
@@ -58,15 +44,15 @@ tags, and everything ships once the merged pull request is backported to `releas
 
    The namespace is unchanged. `SparkEndpointFactory` takes an `ISparkTestDatabase`: pass `Store.AsSparkTestDatabase()`
    where you passed `Store`. The old names now belong to the neutral drivers (below).
-8. **On RavenDB, `== null` through Spark's session finds a field the document never wrote** (M5, O11). A document
+6. **On RavenDB, `== null` through Spark's session finds a field the document never wrote** (M5, O11). A document
    saved before a nullable property existed now matches `x.Prop == null` and no longer matches `x.Prop != null`, as a
    `NULL` column does on SQL. It applies to `ISparkSession.Query`, the query pages and `DeleteWhere`/`UpdateWhere`;
    a raw `IAsyncDocumentSession` query is unchanged.
-9. **PostgreSQL sorts nulls first ascending and last descending** (M5, D4), like the other providers.
-10. **`ISparkSession` has two new members** (M6, D37/D38): `OptimisticConcurrency` (the neutral
+7. **PostgreSQL sorts nulls first ascending and last descending** (M5, D4), like the other providers.
+8. **`ISparkSession` has two new members** (M6, D37/D38): `OptimisticConcurrency` (the neutral
     `OptimisticConcurrencyMode.Writes`) and `Query<T>(TimeSpan waitForIndexes)` (RavenDB's `WaitForNonStaleResults`
     on one query). A custom `ISparkSession` implementation must add them.
-11. **Settings, Boards and Organizations no longer reference RavenDB** (M6). They run on `ISparkStore`/`ISparkSession`,
+9. **Settings, Boards and Organizations no longer reference RavenDB** (M6). They run on `ISparkStore`/`ISparkSession`,
     so any store provider keeps them, and their packages no longer bring `RavenDB.Client` along. Internal helpers
     that took an `IAsyncDocumentSession` (for example `OrganizationMembershipReader.LoadAsync`) take an
     `ISparkSession`: wrap a raw session with `session.AsSparkSession()`. Notifications' own reads and writes are
@@ -101,7 +87,7 @@ tags, and everything ships once the merged pull request is backported to `releas
     `contributionshapemarkers/{queryname}`, so the first start rebuilds each declaration's current documents once.
     A model's seeded `lineDiff` options are not rewritten by the synchronizer: delete the `renderer`/`rendererOptions`
     of the contribution's value attributes and synchronize to re-seed a pattern that takes the new ids.
-12. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
+10. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
     - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
       session. Wrap a raw session with `session.AsSparkSession()`.
     - The indexes `SparkMessages_ByPriority` and `SparkMessages_ByQueue` and `CreateSparkMessagingIndexes` are gone.
@@ -123,13 +109,13 @@ tags, and everything ships once the merged pull request is backported to `releas
       write its registry before the table existed and stop the host.
     - `RetryNumerator`, a RavenDB counter, moved from `MintPlayer.Spark.SubscriptionWorker.Abstractions` to
       `MintPlayer.Spark.Replication.Services`, the namespace of its only user.
-13. **History and SoftDelete no longer reference RavenDB's client** (M7d, S8). They work through `ISparkRevisions` and
+11. **History and SoftDelete no longer reference RavenDB's client** (M7d, S8). They work through `ISparkRevisions` and
     `ISparkStore`:
     - `ISoftDeleteRevisions.DeleteAsync` takes the entity type and the id (was the RavenDB session's document).
     - `HistoryInterceptor` reads versions through `ISparkSession`.
     - The licence probe and the revisions-configuration operations moved to `MintPlayer.Spark.Storage.Raven.RavenSparkRevisions`.
     - The licence check now covers every collection History configures, not only the changed ones.
-14. **Moderation runs on any store** (M7e) and its package no longer references RavenDB's client:
+12. **Moderation runs on any store** (M7e) and its package no longer references RavenDB's client:
     - Its four RavenDB indexes are `SparkView`s now, plus six row-per-entity views that replace its plain collection
       queries (which made RavenDB build auto indexes). The names are `Moderation_ReputationCells`,
       `Moderation_PendingReputation`, `Moderation_VotePairs`, `Moderation_Votes`, `Moderation_Flags`, `Moderation_Ledger`,
@@ -141,19 +127,19 @@ tags, and everything ships once the merged pull request is backported to `releas
       `reputationsummaries/{userId}` (were `moderationreputation/…`) and review cases `reviewcases/…` (were
       `moderationcases/…`, now `ModerationIds.CasePrefix`). The crediting job rewrites every summary, so old summaries
       are only orphaned; open cases under the old prefix are refused by the review endpoints and need re-flagging.
-15. **`ISparkSession.Query<TRow, TView>()` on RavenDB reads the view's columns** (M7e). A map view used to hand back the
+13. **`ISparkSession.Query<TRow, TView>()` on RavenDB reads the view's columns** (M7e). A map view used to hand back the
     source documents, so a computed column came back empty or as the document's field of the same name. A query the
     caller does not project itself is now read with `ProjectInto<TRow>()`.
-16. **`UseOpenSearch` declares that it needs RavenDB** (M7f, D44). The engine syncs from RavenDB's `Spark_Search`
+14. **`UseOpenSearch` declares that it needs RavenDB** (M7f, D44). The engine syncs from RavenDB's `Spark_Search`
     index, so on another store the host refuses to start, naming "Spark.Search.OpenSearch". Before, the whole of
     `AddSearch` was refused off RavenDB; now it runs on any store, as does a custom `UseProvider<T>` engine.
-17. **Dashboards: `RavenStatisticsProvider` is now `StoreStatisticsProvider`** (M8a, D45). It reads
+15. **Dashboards: `RavenStatisticsProvider` is now `StoreStatisticsProvider`** (M8a, D45). It reads
     `ISparkStoreStatistics`, so it works on any store; `DatabaseStatistics()` adds it as before. The sampler's lease
     moved from RavenDB's compare-exchange value `spark/dashboards/sampler` to the atomic value `dashboards/sampler`. The
     old value is deleted by the migration `M_202611251400_DashboardsSamplerLeaseRetired` (RavenDB only; it runs through
     the application's generated `AddMigrations()`). While old and new instances run side by side, a slot may be sampled by both: its point
     is overwritten, not doubled.
-18. **The identity provider runs on any store** (M8b, D47), and its package no longer references RavenDB's session.
+16. **The identity provider runs on any store** (M8b, D47), and its package no longer references RavenDB's session.
     - **Client-id lookup:** an application is found by its client id only through its reservation
       (`oidc/client-ids/{client id}`, the same compare-exchange key as before). Code that stores an `OidcApplication`
       outside the provider's pipeline, such as a seed migration, calls `OidcClientIdReservation.ReserveAsync` (now
@@ -165,33 +151,30 @@ tags, and everything ships once the merged pull request is backported to `releas
       migration logs the second.
     - **Natural ids (D49):** `OidcApplication`, `OidcToken` and `OidcGrant` are `[IdKind(Natural)]`. No stored id
       changes; `ids.Parse<OidcApplication>` now keeps a 32-digit key as written instead of adding dashes.
-19. **A `SparkView` is an entity type's default index only when it claims `[DefaultIndex]`** (M8b, D48). Before, an
+17. **A `SparkView` is an entity type's default index only when it claims `[DefaultIndex]`** (M8b, D48). Before, an
     entity type's sole view was elected implicitly, and two views without a claim made startup throw. A native RavenDB
     index keeps the implicit election. A fan-out view maps no collection, so it cannot be a default index.
 
 ## New
 
-1. **`Id<T>` controller parameters bind through the app model** (M2, D7): `GET /people/PEOPLE/42` and
-   `GET /people/42` bind the same id; text that isn't an id of the entity is a 400. Minimal-API handlers take the text
-   and call `ids.Parse<T>`.
-2. **Provider-neutral startup messages** (M3): a feature with no store asks for any store provider unless it names one,
+1. **Provider-neutral startup messages** (M3): a feature with no store asks for any store provider unless it names one,
    and the index-binding, live-update and expiration messages no longer assume RavenDB.
-3. **`SparkExpressions.Captured(value, type)`** (M3, S2b): a request value as a captured field, which EF turns into a
+2. **`SparkExpressions.Captured(value, type)`** (M3, S2b): a request value as a captured field, which EF turns into a
    query parameter instead of a literal. Spark's own column filters and id restrictions use it.
-4. **`ISparkCommand`** (M3, D34): a package registers a command-line command with
+3. **`ISparkCommand`** (M3, D34): a package registers a command-line command with
    `services.AddSparkCommand<TCommand>("--spark-…", description)`. It is constructed from DI only when its flag is
    passed, and `--spark-help` lists every registered one.
-5. **`ISparkAtomicValues` and `ISparkStoreLock`** (M3, S6/S15): the neutral compare-exchange (get, compare-and-swap,
+4. **`ISparkAtomicValues` and `ISparkStoreLock`** (M3, S6/S15): the neutral compare-exchange (get, compare-and-swap,
    delete, by version) that every provider implements, and a lease over it that core implements once: it renews
    itself while held, frees after its time to live when its holder dies, and cancels `Lost` when someone else took
    it.
-6. **Schema migrations: `--spark-migrate`, `--spark-migration-script` and `Spark:Database:ApplyMigrations`** (M3,
+5. **Schema migrations: `--spark-migrate`, `--spark-migration-script` and `Spark:Database:ApplyMigrations`** (M3,
    D33): a provider with a schema registers `ISparkSchemaMigrator`. By default the app applies pending migrations at
    startup. With `Spark:Database:ApplyMigrations=false` it refuses to start while any are pending, and a deploy step
    runs `--spark-migrate` (schema, indexes, data migrations) with a login that may change the schema, or a DBA runs
    the idempotent script `--spark-migration-script <file> [--from <m>] [--to <m>]` writes. RavenDB and InMemory have
    no schema, so for them nothing changes.
-7. **`SparkView<TRow>`: a projection declared once, for every provider** (M3, D32). A view's `Map` reads
+6. **`SparkView<TRow>`: a projection declared once, for every provider** (M3, D32). A view's `Map` reads
    `s.Set<T>()`, follows a reference with `s.Load<T>(id)` and binds the row's id with `s.IdOf(row)`. RavenDB renders
    it as a static index, InMemory as LINQ to objects, and SQL Server and PostgreSQL as a database view (created by the
    app's migrations, recreated when its `Map` or a table under it changes). A `Map` may only use constants. It is queried
@@ -200,7 +183,7 @@ tags, and everything ships once the merged pull request is backported to `releas
    so a RavenDB app sees no change. An application without RavenDB.Client gets only the row type and the view, which
    becomes the entity's default. Core's empty index catalog is replaced by one that lists the declared views, so
    an InMemory app can query a view.
-8. **More of the store on `ISparkSession`** (M3, S6), so code needs no RavenDB session for them:
+7. **More of the store on `ISparkSession`** (M3, S6), so code needs no RavenDB session for them:
    - `SetExpiry`/`GetExpiry`: when the store may delete a document (RavenDB's `@expires`).
    - `StreamAsync(query)`: every row of a query as untracked `SparkStreamResult<T>` (id, document, version).
    - `Reserve`/`Release`/`GetReservationAsync`: unique keys claimed with the save. A key held by another existing
@@ -211,7 +194,7 @@ tags, and everything ships once the merged pull request is backported to `releas
 
    A custom `ISparkSession` implementation must add these members. On InMemory, `Query<T>()` now reads its rows when
    the query runs rather than when it is opened, as RavenDB does.
-9. **`MintPlayer.Spark.SqlServer` and `MintPlayer.Spark.PostgreSql`** (M4, D2): `builder.UseSqlServer()` and
+8. **`MintPlayer.Spark.SqlServer` and `MintPlayer.Spark.PostgreSql`** (M4, D2): `builder.UseSqlServer()` and
    `builder.UsePostgreSql()` store the app in a table per entity through EF Core 11, with the connection string from
    `ConnectionStrings:Spark` unless `options.ConnectionString` sets one. `options.ConfigureModel(mb => …)` adjusts the
    EF model last. Child collections (`[ValueObject]` lists) become child tables, references become foreign keys,
@@ -269,60 +252,60 @@ tags, and everything ships once the merged pull request is backported to `releas
     migration covers stops startup with a message naming that command. `options.MigrationsAssembly` moves the
     migrations out of the entry assembly. `RelationalSchema.CreateFromModelAsync` builds a schema from the model
     without migrations, for test databases.
-10. **`ISparkStoredTypes` and `AddSparkStoredType<T>()`** (M4, D36): the list of types a store keeps, from the app
+9. **`ISparkStoredTypes` and `AddSparkStoredType<T>()`** (M4, D36): the list of types a store keeps, from the app
     model plus explicit registrations. `SparkCollectionNames.Of(type)` is the collection (table) name every provider
     uses.
-11. **Provider-neutral tests** (M5, D35): a class deriving from `SparkTestDriver` (per case) or `SparkSharedDatabase`
+10. **Provider-neutral tests** (M5, D35): a class deriving from `SparkTestDriver` (per case) or `SparkSharedDatabase`
     (per class) gets a `Database`, passes it to `SparkEndpointFactory` and seeds with `factory.SeedAsync(session => …)`.
     It runs on whichever database the project's test package provides: `MintPlayer.Spark.Testing.RavenDB`,
     `MintPlayer.Spark.Testing.SqlServer` (`SPARK_TEST_SQLSERVER`, else LocalDB, else a Testcontainers container),
     `MintPlayer.Spark.Testing.PostgreSql` (`SPARK_TEST_POSTGRESQL`, else an embedded server), or InMemory from the
     neutral package. A project with several picks one with `SPARK_TEST_DATABASE`.
-12. **`ISparkSubscriptions`** (M7a, D39): durable, exclusive, at-least-once subscriptions over a collection with a LINQ
+11. **`ISparkSubscriptions`** (M7a, D39): durable, exclusive, at-least-once subscriptions over a collection with a LINQ
     filter, on every store. RavenDB runs them as data subscriptions; InMemory, SQL Server and PostgreSQL as a cursor
     over the commit stamp with a lease. Stores that have it report `SparkStoreCapabilities.Subscriptions`.
-13. **`ISparkStoreReadiness`** (M7b, D41): a background service awaits `WaitAsync()` before its first store access.
+12. **`ISparkStoreReadiness`** (M7b, D41): a background service awaits `WaitAsync()` before its first store access.
     On a relational store it returns once `UseSpark` has applied the schema; elsewhere it returns at once. A feature
     library registers it with `services.AddSparkStoreReadiness()`.
-14. **`ISparkSession.Query<TRow, TView>()` takes a `SparkView` on every store** (D42). RavenDB queries the view's static
+13. **`ISparkSession.Query<TRow, TView>()` takes a `SparkView` on every store** (D42). RavenDB queries the view's static
     index and InMemory renders it; SQL Server and PostgreSQL already read the SQL view.
-15. **`ISparkRevisions`** (M7d, S8): configure, list, read and delete document revisions on every store, through one
+14. **`ISparkRevisions`** (M7d, S8): configure, list, read and delete document revisions on every store, through one
     API. RavenDB keeps its own revisions; SQL Server and PostgreSQL write `spark.Revisions` in the writing transaction
     on every write path, set-based updates and deletes and the expiry sweep included; InMemory keeps them beside its
     documents. Stores that have it report `SparkStoreCapabilities.Revisions`. History and SoftDelete now run on any
     store with revisions.
-16. **Map-reduce and multi-map views** (M7e, D43): `SparkView<TRow>.Reduce` (`group r by key into g select new TRow
+15. **Map-reduce and multi-map views** (M7e, D43): `SparkView<TRow>.Reduce` (`group r by key into g select new TRow
     { …, g.Sum(…) }`) and several maps joined by `Concat`. RavenDB deploys a map-reduce or multi-map index; SQL Server
     and PostgreSQL a view with `UNION ALL` under `GROUP BY`, always current; InMemory computes it on read. Such a view
     is never an entity type's default index.
-17. **`ISparkSession.Query<TRow, TView>(TimeSpan waitForIndexes)`** (M7e): a read that must include every committed
+16. **`ISparkSession.Query<TRow, TView>(TimeSpan waitForIndexes)`** (M7e): a read that must include every committed
     write. RavenDB waits for the index and throws `TimeoutException` when it is still stale; the other stores have
     nothing to wait for.
-18. **Site search on every store** (M7f, D44). RavenDB keeps its generated `Spark_Search` index (Lucene, fuzzy).
+17. **Site search on every store** (M7f, D44). RavenDB keeps its generated `Spark_Search` index (Lucene, fuzzy).
     SQL Server, PostgreSQL and InMemory search each searchable type's collection directly:
     - **Fields:** the label's attributes and `search.fields`.
     - **Matching:** every word must be a whole word of them. The last word is completed while suggesting, and
       soft-deleted rows are left out.
     - **Order:** best first.
     - **Limits:** no typo tolerance, and SQL does not fold accents in stored text.
-19. **Fan-out views** (M7g): a `SparkView` map may read a list,
+18. **Fan-out views** (M7g): a `SparkView` map may read a list,
     `from x in s.Set<T>() from item in x.List select new TRow { … }`, yielding one row per item. RavenDB fans out in
     the index; SQL Server reads the list column with `OPENJSON` and PostgreSQL with `unnest`. It works with or without
     a reduce, and a missing list yields no rows.
-20. **Dashboards on every store** (M8a, D45). `AddDashboards()` no longer requires RavenDB.
+19. **Dashboards on every store** (M8a, D45). `AddDashboards()` no longer requires RavenDB.
     - **Database statistics:** the shipped dashboard shows the store's size, documents and collections. Memory has
       no sizes.
     - **History:** RavenDB keeps it in time series, as before. SQL Server, PostgreSQL and memory keep it as rows in
       `SparkDashboardSamples`, with the same 7-day raw and 90-day 5-minute rollup retention. Synchronize adds the
       table to the app's migration.
     - **`ISparkStoreStatistics`:** per-collection document counts and sizes on disk, for any store.
-21. **The identity provider on every store** (M8b, D47): OpenID Connect, OAuth 2.1, device flow, DPoP, the MCP
+20. **The identity provider on every store** (M8b, D47): OpenID Connect, OAuth 2.1, device flow, DPoP, the MCP
     authorization server and the administration screens. Its queries are `SparkView`s, deployed with the app's. On SQL
     Server and PostgreSQL its tables come from the app's migration. The `INC:Tokens` counter is RavenDB only.
-22. **`apps/SqlDemo`** (M9b): a Spark app on PostgreSQL, with Messaging, MailManager, History and local accounts. Its
+21. **`apps/SqlDemo`** (M9b): a Spark app on PostgreSQL, with Messaging, MailManager, History and local accounts. Its
     book list is a SQL view. The E2E suite runs it against a PostgreSQL server (`SparkAppDescriptor.Store`), and the
     guide [SQL Server & PostgreSQL](guide-relational-stores.md) covers a relational app end to end.
-23. **`ISparkSession.LoadReferencedAsync(target, ids)`** (M9b): loads the documents a reference names for a caller that
+22. **`ISparkSession.LoadReferencedAsync(target, ids)`** (M9b): loads the documents a reference names for a caller that
     checks their collection itself. RavenDB and memory look in every collection; a store with a table per type looks
     in the target's table. On SQL Server and PostgreSQL an untyped `LoadAsync<object>(id)` now finds the row in the
     table its collection prefix names. A custom `ISparkSession` implementation must add the member.

@@ -24,6 +24,9 @@ a dialect seam, so it can return once a maintained EF Core 11 provider exists.
 - 2026-11-24, later: grilling round 5 and the owner decided O10–O17 and D31–D35. The gate spikes S-ID1/2/4/5,
   S2b, S3, S4, S5, S19 and S20 proved the design (§8.3–8.12), and two upstream EF bugs got pull requests and
   workarounds (D24, D33). O8 and O9 closed the open list.
+- 2026-11-26: **split** (owner). Typed ids (milestone M2: D7, D23 rules 1–7, 9 and 10, D27, O15) shipped first as
+  #713, with its own [PRD](typed_ids_PRD.md) and [plan](typed_ids_plan.md). This PRD keeps the relational side of
+  those decisions and points there for the rest. #697 was rebuilt on master after #713 merged.
 
 ## 1. Goal
 
@@ -848,14 +851,12 @@ table for its own caches and has no change feed for business data.
 lower case, on every provider.** The owner proposed it (2026-11-24): `GetById("abc")` and `GetById("ABC")` must
 behave the same whatever database backs the app. ChatGPT, Claude, Gemini, Grok and Copilot agreed in round 10;
 Mistral was rate-limited.
-- **Spark lowercases (`ToLowerInvariant`) every id at the one canonicalisation point** (D23 rule 3): `ids.NewAsync`,
-  `ids.Parse`, the JSON converter and the route binder, and when a provider reads an id back (D23 rule 6). The whole
-  string is lowered, collection prefix included, so `Accounts/X` becomes `accounts/x`.
-- Int and Guid keys were canonical already (digits; Guid `N`). A natural key from a template or `IHasNaturalId` is
-  lowered with the rest. There are no per-entity normalisers.
-- **Casing that carries meaning never lives in an id.** A case-sensitive external key (a GitHub GraphQL node id, a
-  commit message slug shown to users) is its own property, which is already the rule: never parse values out of an
-  id. Ids display in lower case.
+
+**The rule itself shipped with typed ids in #713** (2026-11-26). [`typed_ids_PRD.md`](typed_ids_PRD.md) D7 records it:
+where Spark lowers an id, how `Parse` normalises a key (a Guid to its `D` form, digits without leading zeros), the
+RavenDB conventions (`ApplySparkConventions`), comparing a loaded id with a stored string ignoring case, hashing an id
+lower case, and the object-store keys. O15 (no re-key, and no migration that lowers document ids) is there too. What
+follows is the relational side.
 - Two keys that differ only in case are already **one** RavenDB document today, so lowercasing makes no new
   collision. It moves SQL to the same behaviour, so round 9's "natural ids unique ignoring case" needs no extra
   index: a binary key over lowercase values is unique ignoring case by construction.
@@ -866,26 +867,21 @@ Mistral was rate-limited.
   Equality and prefix scans then get an index seek, with no `text_pattern_ops`, no `citext` and no `LOWER()` index.
   Natural keys are `nvarchar(450)` (900 bytes, the clustered-key limit), and synchronize fails the build if a
   template can exceed it.
-- **RavenDB conventions** (`SparkStoreConfiguration.ApplySparkConventions`, the one place, set before
-  `Initialize()`): generated ids lowercase the prefix; `UseNaturalIds` lowers `GetId()`;
-  `TransformTypeCollectionNameToDocumentIdPrefix` lowers the name (RoleStore and HiLo read it); the HiLo id from
-  `ids.NewAsync` is lowered with its node tag (`people/1-a`). `FindCollectionName` is unchanged: it names the
-  `@collection`, not the id. Debug builds and a conformance test reject storing an id that is not lower case.
 - Code that builds an id prefix itself (`GetCollectionName(type) + "/"`) goes through `Id<T>` or the convention
   above. Prefix checks that already compare `OrdinalIgnoreCase` (`SoftDeleteRawDeleteGuard.cs:36`) keep working.
 - **Collection collisions fail the model build (L1, round 10, unanimous).** Two entity classes whose collection
   names are equal ignoring case, or one class name in two namespaces, share one RavenDB collection today (RavenDB
   compares collection names ignoring case, and `FindCollectionName` ignores the namespace), and would share one
-  SQL Server table name under its default collation. Building the model fails on such a pair, on every provider.
-  Nothing checks this today.
+  SQL Server table name under its default collation. Building the relational model fails on such a pair
+  (`SparkRelationalModel`).
 - `LoadStartingWith` over natural keys is `LIKE @prefix ESCAPE '\'`, with `%`, `_` and `\` escaped; the prefix is
   lowered first.
 - Conformance cases pin the canonical round trip, `GetById` with an upper-case variant (found on every provider), the
-  rejection of a non-lowercase id when a **new** document is stored (a legacy RavenDB document reports its stored
-  casing on save, S-ID1 G1), the prefix escaping, FK equality under the copied collation, and
-  non-ASCII keys (`ToLowerInvariant` runs in .NET, so the providers never fold case themselves).
-- Existing RavenDB data with mixed-case ids is **not re-keyed** (O15): RavenDB lookups ignore case and Spark lowers
-  every id it reads. Spike S-ID4 proved it on a copy of the development `Coverage` database (§8.5).
+  prefix escaping, FK equality under the copied collation, and non-ASCII keys (`ToLowerInvariant` runs in .NET, so
+  the providers never fold case themselves). The debug guard that was to refuse storing a new id that is not lower
+  case was not built (`typed_ids_PRD.md` §2).
+- PostgreSQL compares text case-sensitively, but no Spark data lives there yet: the relational providers write lower
+  case from the first row. A tool that copies a RavenDB database into SQL lowers the ids then.
 
 **D23: the id model, `Id<T>`.** ChatGPT, Claude, Gemini, Grok, Copilot and Mistral reached this consensus over five
 moderated rounds (2026-11-24). The owner accepted it ("probably good"). Rounds 6–9 checked it against the
@@ -900,64 +896,20 @@ public Id<Company>? CompanyId { get; set; }
 public List<Id<Profession>> ProfessionIds { get; set; } = [];
 ```
 
-1. **One generic readonly struct `Id<T>` on every provider**, compiled once per feature library. There are no
-   per-entity id structs and no per-provider aliases.
-2. **It wraps only the canonical string `"{collection}/{key}"`.** Equality, hash and `ToString` are ordinal string
-   operations. The key is everything after the *first* `/`, so a hierarchical natural key may contain `/` (O14).
-   - **Without an attribute the kind is Guid** (owner, 2026-11-24), as every generated id is today. Integer (HiLo) is
-     an opt-in. A Guid id can't be counted or guessed, which the existence-hiding rules rely on, and needs no
-     server coordination (`SparkDocumentStoreConventions.cs`: HiLo "serializes writes behind a cluster-wide
-     operation and makes ids guessable in sequence"). New Guids stay random (v4, `Guid.NewGuid()`), not UUIDv7: a v7
-     id carries its creation time into every URL, and creation order is what the audit fields are for (`IAuditable`,
-     `CreatedAt`, in History). **S-ID2 measured no large difference (§8.4):** 100k EF inserts take the same time
-     within noise on both databases. v7 only shrinks PostgreSQL's key index by 21%, so v4 stays.
-   - The kind (Integer, Guid, Natural) is model metadata: an attribute gives the default, and the **app model** may
-     override it, also for entities shipped in feature packages.
-   - There is no process-global state, because several test hosts share one process.
-3. **An id is canonicalised once, at creation, through the app model:** `ids.NewAsync<T>()`, `ids.Parse<T>(s)`, the
-   model-scoped JSON converter and the route binder.
-   - The model normalises: `"042"` becomes `"42"`, Guid `D` becomes `N`, and the whole id is lowered (D7).
-   - There is no public constructor and no implicit conversion. `FromTrusted` is internal, for the generator and
-     the providers.
-   - `default` is empty, and a store rejects it.
-4. **The collection prefix is fixed at compile time.** The canonical string is the format on the wire, in RLS, in
-   audit and in live updates, on every provider. URLs may carry only the key.
-5. **The id is known before `StoreAsync`.** `ids.NewAsync<T>()` draws from RavenDB's native HiLo
-   (`GenerateNextIdForAsync`) or from EF's HiLo sequence, so references staged in the same session already carry the
-   final id.
-   - HiLo burns ranges on abandoned saves.
-   - Natural-kind entities skip `NewAsync`: their key comes from the business key.
-6. **RavenDB:**
-   - A generated hidden `string? __DocumentId { get => Id.Value; set => Id = Id<T>.FromTrusted(value.ToLowerInvariant()); }`
-     is the identity property, selected by `FindIdentityProperty`. RavenDB refuses a non-string identity member.
-     There are no store events. The setter lowers what RavenDB hands back, so a legacy mixed-case id reads as its
-     lowercase form (D7, O15). The member may be private (S-ID1 C2, R7).
-   - The public `Id<T>` is `[JsonIgnore]` (generator-emitted), so the body never carries an `Id` field. A re-save of
-     today's string-Id document is byte-identical (S-ID1 P2), and nothing needs a backfill patch.
-   - Int ids are RavenDB's **native HiLo**, lowered (D7): `"people/1-a"` stays opaque, and the node tag is never
-     stripped. On RavenDB, "Integer" just means HiLo-generated. Sorting by id is alphabetical there (`people/10-a`
-     sorts before `people/2-a`), and that is documented.
-   - The HiLo comes from **Spark's own** `AsyncMultiDatabaseHiLoIdGenerator`. `ApplySparkConventions` overrides
-     `AsyncDocumentIdGenerator` (Guid ids), and from then on `store.HiLoIdGenerator` throws (S-ID1 C13).
-   - The stored JSON is unchanged: references stay strings.
-7. **Id lookups made by the framework itself** (detail load, reference resolution, row security, lookups) go through
-   a provider hook: `Load` on RavenDB, key equality on EF. The commercial framework does the same: `Session.Load` on RavenDB, a
-   key-equality expression on EF.
-   - The hook has a batch form (`LoadMany`: one `IN` query on EF), so reference resolution is never N+1. D30 uses the
-     same hook to name the referenced row in an FK-violation message.
-   - **Only LINQ that an app author writes against `x.Id`** needs translation on RavenDB. **(b) won (S-ID1, §8.3):**
-     an execution-time expression rewrite through a provider decorator.
-     - It turns the entity's own `x.Id` into the identity member, so the client emits `id()`. This covers `==`,
-       `!=`, `Contains`/`In` and `OrderBy`, and a projection selects `id() as …`.
-     - `id()` matches the real document id, case-insensitively. It finds documents with no body `Id` (every
-       document today), and a lowercase value finds a mixed-case legacy id (O15).
-     - The same decorator lowers `coll.Contains(x.Member)` into `x.Member.In(coll)` for any element type. The RavenDB
-       client rejects `Contains` even over `List<string>` (S-ID1 C4 control), which is why the apps write `.In()` by
-       hand today (`AccountActions.cs:118`).
-     - (a) was measured and rejected: RQL treats a body field `Id` as an ordinary field. Documents without it
-       (all of production) are invisible to `where Id = …` (C6), and keeping it would need a backfill patch and a
-       byte change on every re-save.
-     - (c) is not needed.
+**Rules 1–7, 9 and 10 shipped with typed ids in #713** (2026-11-26). [`typed_ids_PRD.md`](typed_ids_PRD.md) D23
+records them, with the deviations found while building them: `FromTrusted` is public and hidden from IntelliSense, a
+Guid key is canonical in its `D` form (not `N`), and `__DocumentId` is internal (not private). The rule numbers are
+kept, because the code comments cite them. Their relational parts:
+
+- **Rule 2, the Guid kind:** new Guids stay random (v4), not UUIDv7. **S-ID2 measured no large difference (§8.4):**
+  100k EF inserts take the same time within noise on both databases. v7 only shrinks PostgreSQL's key index by 21%.
+- **Rule 5, the id before `StoreAsync`:** on SQL, `ids.NewAsync<T>()` draws from EF's HiLo sequence for the Integer
+  kind. HiLo burns ranges on abandoned saves.
+- **Rule 7, the framework's own id lookups** (detail load, reference resolution, row security, lookups) go through a
+  provider hook: `Load` on RavenDB, key equality on EF. The commercial framework does the same. The hook has a batch
+  form (`LoadMany`: one `IN` query on EF), so reference resolution is never N+1. D30 uses the same hook to name the
+  referenced row in an FK-violation message.
+
 8. **EF Core:**
    - Per-model value converters parse `"people/42"` into `int`/`bigint`/`Guid` columns, range-checked.
    - Int keys use **HiLo** by default; IDENTITY is a documented opt-in that breaks rule 5. EF's `UseHiLo` works on
@@ -970,12 +922,6 @@ public List<Id<Profession>> ProfessionIds { get; set; } = [];
      on RavenDB. It is documented as unspecified for Guid ids.
    - `ids.Contains(x.Id)` translates on every provider. EF 11 on SQL Server sends one parameter per id (2000 ids =
      2000 parameters) and switches to `OPENJSON` past the 2100 limit; PostgreSQL binds one array, `= ANY(@ids)`.
-9. **One framework-owned JSON setup** covers every options instance: Newtonsoft for RavenDB documents, and
-   System.Text.Json for MVC and SignalR. Writing an `Id<T>` needs no model; reading on the web validates through the
-   model.
-10. **Not supported:**
-    - composite keys
-    - id obfuscation (the commercial framework offers it as an option)
 11. **No cross-provider migration tooling** (owner, 2026-11-24). Moving between database systems is a one-shot job:
     the developer writes their own migrator, which maps the first database's ids to the second's after inserting into
     it. The same entity has different ids per provider (`"people/1-A"` on RavenDB, `"people/1"` on SQL).
@@ -1106,7 +1052,8 @@ EF tools would have to rebuild).
   its own investigation.
 
 **D27 (round 3): a typed contract.** `ExistsAsync`, `Delete` and `GetVersionsAsync` take `Id<T>` (about 89 call
-sites). With D23 the type is inferred: `Delete(person.CompanyId)` can only delete a `Company`.
+sites). With D23 the type is inferred: `Delete(person.CompanyId)` can only delete a `Company`. Shipped in #713
+(`typed_ids_PRD.md` D27).
 
 **D30 (the commercial-framework comparison): database constraint errors become validation messages.**
 - The dialects translate unique, foreign-key, not-null and length violations into Spark's validation error, naming
@@ -2027,6 +1974,38 @@ docs.Employees.Select(e => new { FullName = (e.FirstName + " ") + e.LastName, Ow
 **Not covered:** concatenation of nullable columns. The view's string columns are required here. SQL's `NULL + ' '`
 is `NULL`, while C#'s is `" "`, so a nullable-column case belongs in D31's database behaviour tests in M6.
 
+### 8.13 S-ID6: RavenDB static indexes over typed ids (2026-11-24, during M2)
+
+**Question.** 36 files declare static RavenDB indexes, and their maps read `x.Id` and `LoadDocument(x.RefId)`. After
+D23 the identity member is the generated `__DocumentId`, the own `Id` is not in the body, and references are
+`Id<T>`. What does RavenDB's index translator write for those maps?
+
+**Without a rewrite (RavenDB 7.2 client):**
+1. `p.Id.Value` and `p.Id.ToString()` are written as `p.Id.Value` and `p.Id.ToString()`. The translator writes
+   `Id(p)` only for the identity member, so these read a body field that isn't there.
+2. `LoadDocument<T>(p.CompanyId!.Value.Value)` is written as `LoadDocument(p.CompanyId.Value, …)`. The stored
+   reference is a string with no `Value` member, so the map fails on every document and RavenDB marks the index
+   errored: "1 map attempts, 1 has failed".
+3. `LoadDocument<T>(p.CompanyId.ToString())` works as written.
+
+**With `RavenIndexIdRewriter`** (an expression visitor in the RavenDB package):
+- The own `x.Id`, `x.Id.Value` and `x.Id.ToString()` become the `__DocumentId` member, which prints as `Id(p)`.
+- A bare `x.Id` in an `Id<T>` slot becomes `Convert(__DocumentId, FromTrusted)`, which prints as `(Id(p))`.
+- A reference's `.Value` becomes `.ToString()`.
+
+The maps then translate to `Id(p)` and `LoadDocument(p.CompanyId.ToString(), "IdCompanies")`. There are 0 index
+errors, the rows hold the right id, reference and loaded name, and `Where(r => r.CompanyId == acme.Id)` on the index
+returns the row through the query value converter.
+
+**Decision.**
+- `SparkIndexCreationTask` rewrites `Map` in `CreateIndexDefinition`, and `SparkMultiMapIndexCreationTask` hides
+  `AddMap` with a rewriting one. The rewrite is idempotent.
+- Authors write typed ids as they would anywhere else.
+- An index on a converted entity must derive from a Spark base: a raw `AbstractIndexCreationTask` is converted along
+  with its entity.
+
+Test: `RavenTypedIdIndexTests` (single map with `.Value` forms, with `ToString()` forms, and the multi-map).
+
 ## 9. Stale in earlier drafts
 
 **In the 2026-11-09 draft:**
@@ -2207,6 +2186,8 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
   - Recommendation: (a), proven by a spike on a copy of the production `Coverage` database (S-ID4) that loads,
     queries, prefix-scans and compares mixed-case ids through the lowercase `Id<T>`. Choose (b) only if the spike
     fails, and spike the case-only re-key on the same copy first.
+  - **Reaffirmed 2026-11-26** (owner: "No migration needed"), after #713's review found grid rows of pre-upgrade
+    documents without an etag: the fix compares the stored id ignoring case. `typed_ids_PRD.md` O15 has the record.
 - **O16, how a test project picks its database type (decided 2026-11-24, owner: (d)):** the question is the
   provider (RavenDB, SQL Server, PostgreSQL), never the database name, which stays the driver's business as on
   master (`RavenTestDriver.GetDocumentStore` names each database off a process-wide counter,
