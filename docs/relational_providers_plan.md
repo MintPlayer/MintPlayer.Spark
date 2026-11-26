@@ -68,6 +68,15 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
         `A_type_with_two_child_tables_reads_each_in_a_statement_of_its_own` failed on PG 18 and LocalDB with one
         statement holding both `LEFT JOIN`s. It went green with the interceptor, and the whole of Relational.Tests
         passed on both servers (255, plus the opt-in 100k-row spike skipped).
+      - **CI on fb51f6990 found what the local checks missed:** 421 of Spark.Tests' 524 failed on each relational
+        leg, all with `syntax error at or near "This"` while the host's schema was created. `RelationalViewRenderer`
+        writes a view's SQL with `ToQueryString()`, and for a split query EF adds its note "This LINQ query is being
+        executed in split-query mode…" to that text. A view rooted at a type with two child tables got the sentence
+        in its `CREATE VIEW`. The local checks had no such view: Relational.Tests' views read types with one child
+        table or none, and the two Spark classes run locally had hosts without one.
+        A view is one `SELECT`, so the renderer now states `AsSingleQuery()`, which the interceptor leaves alone.
+        Red first: `A_view_over_a_type_with_two_child_tables_is_one_statement` (`VwTeam`, members and coaches)
+        failed on both servers with the CI error. It is green, with all view tests (24).
     - The RavenDB client references outside the RavenDB packages were checked too. Each is RavenDB-only by design or
       branches on the provider:
       - data migrations;

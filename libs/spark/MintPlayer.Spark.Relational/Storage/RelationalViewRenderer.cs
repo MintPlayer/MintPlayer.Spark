@@ -54,8 +54,13 @@ internal static class RelationalViewRenderer
         var root = Set(db, view.CollectionType);
         var query = root.Provider.CreateQuery(body);
         var rewrite = typeof(JoinRewriter).GetMethod(nameof(JoinRewriter.Rewrite))!.MakeGenericMethod(query.ElementType);
-        return (IQueryable)rewrite.Invoke(null, [db, query])!;
+        var rewritten = (IQueryable)rewrite.Invoke(null, [db, query])!;
+        // A view is one SELECT. Stated, so SparkSplitQueries leaves a view over a type with two child tables whole:
+        // split, ToQueryString would add EF's "This LINQ query is being executed in split-query mode" note to the SQL.
+        return rewritten.Provider.CreateQuery(Expression.Call(AsSingleQuery.MakeGenericMethod(rewritten.ElementType), rewritten.Expression));
     }
+
+    private static readonly MethodInfo AsSingleQuery = typeof(RelationalQueryableExtensions).GetMethod(nameof(RelationalQueryableExtensions.AsSingleQuery))!;
 
     /// <summary>
     /// <c>IdOf(row)</c> is the key column, whose CLR type (an <c>Id&lt;T&gt;</c>, a Guid) is not the row's <c>Id</c>

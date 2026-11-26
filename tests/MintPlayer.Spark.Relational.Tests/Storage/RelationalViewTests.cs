@@ -133,6 +133,43 @@ public sealed class VwRosters : SparkView<VVwRoster>
         select new VVwRoster { Company = g.Key, People = g.SelectMany(x => x.People).ToList() };
 }
 
+[ValueObject]
+public class VwMember
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+}
+
+[ValueObject]
+public class VwCoach
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>Two child tables: its reads run split (<c>SparkSplitQueries</c>).</summary>
+public class VwTeam
+{
+    public Id<VwTeam> Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public List<VwMember> Members { get; set; } = [];
+    public List<VwCoach> Coaches { get; set; } = [];
+}
+
+public class VVwTeam
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int Members { get; set; }
+    public int Coaches { get; set; }
+}
+
+public sealed class VwTeamSizes : SparkView<VVwTeam>
+{
+    public override Expression<Func<ISparkViewSource, IQueryable<VVwTeam>>> Map => s =>
+        s.Set<VwTeam>().Select(t => new VVwTeam { Id = s.IdOf(t), Name = t.Name, Members = t.Members.Count(), Coaches = t.Coaches.Count() });
+}
+
 /// <summary>
 /// <see cref="SparkView{TRow}"/> as an SQL view (#536 M4d, D32): EF writes the SQL, the schema creates the view, a
 /// query reads it like a table, and a migration drops and recreates it when it or a table it reads changes.
@@ -285,6 +322,38 @@ public abstract class RelationalViewTests : IAsyncLifetime
 
         using var session = Store.OpenSession();
         (await session.ToListAsync(session.Query<VVwPerson, VwPeopleWithCompany>())).Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// A view is one SELECT, also over a type whose reads run split (two child tables): EF's split-query note is no part
+    /// of its SQL, which the schema creates and a query reads. (CI on fb51f6990: the note in the view's SQL failed every
+    /// PostgreSQL and SQL Server host with "syntax error at or near "This"".)
+    /// </summary>
+    [SkippableFact]
+    public async Task A_view_over_a_type_with_two_child_tables_is_one_statement()
+    {
+        await using var teams = await RelationalTestDatabase.CreateAsync(
+            RequireServer, [typeof(VwTeam)], views: [new VwTeamSizes()], database: "spark_vw_" + Guid.NewGuid().ToString("N")[..12]);
+        var team = new VwTeam
+        {
+            Id = Id<VwTeam>.FromTrusted($"vwteams/{Guid.NewGuid():N}"),
+            Name = "Blue",
+            Members = [new VwMember { Name = "Ann" }, new VwMember { Name = "Bob" }],
+            Coaches = [new VwCoach { Name = "Cy" }],
+        };
+        using (var session = teams.Store.OpenSession())
+        {
+            await session.StoreAsync(team);
+            await session.SaveChangesAsync();
+        }
+
+        using var read = teams.Store.OpenSession();
+        var rows = await read.ToListAsync(read.Query<VVwTeam, VwTeamSizes>());
+        rows.Should().ContainSingle();
+        var row = rows[0];
+        row.Id.Should().Be(team.Id.Value);
+        row.Members.Should().Be(2);
+        row.Coaches.Should().Be(1);
     }
 
     [SkippableFact]

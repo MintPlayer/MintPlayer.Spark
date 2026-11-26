@@ -1832,6 +1832,9 @@ Findings:
    snapshot, so a write between them can pair an owner with newer child rows. A RavenDB document and a single statement
    are read whole. Proven by `A_type_with_two_child_tables_reads_each_in_a_statement_of_its_own`: red on both servers
    (one statement, `LEFT JOIN "RelPeopleCourses" … LEFT JOIN "RelPeopleJobs"`), green with the interceptor.
+   A view is the exception: it is one `SELECT`, and the renderer states `AsSingleQuery()`. Split, EF's
+   `ToQueryString()` adds the note "This LINQ query is being executed in split-query mode" to the view's SQL, which
+   broke every relational host on CI (`A_view_over_a_type_with_two_child_tables_is_one_statement`).
 6. **O13 works as decided:** the generated backing field, mapped with `HasField` and
    `PreferFieldDuringConstruction`. EF reads the getter when it saves, so the dirty check sees the recomputed value
    and rewrites the column. Queries on `FullName` hit the column, not the getter.
