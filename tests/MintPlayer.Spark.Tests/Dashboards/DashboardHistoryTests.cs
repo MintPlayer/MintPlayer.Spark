@@ -63,7 +63,9 @@ public class DashboardHistoryTests : SparkTestDriver
     {
         var catalog = Catalog("Gauge");
         var a = Sampler(catalog);
-        using var otherClient = new DocumentStore { Urls = Store.Urls, Database = Store.Database, Certificate = Store.Certificate }.Initialize();
+        // The second host is a separate client with the same conventions as the first: without them, whichever sampler
+        // stored the dashboard document first decided the run (a bare client cannot set the typed Id).
+        using var otherClient = new DocumentStore { Urls = Store.Urls, Database = Store.Database, Certificate = Store.Certificate }.ApplySparkConventions().Initialize();
         var b = Sampler(catalog, otherClient);
         var first = a.SlotOf(DateTime.UtcNow);
         const int slots = 25;
