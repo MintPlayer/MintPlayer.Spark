@@ -31,7 +31,14 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       when they are ported". `SparkSubscriptionWorker` (app and replication workers) and Files' `DeferredFileScanService`
       read a table before the schema existed.
     - Both wait now, red then green (`BackgroundStoreReadinessTests`). The other hosted services were audited; PRD D41
-      "The rest" lists why each needs no gate.
+      "The rest" lists why each needs no gate. Pushed as bed95c264, CI green (31 checks).
+    - **Found by its coverage (a CI defect):** the E2E suite never ran on bed95c264. `MintPlayer.Spark.E2E.Tests:test`
+      came from the Nx remote cache, and its coverage carried the old `DeferredFileScanner.cs` (no readiness wait,
+      174 lines against 189). The E2E project had no Nx dependency on the six apps it hosts, so a change to a library
+      only an app uses (Files, Messaging, SubscriptionWorker) left its cache key unchanged
+      (`nx show projects --affected --files=…SparkFilesExtensions.cs` listed Fleet, not the E2E project).
+      Its `project.json` now has the apps as `implicitDependencies` and their ClientApps' `production` files as test
+      inputs; the same query lists it. A new host must be added there too (CLAUDE.md, `tools/test-local.mjs`).
     - The apps: CodeCoverage (7 getters), HR and MintPlayer (`Person.FullName`) were re-synchronized; their
       `modelHashes.json` change, and RavenDB already stored all of them. The other six verify in sync. SqlDemo's
       synchronize wrote no migration.

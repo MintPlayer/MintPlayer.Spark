@@ -127,7 +127,9 @@ CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cach
 - **E2E:** when it is affected, the script first builds the apps it hosts (`Fleet`, `QnA`) through
   nx, then sets `SPARK_E2E_SKIP_APP_BUILD=1` so `SparkAppTestHost` skips its own per-app
   `dotnet build`. The variable is opt-in; unset (CI) the host still builds. A new E2E host app must
-  be added to `E2E_APPS` in the script.
+  be added to `E2E_APPS` in the script, and to the E2E project's `project.json`: `implicitDependencies` for the app,
+  the test inputs for its ClientApp. Without them a change to the app alone replays the suite's last result and
+  coverage from the Nx cache, on CI too (#536, run 45814177990).
 - Every RavenTestDriver base (`RavenSparkTestDriver`, `RavenSparkSharedDatabase`, `CoverageRavenTest`)
   deletes its databases without the server's 15 s confirmation wait, through
   `RavenDatabaseDeletion.DeleteOnDispose` in `PreInitialize`. This applies on CI as well.

@@ -29,7 +29,9 @@ import { spawnSync } from 'node:child_process';
 
 const E2E = 'MintPlayer.Spark.E2E.Tests';
 // The apps the E2E suite hosts (the SparkAppDescriptor in each *TestHost.cs under
-// tests/MintPlayer.Spark.E2E.Tests). Add one here when a new host appears, or it runs stale.
+// tests/MintPlayer.Spark.E2E.Tests). Add one here when a new host appears, or it runs stale. Add it to that
+// project's project.json too (implicitDependencies, and its ClientApp to the test inputs), or a change to the app
+// alone replays the suite's last result from the Nx cache instead of running it (#536, run 45814177990).
 // SqlDemo runs on PostgreSQL (#536): SPARK_TEST_POSTGRESQL's server, or the embedded instance.
 const E2E_APPS = ['Fleet', 'QnA', 'HR', 'SparkId', 'MintPlayer', 'SqlDemo'];
 // Their ClientApps. The .NET projects no longer depend on them in the Nx graph, so they are built here, in
