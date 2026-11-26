@@ -1957,29 +1957,6 @@ internal sealed record DatabasePage(int TotalItems);
     }
 
     /// <summary>
-    /// The RavenDB search term for a raw user input, or <c>null</c> when there is nothing to search for.
-    /// <para>
-    /// Each whitespace-separated word is wrapped as <c>*word*</c> and the whole thing is matched with
-    /// <see cref="Raven.Client.Documents.Queries.SearchOperator.And"/>, so every word must appear somewhere in the field. That is what
-    /// preserves the substring semantics this replaced: before the pushdown, search was an in-memory
-    /// <c>Contains</c> over already-materialized rows, and a term-based query alone would silently stop
-    /// matching <c>olkswag</c> against <c>Volkswagen</c>.
-    /// </para>
-    /// <para>
-    /// <c>*</c> and <c>?</c> are stripped from the caller's words rather than honoured. A bare <c>*</c>
-    /// matches every document, and measured on RavenDB 7.2.5 a <c>?</c> never matches while a mid-word
-    /// <c>*</c> matches nothing either — so passing them through could only surprise. The term is not
-    /// lower-cased: RavenDB lower-cases it for us.
-    /// </para>
-    /// <para>
-    /// Wrapping each word separately, rather than the whole input, is what lets a substring span a space:
-    /// <c>*olf* *gt*</c> matches <c>Volkswagen Golf GTI</c> because the words are matched independently. The
-    /// side effect is that this is slightly <em>wider</em> than <c>Contains</c> — the words need not be adjacent
-    /// or in order, so <c>gti golf</c> matches where <c>Contains</c> would not. A widening, so no caller loses a
-    /// result.
-    /// </para>
-    /// </summary>
-    /// <summary>
     /// The in-memory search, for a source that could not push it down: a row stays when its name,
     /// breadcrumb or any attribute's display text contains the term. Shared by <c>/execute</c> and
     /// the distinct pass, so a filter panel lists exactly the rows the searched grid shows.
@@ -2014,7 +1991,8 @@ internal sealed record DatabasePage(int TotalItems);
 
     /// <summary>
     /// The words of a search, or null for no search. Wildcard characters are stripped: a bare <c>*</c> would match
-    /// every row, and a provider adds its own syntax (#536 S2b).
+    /// every row, and a provider adds its own syntax (#536 S2b). Measured on RavenDB 7.2.5, a <c>?</c> never matches
+    /// and a mid-word <c>*</c> matches nothing, so passing them through could only surprise.
     /// </summary>
     internal static IReadOnlyList<string>? BuildSearchWords(string? search)
     {

@@ -57,25 +57,26 @@ public sealed class RelationalTestDatabase : IAsyncDisposable
     /// </summary>
     public static async Task<RelationalTestDatabase> CreateAsync(
         RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel = null, string? database = null,
-        IEnumerable<ISparkView>? views = null, Func<Type, string, Guid?>? attributeId = null)
+        IEnumerable<ISparkView>? views = null, Func<Type, string, Guid?>? attributeId = null, Action<DbContextOptionsBuilder>? configureContext = null)
     {
-        var store = Open(server, types, configureModel, database ?? "spark_rel_" + Guid.NewGuid().ToString("N")[..12], views, attributeId);
+        var store = Open(server, types, configureModel, database ?? "spark_rel_" + Guid.NewGuid().ToString("N")[..12], views, attributeId, configureContext);
         await RelationalSchema.CreateFromModelAsync(store);
         return new RelationalTestDatabase(store);
     }
 
     /// <summary>
     /// A store over <paramref name="database"/> with the model of <paramref name="types"/>; creates nothing.
-    /// <paramref name="attributeId"/> gives a property its model attribute's id, as the app's model files do (O19).
+    /// <paramref name="attributeId"/> gives a property its model attribute's id, as the app's model files do (O19), and
+    /// <paramref name="configureContext"/> adds context options (an interceptor that records the SQL).
     /// </summary>
     public static RelationalSparkStore Open(
         RelationalTestServer server, IEnumerable<Type> types, Action<ModelBuilder>? configureModel, string database,
-        IEnumerable<ISparkView>? views = null, Func<Type, string, Guid?>? attributeId = null)
+        IEnumerable<ISparkView>? views = null, Func<Type, string, Guid?>? attributeId = null, Action<DbContextOptionsBuilder>? configureContext = null)
     {
         var model = SparkRelationalModel.Build(types, t => SparkRelationalExtensions.KindOf(t, new SparkIdOptions()), views);
         return new RelationalSparkStore(
             new SparkContextSetup(model, server.Dialect, configureModel is null ? [] : [configureModel], attributeId),
-            server.ConnectionStringFor(database));
+            server.ConnectionStringFor(database), configureContext);
     }
 
     public async ValueTask DisposeAsync()

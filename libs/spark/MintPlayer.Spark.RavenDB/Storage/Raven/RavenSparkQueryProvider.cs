@@ -187,6 +187,13 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
     /// RavenDB's term for <paramref name="words"/>: each wrapped in <c>*</c>, so a word matches as a substring, also on
     /// a plain default-indexed field whose whole value is one term (measured on RavenDB 7.2.5).
     /// </summary>
+    /// <remarks>
+    /// Matched with <see cref="SearchOperator.And"/>, every word must appear somewhere in the field. A term query
+    /// alone would not match <c>olkswag</c> against <c>Volkswagen</c>; the in-memory <c>Contains</c> this replaced did.
+    /// Each word is wrapped on its own, so a match can span a space: <c>*olf* *gt*</c> matches <c>Volkswagen Golf GTI</c>.
+    /// That is slightly wider than <c>Contains</c>: the words need not be adjacent or in order. No caller loses a
+    /// result. The term is not lower-cased, because RavenDB lower-cases it.
+    /// </remarks>
     internal static string WildcardTerm(IReadOnlyList<string> words) => string.Join(' ', words.Select(static word => $"*{word}*"));
 
     /// <summary>One <c>Search</c> clause per property, for <see cref="WildcardTerm"/> of the words.</summary>

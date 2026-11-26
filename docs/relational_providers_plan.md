@@ -48,6 +48,37 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - The apps: CodeCoverage (7 getters), HR and MintPlayer (`Person.FullName`) were re-synchronized; their
       `modelHashes.json` change, and RavenDB already stored all of them. The other six verify in sync. SqlDemo's
       synchronize wrote no migration.
+  - **Milestone audit (2026-11-26).** Each §4 item's named artifacts were searched for in `libs`, `tests`, `apps`,
+    `.github` and `docs`, outside `bin`/`obj`. All of them exist except one:
+    - M2: `Id<T>`, `__DocumentId`, the route binder.
+    - M3: data protection, `SparkStoreRequirement`, `Search(words)`, `SparkView<TRow>`, the InMemory renderer,
+      `ISparkCommand`, `ISparkSchemaMigrator`, `--spark-migrate`, `--spark-migration-script`, the layering test.
+    - M4: `UseSqlServer`, `UsePostgreSql`, `ConfigureModel`, `SparkMigrationsModelDiffer`, `Spark:ViewSql`, the D30
+      translator (`SparkConstraintErrors`).
+    - M5: both behaviour suites, the two Testing packages, relational conformance.
+    - M6: the neutral lookup and reference tests, O13's generator.
+    - M7: `RelationalRevisions`, the reduce and multi-map guards.
+    - M8: `StoreDashboardHistory`.
+    - M9: CI's SQL Server and PostgreSQL legs, the guide, SqlDemo on PostgreSQL and its E2E host.
+    - **The one missing was M4's `AsSplitQuery` (PRD §8.10, finding 5), and it is built now.** No relational code
+      split a query, so a type with two AsDetail collections read the product of their rows. `SparkSplitQueries` is an
+      `IQueryExpressionInterceptor` that splits every query rooted at a type with two or more child tables; one child
+      table keeps the single statement. The trade-off (no snapshot across the statements) is in the PRD.
+      - Red first: the test's `RelPerson` got a second child list (`Courses`), and
+        `A_type_with_two_child_tables_reads_each_in_a_statement_of_its_own` failed on PG 18 and LocalDB with one
+        statement holding both `LEFT JOIN`s. It went green with the interceptor, and the whole of Relational.Tests
+        passed on both servers (255, plus the opt-in 100k-row spike skipped).
+    - The RavenDB client references outside the RavenDB packages were checked too. Each is RavenDB-only by design or
+      branches on the provider:
+      - data migrations;
+      - `RavenAttachmentFileStore`, `RavenSearchProvider`, OpenSearch sync;
+      - `SparkUserBackfill`, which returns unless RavenDB;
+      - Dashboards' `DashboardStorage`, with `StoreDashboardHistory` elsewhere;
+      - `FilesReconciler`, OIDC expiry and the soft-delete guards;
+      - the `sparkindex` template.
+    - Two doc comments were fixed on the way. `QueryExecutor` had an orphaned summary whose cref named
+      `Raven.Client`'s `SearchOperator`, which core cannot reference. `WildcardTerm` now records RavenDB's search
+      semantics: every word must match, and `?` and mid-word `*` never match on 7.2.5.
   O18–O20 were pushed as 460a17281. The audit of
   the plan's older entries found two items, built and pushed as 85958deb3, and O21, which the owner decided and which
   is built. PR #697 stays ready for review.
@@ -1287,6 +1318,7 @@ None. O8 and O9 were decided on 2026-11-24 (owner, PRD §10):
      `ConfigureModel(ModelBuilder)` hook (O9), which runs last in `OnModelCreating`
    - the EF model built from the Spark model, the migration generator (D24), child and join tables (D25, D26): the
      join-list rewrite and load step proven in S2b, and `AsSplitQuery` for types with several AsDetail collections
+     (missing until the 2026-11-26 audit, §1; now `SparkSplitQueries`)
    - the aggregate version (S4): child and join row changes move the root's version; `GetVersionsAsync` answers
      tracked rows from the tracker; unversioned deletes by id through `ExecuteDeleteAsync`
    - applying migrations (D33): at startup by default (framework schema, app migrations, then the data migrations),

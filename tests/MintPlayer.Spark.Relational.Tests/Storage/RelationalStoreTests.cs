@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using MintPlayer.Spark.Abstractions;
@@ -34,6 +35,14 @@ public class RelJob
 #pragma warning restore CS0169
 }
 
+/// <summary>A second child table on <see cref="RelPerson"/>: two AsDetail collections make its reads split (PRD §8.10, finding 5).</summary>
+[ValueObject]
+public class RelCourse
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+}
+
 public enum RelLevel { Junior, Medior, Senior }
 
 [Flags]
@@ -58,6 +67,7 @@ public class RelPerson
     public Id<RelCompany>? CompanyId { get; set; }
     public List<Id<RelSkill>> Skills { get; set; } = [];
     public List<RelJob> Jobs { get; set; } = [];
+    public List<RelCourse> Courses { get; set; } = [];
     public RelAddress? Address { get; set; }
     public TranslatedString? Title { get; set; }
     public List<string> Tags { get; set; } = [];
@@ -98,6 +108,9 @@ public abstract class RelationalStoreTests : IAsyncLifetime
 {
     private RelationalTestDatabase? database;
 
+    /// <summary>The text of every statement that reads rows, in order.</summary>
+    private readonly CommandLog commands = new();
+
     protected abstract RelationalTestServer? Server { get; }
 
     protected ISparkStore Store => database!.Store;
@@ -105,7 +118,31 @@ public abstract class RelationalStoreTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         if (Server is { } server)
-            database = await RelationalTestDatabase.CreateAsync(server, [typeof(RelCompany), typeof(RelSkill), typeof(RelPerson), typeof(RelNote)]);
+            database = await RelationalTestDatabase.CreateAsync(
+                server, [typeof(RelCompany), typeof(RelSkill), typeof(RelPerson), typeof(RelNote)],
+                configureContext: options => options.AddInterceptors(commands));
+    }
+
+    private sealed class CommandLog : DbCommandInterceptor
+    {
+        public List<string> Reads { get; } = [];
+
+        public override ValueTask<InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<System.Data.Common.DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            lock (Reads)
+                Reads.Add(command.CommandText);
+            return ValueTask.FromResult(result);
+        }
+
+        public override InterceptionResult<System.Data.Common.DbDataReader> ReaderExecuting(
+            System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<System.Data.Common.DbDataReader> result)
+        {
+            lock (Reads)
+                Reads.Add(command.CommandText);
+            return result;
+        }
     }
 
     public async Task DisposeAsync()
@@ -318,6 +355,53 @@ public abstract class RelationalStoreTests : IAsyncLifetime
             reordered.Jobs.Select(j => j.Title).Should().Equal("third", "second", "first");
             reordered.Skills.Should().Equal(Skill("csharp"), Skill("sql"));
         }
+    }
+
+    /// <summary>
+    /// PRD §8.10, finding 5: EF joins every AsDetail collection into the owner's read, so two of them in one statement
+    /// return the product of their rows (3 jobs × 4 courses = 12 per person). A type with several child tables reads
+    /// split: the owner's rows, then one statement per child table. Its lists come back whole and in their stored
+    /// order, through a load and through a query.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_type_with_two_child_tables_reads_each_in_a_statement_of_its_own()
+    {
+        RequireServer();
+        var (_, person) = await SeedAsync();
+        using (var session = Store.OpenSession())
+        {
+            var stored = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            stored.Jobs = [new RelJob { Id = "c", Title = "j1" }, new RelJob { Id = "a", Title = "j2" }, new RelJob { Id = "b", Title = "j3" }];
+            stored.Courses = [new RelCourse { Id = "d", Name = "c1" }, new RelCourse { Id = "b", Name = "c2" }, new RelCourse { Id = "c", Name = "c3" }, new RelCourse { Id = "a", Name = "c4" }];
+            await session.SaveChangesAsync();
+        }
+        string[] childTables;
+        using (var db = database!.Store.NewContext())
+            childTables = [.. db.Model.FindEntityType(typeof(RelPerson))!.GetNavigations().Where(n => n.IsCollection).Select(n => n.TargetEntityType.GetTableName()!)];
+        childTables.Should().HaveCount(2);
+
+        lock (commands.Reads)
+            commands.Reads.Clear();
+        using (var session = Store.OpenSession())
+        {
+            var loaded = (await session.LoadAsync<RelPerson>(person.Id.Value))!;
+            loaded.Jobs.Select(j => j.Title).Should().Equal("j1", "j2", "j3");
+            loaded.Courses.Select(c => c.Name).Should().Equal("c1", "c2", "c3", "c4");
+        }
+        using (var session = Store.OpenSession())
+        {
+            var queried = await session.ToListAsync(session.Query<RelPerson>().Where(p => p.Name == "Ann"));
+            queried.Should().ContainSingle();
+            queried[0].Jobs.Select(j => j.Title).Should().Equal("j1", "j2", "j3");
+            queried[0].Courses.Select(c => c.Name).Should().Equal("c1", "c2", "c3", "c4");
+        }
+
+        string[] reads;
+        lock (commands.Reads)
+            reads = [.. commands.Reads];
+        reads.Should().NotContain(sql => childTables.All(table => sql.Contains(table)), "each child table is read in a statement of its own");
+        foreach (var table in childTables)
+            reads.Count(sql => sql.Contains(table)).Should().Be(2, $"the load and the query each read {table} once");
     }
 
     [SkippableFact]

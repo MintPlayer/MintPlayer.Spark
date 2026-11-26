@@ -141,7 +141,7 @@ public sealed class SparkDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder
-            .AddInterceptors(Storage.SparkListPositions.Interceptor)
+            .AddInterceptors(Storage.SparkListPositions.Interceptor, Storage.SparkSplitQueries.Interceptor)
             .ReplaceService<IModelCacheKeyFactory, SparkModelCacheKeyFactory>()
             .ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer, Schema.SparkMigrationsModelDiffer>();
 

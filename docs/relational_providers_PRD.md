@@ -1824,6 +1824,14 @@ Findings:
 5. **AsDetail collections are joined into every page read.** EF loads owned collections with the owner, so the page
    query has a `LEFT JOIN [EmployeeAddresses]`; `COUNT` does not. With two AsDetail collections on one type, that is
    a cartesian product: the provider uses `AsSplitQuery()` for such types (M3).
+   **Built 2026-11-26** (found missing by the milestone audit, plan §1): `SparkSplitQueries`, an
+   `IQueryExpressionInterceptor` on every `SparkDbContext`, wraps each query root over a type with two or more child
+   tables (its own, its derived types', nested ones) in `AsSplitQuery()`, so loads, session queries and the change
+   feed all split. A type with one child table keeps the single statement: no extra round trip, one row per child. A
+   query that states `AsSingleQuery()` or `AsSplitQuery()` keeps it. The price: the split statements are not one
+   snapshot, so a write between them can pair an owner with newer child rows. A RavenDB document and a single statement
+   are read whole. Proven by `A_type_with_two_child_tables_reads_each_in_a_statement_of_its_own`: red on both servers
+   (one statement, `LEFT JOIN "RelPeopleCourses" … LEFT JOIN "RelPeopleJobs"`), green with the interceptor.
 6. **O13 works as decided:** the generated backing field, mapped with `HasField` and
    `PreferFieldDuringConstruction`. EF reads the getter when it saves, so the dirty check sees the recomputed value
    and rewrites the column. Queries on `FullName` hit the column, not the getter.
