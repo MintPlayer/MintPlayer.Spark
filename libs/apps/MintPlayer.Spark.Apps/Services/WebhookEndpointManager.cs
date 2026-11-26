@@ -53,7 +53,8 @@ internal sealed partial class WebhookEndpointManager
     private static readonly Regex EndpointIdShape = new("^ep_[0-9a-f]{24}$", RegexOptions.CultureInvariant);
     private static readonly Regex DeliveryIdShape = new("^ep_[0-9a-f]{24}/[0-9a-f]{16}_msg_[0-9a-f]{32}(_r[0-9a-f]{8})?$", RegexOptions.CultureInvariant);
 
-    [Inject] private readonly ISparkStore store;
+    /// <summary>The request scope's session: each call is one unit of work, which the scheduler joins (#536 D50).</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly WebhookOwnerResolver owners;
     [Inject] private readonly WebhookEventCatalog catalog;
     [Inject] private readonly WebhookSecretProtector secrets;
@@ -72,7 +73,6 @@ internal sealed partial class WebhookEndpointManager
         if (!await owners.CanManageAsync(owner, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<WebhookEndpointView>>.NotFound();
 
-        using var session = store.OpenSession();
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
         if (registry is null)
             return WebhookResult<IReadOnlyList<WebhookEndpointView>>.Ok([]);
@@ -94,7 +94,6 @@ internal sealed partial class WebhookEndpointManager
         if (input.Description is { Length: > 200 })
             return WebhookResult<WebhookEndpointSecret>.Invalid("The description is at most 200 characters.");
 
-        using var session = store.OpenSession();
         session.OptimisticConcurrency = true;
         var registryId = WebhookOwnerRegistry.IdFor(owner);
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId.Value, cancellationToken);
@@ -132,7 +131,7 @@ internal sealed partial class WebhookEndpointManager
     }
 
     public Task<WebhookResult<WebhookEndpointView>> UpdateAsync(WebhookEndpointChange change, string userId, CancellationToken cancellationToken)
-        => WithEndpointAsync(change.Id, userId, async (session, endpoint) =>
+        => WithEndpointAsync(change.Id, userId, async endpoint =>
         {
             if (endpoint.AppSlug is not null)
                 return WebhookResult<WebhookEndpointView>.Invalid(AppOwned(endpoint));
@@ -159,7 +158,7 @@ internal sealed partial class WebhookEndpointManager
         }, cancellationToken);
 
     public Task<WebhookResult<bool>> DeleteAsync(string? id, string userId, CancellationToken cancellationToken)
-        => WithEndpointAsync(id, userId, async (session, endpoint) =>
+        => WithEndpointAsync(id, userId, async endpoint =>
         {
             if (endpoint.AppSlug is not null)
                 return WebhookResult<bool>.Invalid(AppOwned(endpoint));
@@ -175,7 +174,7 @@ internal sealed partial class WebhookEndpointManager
 
     /// <summary>A new secret; the old one keeps signing beside it for <see cref="SparkAppsOptions.SecretRotationOverlap"/>.</summary>
     public Task<WebhookResult<WebhookEndpointSecret>> RotateSecretAsync(string? id, string userId, CancellationToken cancellationToken)
-        => WithEndpointAsync(id, userId, async (session, endpoint) =>
+        => WithEndpointAsync(id, userId, async endpoint =>
         {
             var secret = WebhookSecret.Generate();
             endpoint.PreviousProtectedSecret = endpoint.ProtectedSecret;
@@ -188,7 +187,7 @@ internal sealed partial class WebhookEndpointManager
     /// <summary>Re-enables a disabled endpoint, clears its failure streak and resumes a halted ordered chain.</summary>
     public async Task<WebhookResult<WebhookEndpointView>> EnableAsync(string? id, string userId, CancellationToken cancellationToken)
     {
-        var result = await WithEndpointAsync(id, userId, async (session, endpoint) =>
+        var result = await WithEndpointAsync(id, userId, async endpoint =>
         {
             endpoint.Enabled = true;
             endpoint.DisabledReason = null;
@@ -205,17 +204,17 @@ internal sealed partial class WebhookEndpointManager
 
     /// <summary>Sends a <c>ping</c> event to this endpoint alone, whatever it subscribes to. Returns the delivery's id.</summary>
     public Task<WebhookResult<string>> PingAsync(string? id, string userId, CancellationToken cancellationToken)
-        => WithEndpointAsync(id, userId, async (session, endpoint) =>
+        => WithEndpointAsync(id, userId, async endpoint =>
         {
             if (!endpoint.Enabled)
                 return WebhookResult<string>.Invalid("The endpoint is disabled; enable it first.");
-            var deliveryId = await SchedulePingAsync(session, endpoint, cancellationToken);
+            var deliveryId = await SchedulePingAsync(endpoint, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             return WebhookResult<string>.Ok(deliveryId);
         }, cancellationToken);
 
-    /// <summary>A <c>ping</c> to <paramref name="endpoint"/> in <paramref name="session"/>, outside any ordered chain; returns the delivery id.</summary>
-    internal async Task<string> SchedulePingAsync(ISparkSession session, WebhookEndpoint endpoint, CancellationToken cancellationToken)
+    /// <summary>A <c>ping</c> to <paramref name="endpoint"/> in the scope's session, outside any ordered chain; returns the delivery id.</summary>
+    internal async Task<string> SchedulePingAsync(WebhookEndpoint endpoint, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
         var messageId = WebhookPublisher.NewMessageId(now);
@@ -232,7 +231,7 @@ internal sealed partial class WebhookEndpointManager
             CreatedUtc = now.UtcDateTime,
             ExpiresAtUtc = now.UtcDateTime + options.Value.DeliveryRetention,
         };
-        await scheduler.ScheduleAsync(session, delivery, bypassChain: true, cancellationToken);
+        await scheduler.ScheduleAsync(delivery, bypassChain: true, cancellationToken);
         return delivery.PublicId;
     }
 
@@ -240,7 +239,7 @@ internal sealed partial class WebhookEndpointManager
 
     /// <summary>The endpoint's delivery log, newest first, <paramref name="pageSize"/> at a time after <paramref name="after"/>.</summary>
     public Task<WebhookResult<IReadOnlyList<WebhookDeliveryView>>> ListDeliveriesAsync(string? id, string? after, int pageSize, string userId, CancellationToken cancellationToken)
-        => WithEndpointAsync(id, userId, async (session, endpoint) =>
+        => WithEndpointAsync(id, userId, async endpoint =>
         {
             if (after is not null && !DeliveryIdShape.IsMatch(after))
                 return WebhookResult<IReadOnlyList<WebhookDeliveryView>>.Invalid("after is not a delivery id.");
@@ -261,7 +260,7 @@ internal sealed partial class WebhookEndpointManager
     {
         if (deliveryId is null || !DeliveryIdShape.IsMatch(deliveryId))
             return WebhookResult<string>.NotFound();
-        return await WithEndpointAsync(deliveryId[..deliveryId.IndexOf('/')], userId, async (session, endpoint) =>
+        return await WithEndpointAsync(deliveryId[..deliveryId.IndexOf('/')], userId, async endpoint =>
         {
             if (await session.LoadAsync<WebhookDelivery>(WebhookDelivery.IdFor(deliveryId).Value, cancellationToken) is not { } original)
                 return WebhookResult<string>.NotFound();
@@ -279,17 +278,16 @@ internal sealed partial class WebhookEndpointManager
                 ExpiresAtUtc = now + options.Value.DeliveryRetention,
                 RedeliveryOf = original.PublicId,
             };
-            await scheduler.ScheduleAsync(session, copy, bypassChain: true, cancellationToken);
+            await scheduler.ScheduleAsync(copy, bypassChain: true, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             return WebhookResult<string>.Ok(copy.PublicId);
         }, cancellationToken);
     }
 
-    private async Task<WebhookResult<T>> WithEndpointAsync<T>(string? id, string userId, Func<ISparkSession, WebhookEndpoint, Task<WebhookResult<T>>> action, CancellationToken cancellationToken)
+    private async Task<WebhookResult<T>> WithEndpointAsync<T>(string? id, string userId, Func<WebhookEndpoint, Task<WebhookResult<T>>> action, CancellationToken cancellationToken)
     {
         if (id is null || !EndpointIdShape.IsMatch(id))
             return WebhookResult<T>.NotFound();
-        using var session = store.OpenSession();
         // The delivery engine patches the same document (failure streak, auto-disable): an edit made on a stale copy
         // must not undo that.
         session.OptimisticConcurrency = true;
@@ -298,7 +296,7 @@ internal sealed partial class WebhookEndpointManager
             return WebhookResult<T>.NotFound();
         try
         {
-            return await action(session, endpoint);
+            return await action(endpoint);
         }
         catch (SparkStoreConcurrencyException)
         {

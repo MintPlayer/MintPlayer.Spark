@@ -18,6 +18,8 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
     internal const int MaxReadableKeyLength = 64;
 
     [Inject] private readonly ISparkStore documentStore;
+    /// <summary>The scope's unit of work: the outbox stores into it, and its owner saves it (#536 D50).</summary>
+    [Inject] private readonly ISparkSession scopeSession;
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
 
     private SparkMessagingOptions Options => options.Value;
@@ -86,19 +88,18 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
         }
     }
 
-    public async Task EnqueueAsync<TMessage>(ISparkSession session, TMessage message, BroadcastOptions? broadcastOptions = null, CancellationToken cancellationToken = default)
+    public async Task EnqueueAsync<TMessage>(TMessage message, BroadcastOptions? broadcastOptions = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(session);
         broadcastOptions ??= new BroadcastOptions();
 
         // Never the deduplication path: it turns on optimistic concurrency for the whole session, so a
         // duplicate would roll back the caller's own write along with the message (#467, S13).
         if (broadcastOptions.DeduplicationKey is not null)
             throw new ArgumentException(
-                "EnqueueAsync stores into the caller's session and cannot deduplicate; use BroadcastOnceAsync.", nameof(broadcastOptions));
+                "EnqueueAsync stores into the scope's session and cannot deduplicate; use BroadcastOnceAsync.", nameof(broadcastOptions));
 
         // A fresh id: no existing document can be overwritten, and nothing about the session changes.
-        await session.StoreAsync(CreateMessage(message, broadcastOptions), $"SparkMessages/{Guid.NewGuid():N}", cancellationToken);
+        await scopeSession.StoreAsync(CreateMessage(message, broadcastOptions), $"SparkMessages/{Guid.NewGuid():N}", cancellationToken);
     }
 
     private SparkMessage CreateMessage<TMessage>(TMessage message, BroadcastOptions broadcastOptions)

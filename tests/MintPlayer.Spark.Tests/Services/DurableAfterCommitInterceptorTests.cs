@@ -244,7 +244,6 @@ public class DurableAfterCommitInterceptorTests : RavenSparkTestDriver
             Operation = PersistentObjectOperation.New,
             PersistentObject = new PersistentObject { ObjectTypeId = NoteTypeId, Name = "InterceptedNote" },
             Entity = new InterceptedNote(),
-            Session = scope.ServiceProvider.GetRequiredService<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
         };
 
         var act = () => interceptors.EnqueueCommittedAsync(context, "InterceptedNotes|", PersistentObjectOperation.New, isDelete: false, isReplaced: false, previousChangeVector: null);

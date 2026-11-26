@@ -88,7 +88,7 @@ public class MessagingInvariantsTests : MessagingRavenTestDriver
         services.AddSingleton<IRecipient<OrderedMessage>>(recipient);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         for (var i = 1; i <= 5; i++)
             await bus.BroadcastAsync(new OrderedMessage { Sequence = i });
 
@@ -115,7 +115,7 @@ public class MessagingInvariantsTests : MessagingRavenTestDriver
         services.AddSingleton<IRecipient<FastMessage>>(fast);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         await bus.BroadcastAsync(new SlowMessage { Id = "slow/1" });
 
         await using var host = await StartManagerAsync(provider);
@@ -222,7 +222,7 @@ public class MessagingInvariantsTests : MessagingRavenTestDriver
         servicesB.AddSingleton<IRecipient<OrderedMessage>>(recipientB);
         await using var providerB = servicesB.BuildServiceProvider();
 
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         for (var i = 1; i <= 3; i++)
             await bus.BroadcastAsync(new OrderedMessage { Sequence = i });
 
@@ -399,7 +399,7 @@ public class MessagingInvariantsTests : MessagingRavenTestDriver
         services.AddSingleton<IRecipient<Message2>>(r2B);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
         await bus.BroadcastAsync(new Message1 { Id = "m1" });
         await bus.BroadcastAsync(new Message2 { Id = "m2" });
 
@@ -499,7 +499,7 @@ public class MessagingInvariantsTests : MessagingRavenTestDriver
         services.AddSingleton<IRecipient<HeadOfLineMessage>>(recipient);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions { MaxAttempts = 2 }));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions { MaxAttempts = 2 }));
         await bus.BroadcastAsync(new HeadOfLineMessage { Sequence = 1 });   // poison, first
         for (var i = 2; i <= 4; i++)
             await bus.BroadcastAsync(new HeadOfLineMessage { Sequence = i });

@@ -6,7 +6,7 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
 
 ## 1. Status (2026-11-26)
 
-- **Now (2026-11-26): M1–M9, O13 and O18–O21 are built.**
+- **Now (2026-11-26): M1–M9, O13, O18–O21 and D50 are built.**
   - **Split (owner, 2026-11-26).** Typed ids (M2) shipped first as #713, with its own
     [PRD](typed_ids_PRD.md) and [plan](typed_ids_plan.md). After it merged, this branch was rebuilt on master: #697's
     commits were cherry-picked in order without the 22 M2 commits, which master now holds squashed. One commit
@@ -66,6 +66,29 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - The Messaging README named the two indexes D42 replaced.
 
       Code comments that named those indexes, or `@last-modified`, follow D40 and D42.
+  - **D50 built (owner, 2026-11-26): nothing passes a session; code injects the scope's `ISparkSession`.**
+    - The interceptor contexts lost `Session`/`StorageSession` (with `GetSession()`/`GetSparkSession()`); the outboxes
+      and `IWebhookPublisher` lost their session parameter. The library interceptors, Apps, Notifications, MintPlayer,
+      CodeCoverage and SeoTester inject the scoped session instead.
+    - Retries clear the scope's session (`WebhookScheduler`, `WebhookFanOut`, CodeCoverage's `BackportRecipient`);
+      only `SparkNotifier` and `ParseSessionRecipient.ReportParseFailure` open a scope, each with its reason at the call.
+    - **Found on the way:** with the session parameter gone, `WebhookPublisher`'s internal
+      `PublishAsync(object, owner, string? messageId, ct)` had the keyed overload's shape, and the generic keyed
+      overload resolved to itself: a stack overflow on every keyed publish (CodeCoverage publishes keyed only). Red:
+      `WebhookDeliveryTests.A_keyed_publish_that_runs_twice_queues_the_event_once` crashed the test host ("Stack
+      overflow … `WebhookPublisher.KeyedMessageId`, repeated 8780 times"). The core is `PublishWithIdAsync` now.
+      CodeCoverage's own tests record through a fake publisher, so only the Spark suite could see it.
+    - **Evidence** (local, after the fix):
+      - Spark.Tests on RavenDB 174/174: messaging (`MessageBusTests`, `ExpediteTests`, `NeutralMessagingTests`,
+        `MessagingInvariantsTests`, `MessageSubscriptionWorkerE2ETests`), Apps (`WebhookDeliveryTests`,
+        `EntityWebhookEventTests`, `AppInstallationTests`, `SparkAppTests`), the identity provider
+        (`OidcOperationsTests`, `OidcApplicationActionsTests`, `OidcResourceActionsTests`), `ContributionsRuntimeTests`,
+        `MaterializeInterceptorTests`, `AuditStampingTests`, `DurableAfterCommitInterceptorTests`,
+        `NeutralNotificationTests`.
+      - Spark.Tests on SQL Server: `NeutralMessagingTests` + `NeutralNotificationTests` 4/4.
+      - CodeCoverage.Tests 470/470 (webhooks, parse sessions, backports, dependency updates, workflow hooks, merge
+        queue, formatting, API tokens); SeoTester.Tests crawler, audits and rendering 62 passed, 1 skipped; MintPlayer
+        `SongHeroTests` 8/8.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).
@@ -801,7 +824,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     on RavenDB.
   - **M6b (2026-11-25): Boards, and Notifications' own reads and writes.** Boards drops `RavenDB.Client` (19/19).
     Notifications' actions, inbox, account hooks, visitor claim and interceptors run on `ISparkSession`; interceptors
-    get the neutral session through `SparkInterceptorContext.GetSparkSession()`. `SparkNotifier` and `WebPushDelivery`
+    get the neutral session through `SparkInterceptorContext.GetSparkSession()` (since D50 they inject the scope's
+    `ISparkSession`; the context carries none). `SparkNotifier` and `WebPushDelivery`
     still enqueue through messaging's `IMessageOutbox` (RavenDB session), so the package keeps its pin until M7
     (29/29).
   - **M6c (2026-11-25): `Query<T>(TimeSpan)` (PRD D38) and Organizations.** The per-query index wait, green on all
@@ -841,7 +865,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       Messaging now waits for the schema.
     - **The worker and its callers.** `SparkSubscriptionWorker<T>` runs on `ISparkSubscriptions`; `RetryNumerator` moves
       to Replication. Callers still on a raw RavenDB session bridge with `AsSparkSession()`: Apps, Notifications,
-      MintPlayer, CodeCoverage and SeoTester. The bridge is behaviour-neutral on RavenDB.
+      MintPlayer, CodeCoverage and SeoTester. The bridge is behaviour-neutral on RavenDB. (Since D50 the outbox takes
+      no session: it stores in the scope's, and these callers dropped the argument.)
     - **Evidence.**
       - `NeutralMessagingTests` 3/3 on all four databases
       - RavenDB messaging, subscription worker and replication 265/265
@@ -864,7 +889,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       - the CodeCoverage auto-index tests 39/39
   - **M6d (2026-11-25): Apps on any store.**
     - **Apps drop `RavenDB.Client` and their RavenDB pin.** Every service takes `ISparkStore`/`ISparkSession`, and
-      `IWebhookPublisher.PublishAsync` takes an `ISparkSession` (a raw RavenDB session wraps with `AsSparkSession()`).
+      `IWebhookPublisher.PublishAsync` takes an `ISparkSession` (a raw RavenDB session wraps with `AsSparkSession()`;
+      since D50 it takes none and publishes in the scope's).
     - **The delivery handler's endpoint patches** (failure count, breaker) became load-modify-save in a fresh session
       with optimistic concurrency, retried up to 5 times; a deleted endpoint is skipped.
     - **`LoadStartingWithAsync` gained `startAfter`** (keyset paging, the delivery log). RavenDB passes it through,

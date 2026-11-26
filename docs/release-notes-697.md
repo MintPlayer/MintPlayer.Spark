@@ -57,8 +57,8 @@ tags, and everything ships once the merged pull request is backported to `releas
     that took an `IAsyncDocumentSession` (for example `OrganizationMembershipReader.LoadAsync`) take an
     `ISparkSession`: wrap a raw session with `session.AsSparkSession()`. Notifications' own reads and writes are
     neutral too; it keeps its RavenDB reference until messaging is ported (M7).
-    Apps follow (M6d): `IWebhookPublisher.PublishAsync` takes an `ISparkSession`, the package no longer references
-    RavenDB, and `OidcMachineClients` takes `ISparkSession`/`ISparkStore`.
+    Apps follow (M6d): `IWebhookPublisher.PublishAsync` takes no RavenDB session (no session at all, item 18), the
+    package no longer references RavenDB, and `OidcMachineClients` takes `ISparkSession`/`ISparkStore`.
     `ISparkSession.LoadStartingWithAsync` gained a `startAfter` parameter before `cancellationToken`: a caller that
     passed the token by position names it (`cancellationToken: ct`).
     MailManager, Cron and MCP no longer reference RavenDB either (M6e–g):
@@ -88,8 +88,8 @@ tags, and everything ships once the merged pull request is backported to `releas
     A model's seeded `lineDiff` options are not rewritten by the synchronizer: delete the `renderer`/`rendererOptions`
     of the contribution's value attributes and synchronize to re-seed a pattern that takes the new ids.
 10. **Messaging runs on any store with subscriptions** (M7b, D40), and its package no longer references RavenDB:
-    - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`, not a RavenDB
-      session. Wrap a raw session with `session.AsSparkSession()`.
+    - `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take no RavenDB session: they store in
+      the scope's session (item 18).
     - The indexes `SparkMessages_ByPriority` and `SparkMessages_ByQueue` and `CreateSparkMessagingIndexes` are gone.
       The feeder and the retry sweeper query one view, `SparkMessages_ByState`, which `UseSpark` deploys with the
       app's indexes: a static index on RavenDB, an SQL view on SQL Server and PostgreSQL. On an existing RavenDB
@@ -154,6 +154,18 @@ tags, and everything ships once the merged pull request is backported to `releas
 17. **A `SparkView` is an entity type's default index only when it claims `[DefaultIndex]`** (M8b, D48). Before, an
     entity type's sole view was elected implicitly, and two views without a claim made startup throw. A native RavenDB
     index keeps the implicit election. A fan-out view maps no collection, so it cannot be a default index.
+18. **No session is passed around: inject the scope's `ISparkSession`** (D50). Interceptors, Actions classes, message
+    handlers and the outboxes are scoped, and a write commits through the scope's session, so:
+    - `SparkInterceptorContext.Session` and `StorageSession` are removed (from `SaveContext`, `DeleteContext`,
+      `LoadContext` and `NaturalIdCollisionContext`), with the extensions `GetSession()` (MintPlayer.Spark.RavenDB) and `GetSparkSession()`. An
+      interceptor or Actions class that reads or stores documents injects `ISparkSession`, the session the write saves.
+      `MaterializeContext.Session` stays: a materialize may load in a side session.
+    - `IMessageOutbox.EnqueueAsync(message, options, ct)`, `ISparkAfterCommitOutbox.EnqueueAsync(work, ct)` and
+      `IWebhookPublisher.PublishAsync(data, owner[, idempotencyKey], ct)` drop their session parameter and store in the
+      scope's session. Remove the session argument; to write in another unit of work, resolve them from another scope.
+      On RavenDB the scope's `ISparkSession` wraps the scope's `IAsyncDocumentSession`, so writes through either commit
+      together.
+    - `MessageBus` takes the scope's `ISparkSession` in its constructor (only code that constructs it by hand notices).
 
 ## New
 

@@ -306,7 +306,7 @@ public partial class FormatRunEngine : IFormatRunEngine
         }
         if (run.Enqueue && opened.Number is { } number && run.RequestedByLogin is { Length: > 0 } actor)
         {
-            await outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueSignalMessage
+            await outbox.EnqueueAsync(new MergeQueueSignalMessage
             {
                 RepositoryId = context.Repository.Id.Value, Kind = EMergeQueueSignal.Command, Number = number, Command = EMergeQueueCommand.Enqueue,
                 Actor = actor, Source = EMergeQueueCommandSource.Formatting,
@@ -344,7 +344,7 @@ public partial class FormatRunEngine : IFormatRunEngine
     }
 
     private Task ScheduleAsync(string repositoryId, FormatRun run, EFormatRunStep step, TimeSpan? delay, long? runId, CancellationToken ct)
-        => outbox.EnqueueAsync(session.AsSparkSession(), new FormatRunStepMessage
+        => outbox.EnqueueAsync(new FormatRunStepMessage
         {
             RepositoryId = repositoryId, Mode = run.Mode, Generation = run.Generation, Step = step, RunId = runId,
         }, delay is null ? null : new BroadcastOptions { Delay = delay }, ct);

@@ -17,8 +17,10 @@ public class MessageBusTests : MessagingRavenTestDriver
     [MessageQueue("custom-orders-queue")]
     private record OrderShipped(string OrderId);
 
+    /// <summary>A broadcast opens sessions of its own: the scope's session is never touched.</summary>
     private IMessageBus NewBus(SparkMessagingOptions? options = null)
-        => new MessageBus(Store.SparkStore(), Options.Create(options ?? new SparkMessagingOptions()));
+        => new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
+            Options.Create(options ?? new SparkMessagingOptions()));
 
     [Fact]
     public async Task BroadcastAsync_persists_a_SparkMessage_with_inferred_queue_name_and_payload()
@@ -226,16 +228,18 @@ public class MessageBusTests : MessagingRavenTestDriver
         message.MaxAttempts.Should().Be(12);
     }
 
-    // ---- EnqueueAsync: publishing inside the caller's transaction (#467, S13; #482, D17) ---------------
+    // ---- EnqueueAsync: publishing inside the scope's transaction (#467, S13; #482, D17; #536 D50) ---------------
 
-    private IMessageOutbox NewOutbox() => (IMessageOutbox)NewBus();
+    /// <summary>The outbox of a scope whose session is <paramref name="scopeSession"/>.</summary>
+    private IMessageOutbox NewOutbox(IAsyncDocumentSession scopeSession)
+        => new MessageBus(Store.SparkStore(), scopeSession.AsSparkSession(), Options.Create(new SparkMessagingOptions()));
 
     [Fact]
     public async Task EnqueueAsync_commits_with_the_callers_save_and_not_before()
     {
         using (var session = Store.OpenAsyncSession())
         {
-            await NewOutbox().EnqueueAsync(session.AsSparkSession(), new OrderPlaced("orders/2", 1m));
+            await NewOutbox(session).EnqueueAsync(new OrderPlaced("orders/2", 1m));
             await session.StoreAsync(new { Name = "the data change" }, "Data/1");
 
             using (var other = Store.OpenAsyncSession())
@@ -255,7 +259,7 @@ public class MessageBusTests : MessagingRavenTestDriver
     public async Task EnqueueAsync_in_a_session_that_is_never_saved_publishes_nothing()
     {
         using (var session = Store.OpenAsyncSession())
-            await NewOutbox().EnqueueAsync(session.AsSparkSession(), new OrderPlaced("orders/3", 1m));
+            await NewOutbox(session).EnqueueAsync(new OrderPlaced("orders/3", 1m));
 
         using var verify = Store.OpenAsyncSession();
         (await verify.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0);
@@ -265,7 +269,7 @@ public class MessageBusTests : MessagingRavenTestDriver
     public async Task EnqueueAsync_refuses_a_deduplication_key()
     {
         using var session = Store.OpenAsyncSession();
-        var act = () => NewOutbox().EnqueueAsync(session.AsSparkSession(), new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
+        var act = () => NewOutbox(session).EnqueueAsync(new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
 
         await act.Should().ThrowAsync<ArgumentException>();
         session.Advanced.OptimisticConcurrencyMode.Should().Be(OptimisticConcurrencyMode.None, "the caller's session is left as it was");

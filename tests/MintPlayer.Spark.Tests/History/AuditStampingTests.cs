@@ -51,7 +51,6 @@ public class AuditStampingTests
             PersistentObject = new PersistentObject { Name = entity.GetType().Name, ObjectTypeId = Guid.NewGuid() },
             Entity = entity,
             Before = before,
-            Session = new object(),
         };
 
     [Fact]

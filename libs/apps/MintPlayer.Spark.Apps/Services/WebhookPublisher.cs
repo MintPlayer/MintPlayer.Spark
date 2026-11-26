@@ -15,13 +15,15 @@ using MintPlayer.Spark.Abstractions.Storage;
 namespace MintPlayer.Spark.Apps;
 
 /// <summary>
-/// Publishes webhook events. Call it in the session of the business write: the event is an outbox message saved by
-/// that <c>SaveChanges</c>, so it goes out exactly when the write commits, and never when it rolls back.
+/// Publishes webhook events. It is scoped and writes to the scope's <see cref="ISparkSession"/> (#536 D50), the session
+/// of the business write: the event is an outbox message saved by that <c>SaveChanges</c>, so it goes out exactly when
+/// the write commits, and never when it rolls back.
 /// <code>
-/// session.Store(report);
-/// await webhooks.PublishAsync(new ReportCompleted(report.Id, report.LineRate), WebhookOwner.Organization(orgId), session);
+/// await session.StoreAsync(report);   // the injected ISparkSession (or, on RavenDB, the scoped IAsyncDocumentSession)
+/// await webhooks.PublishAsync(new ReportCompleted(report.Id, report.LineRate), WebhookOwner.Organization(orgId));
 /// await session.SaveChangesAsync();
 /// </code>
+/// To publish in another unit of work, resolve the publisher from another scope.
 /// </summary>
 public interface IWebhookPublisher
 {
@@ -29,15 +31,15 @@ public interface IWebhookPublisher
     /// Queues <paramref name="data"/> (a declared <c>[WebhookEvent]</c>) for every endpoint of <paramref name="owner"/>
     /// that subscribes to it. Returns the event's <c>webhook-id</c>, or null when the owner has no endpoint at all.
     /// </summary>
-    Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, ISparkSession session, CancellationToken cancellationToken = default)
+    Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, CancellationToken cancellationToken = default)
         where TEvent : notnull;
 
     /// <summary>
-    /// <see cref="PublishAsync{TEvent}(TEvent, WebhookOwner, ISparkSession, CancellationToken)"/> for a publisher that
-    /// may run twice for one event, e.g. a message handler (at least once). The <c>webhook-id</c> is derived from
+    /// <see cref="PublishAsync{TEvent}(TEvent, WebhookOwner, CancellationToken)"/> for a publisher that may run twice for
+    /// one event, e.g. a message handler (at least once). The <c>webhook-id</c> is derived from
     /// <paramref name="idempotencyKey"/> (with the event type and owner), so a second run delivers nothing twice.
     /// </summary>
-    Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, ISparkSession session, CancellationToken cancellationToken = default)
+    Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, CancellationToken cancellationToken = default)
         where TEvent : notnull;
 }
 
@@ -47,19 +49,21 @@ public interface IWebhookPublisher
 internal sealed partial class WebhookPublisher : IWebhookPublisher
 {
     [Inject] private readonly WebhookEventCatalog catalog;
+    /// <summary>The scope's session, which the caller saves (#536 D50).</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
     [Inject] private readonly TimeProvider time;
 
-    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, ISparkSession session, CancellationToken cancellationToken = default)
+    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, CancellationToken cancellationToken = default)
         where TEvent : notnull
-        => PublishAsync(data, owner, session, messageId: null, cancellationToken);
+        => PublishWithIdAsync(data, owner, messageId: null, cancellationToken);
 
-    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, ISparkSession session, CancellationToken cancellationToken = default)
+    public Task<string?> PublishAsync<TEvent>(TEvent data, WebhookOwner owner, string idempotencyKey, CancellationToken cancellationToken = default)
         where TEvent : notnull
     {
         ArgumentException.ThrowIfNullOrEmpty(idempotencyKey);
-        return PublishAsync(data, owner, session, KeyedMessageId(data.GetType(), owner, idempotencyKey), cancellationToken);
+        return PublishWithIdAsync(data, owner, KeyedMessageId(data.GetType(), owner, idempotencyKey), cancellationToken);
     }
 
     /// <summary>A <c>msg_</c> id that is the same for the same (event type, owner, key): no time prefix, so a rerun matches.</summary>
@@ -72,10 +76,11 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
     /// <summary>
     /// <paramref name="messageId"/>: a fixed <c>webhook-id</c> for a publisher that may run twice for one event (the
     /// at-least-once entity events, D31). The fan-out derives delivery ids from it, so a second run delivers nothing twice.
+    /// Named apart from <c>PublishAsync</c>: without the session parameter (#536 D50) it had the keyed overload's shape,
+    /// and the keyed overload resolved to itself.
     /// </summary>
-    internal async Task<string?> PublishAsync(object data, WebhookOwner owner, ISparkSession session, string? messageId, CancellationToken cancellationToken)
+    internal async Task<string?> PublishWithIdAsync(object data, WebhookOwner owner, string? messageId, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(session);
         var descriptor = catalog.Find(data.GetType())
             ?? throw new InvalidOperationException($"{data.GetType().Name} is not a webhook event: mark it [WebhookEvent] and register it with AddApps(apps => apps.AddEvent…).");
 
@@ -104,7 +109,7 @@ internal sealed partial class WebhookPublisher : IWebhookPublisher
             Payload = Envelope(descriptor.Name, now, JsonSerializer.SerializeToNode(data, data.GetType(), WebhookJson.Options), options.Value.MaxPayloadBytes),
             CreatedUtc = now.UtcDateTime,
         };
-        await outbox.EnqueueAsync(session, message, cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(message, cancellationToken: cancellationToken);
         return message.MessageId;
     }
 

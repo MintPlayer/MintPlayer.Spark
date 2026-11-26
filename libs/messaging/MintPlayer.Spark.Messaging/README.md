@@ -232,15 +232,21 @@ documents no worker ever selects, whereas a declared queue is known to both side
 
 `BroadcastAsync` saves the message in a session of its own, so "the data changed" and "the follow-up
 is queued" are two commits, and a crash between them loses one. `IMessageOutbox.EnqueueAsync` stores
-the message in **your** session instead; it commits with your `SaveChangesAsync`, or not at all:
+the message in **the scope's** session instead, the scoped `ISparkSession` your write goes through; it
+commits with that session's `SaveChangesAsync`, or not at all. It takes no session argument (#536 D50):
 
 ```csharp
+[Inject] private readonly ISparkSession session;   // the scope's unit of work
+[Inject] private readonly IMessageOutbox outbox;    // scoped: stores into that same session
+
 await session.StoreAsync(order);
-await outbox.EnqueueAsync(session, new OrderPlaced(order.Id!), new BroadcastOptions { Delay = TimeSpan.FromMinutes(1) });
+await outbox.EnqueueAsync(new OrderPlaced(order.Id!), new BroadcastOptions { Delay = TimeSpan.FromMinutes(1) });
 await session.SaveChangesAsync(); // the order and its message, together
 ```
 
-It only stores, under a fresh id, and leaves the session's settings alone. Every option applies except
+On RavenDB the scope's `ISparkSession` wraps the scoped `IAsyncDocumentSession`, so code that injects the raw
+session saves the message too. A unit of work that must commit apart from the caller's pending writes resolves
+the outbox from a scope of its own. It only stores, under a fresh id, and leaves the session's settings alone. Every option applies except
 `DeduplicationKey`, which is refused: deduplication needs optimistic concurrency on the whole session,
 and a duplicate would then roll back your own write.
 

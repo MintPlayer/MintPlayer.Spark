@@ -16,11 +16,11 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    // No storage session: the client-id reservation is skipped, as for any interceptor called by hand. The store is
+    // An empty session (a substitute): no client id is reserved by anyone, so only the rules can refuse. The store is
     // never reached: only the after-save cascade uses it.
-    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins(), accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(), options: new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions(), audit: new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()), store: Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkStore>());
+    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins(), accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(), options: new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions(), audit: new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()), store: Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(), session: Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>());
 
-    /// <summary>A save context with no storage session: the rules are judged, the client-id reservation is skipped.</summary>
+    /// <summary>A save context: the interceptor judges the rules against it.</summary>
     internal static SaveContext Context(Type entityType, object entity,
         PersistentObjectOperation operation = PersistentObjectOperation.New) => new()
     {
@@ -28,7 +28,6 @@ public class OidcApplicationActionsTests
         Operation = operation,
         PersistentObject = new PersistentObject { Name = entityType.Name, ObjectTypeId = Guid.NewGuid() },
         Entity = entity,
-        Session = new object(),
     };
 
     private static OidcApplication Valid() => new()
@@ -294,7 +293,7 @@ public class OidcApplicationActionsTests
 /// <summary>Validation for the resource screen — the half that decides what a token carries.</summary>
 public class OidcResourceActionsTests
 {
-    private static OidcResourceInterceptors Interceptors() => new(new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()), Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkStore>());
+    private static OidcResourceInterceptors Interceptors() => new(new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()), Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(), Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>());
 
     private static async Task<Exception?> SaveAsync(OidcResource resource)
     {

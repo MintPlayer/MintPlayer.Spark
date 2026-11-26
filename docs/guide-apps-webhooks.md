@@ -51,16 +51,20 @@ public sealed record OrderShipped(string OrderId, int Items, [property: Descript
 
 ## 3. Publish
 
-Publish in the session of the business write. The event is an outbox message stored by that `SaveChanges`, so it
-goes out exactly when the write commits and never when it rolls back:
+Publish in the unit of work of the business write. The publisher is scoped and stores the event, an outbox message,
+in the scope's `ISparkSession`, the session the write saves through, so it goes out exactly when the write commits and
+never when it rolls back. It takes no session argument (#536 D50):
 
 ```csharp
+[Inject] private readonly ISparkSession session;
 [Inject] private readonly IWebhookPublisher webhooks;
 
-session.Store(order);
-await webhooks.PublishAsync(new OrderShipped(order.Id, order.Lines.Count, order.Carrier), WebhookOwner.Organization(order.OrganizationId), session);
+await session.StoreAsync(order);
+await webhooks.PublishAsync(new OrderShipped(order.Id, order.Lines.Count, order.Carrier), WebhookOwner.Organization(order.OrganizationId));
 await session.SaveChangesAsync();
 ```
+
+To publish in another unit of work, resolve the publisher from another scope.
 
 An owner without any webhook or installation costs a single document load, and no message is stored.
 
@@ -68,7 +72,7 @@ An owner without any webhook or installation costs a single document load, and n
 `webhook-id` is then derived from the event type, the owner and the key, and a second run queues nothing:
 
 ```csharp
-await webhooks.PublishAsync(evt, owner, idempotencyKey: build.Id, session);
+await webhooks.PublishAsync(evt, owner, idempotencyKey: build.Id);
 ```
 
 ### Entity events

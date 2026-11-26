@@ -179,7 +179,10 @@ public class ExpediteTests(ITestOutputHelper output) : MessagingRavenTestDriver
 
     private record Onboard(string RepositoryId);
 
-    private MessageBus NewBus() => new(Store.SparkStore(), Options.Create(new SparkMessagingOptions()));
+    /// <summary>A bus whose scope's session is <paramref name="scopeSession"/>; a broadcast never touches it.</summary>
+    private MessageBus NewBus(Raven.Client.Documents.Session.IAsyncDocumentSession? scopeSession = null)
+        => new(Store.SparkStore(), scopeSession?.AsSparkSession() ?? NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
+            Options.Create(new SparkMessagingOptions()));
 
     private async Task<SparkMessage> SingleAsync(string repositoryId)
     {
@@ -198,7 +201,7 @@ public class ExpediteTests(ITestOutputHelper output) : MessagingRavenTestDriver
         await bus.BroadcastOnceAsync(new Onboard("once"), "dependency-onboard:once", new BroadcastOptions { Expedite = true });
         using (var session = Store.OpenAsyncSession())
         {
-            await ((IMessageOutbox)bus).EnqueueAsync(session.AsSparkSession(), new Onboard("outbox"), new BroadcastOptions { Expedite = true });
+            await ((IMessageOutbox)NewBus(session)).EnqueueAsync(new Onboard("outbox"), new BroadcastOptions { Expedite = true });
             await session.SaveChangesAsync();
         }
 

@@ -347,7 +347,7 @@ public sealed class MzHydratingInterceptor(MzRecorder recorder, IAsyncDocumentSe
     public async ValueTask OnAfterMaterializeAsync(MaterializeContext context)
     {
         var song = (MzSong)context.Entity;
-        var loadSession = context.GetSession();
+        var loadSession = context.Session.AsRavenSession();
         var id = loadSession.Advanced.GetDocumentId(song);
         recorder.CallQueue.Enqueue($"{context.Reason}:{id}");
 

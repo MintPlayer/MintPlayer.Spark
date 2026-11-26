@@ -477,6 +477,7 @@ Each RavenDB mechanism it used has a neutral replacement:
   within one TTL of the upgrade.
 - **The outbox.** `IMessageOutbox.EnqueueAsync` and `ISparkAfterCommitOutbox.EnqueueAsync` take an `ISparkSession`.
   Callers still on a raw RavenDB session bridge with `session.AsSparkSession()` until their own port.
+  ⚠️ *Superseded by D50: neither takes a session; both write to the scope's `ISparkSession`.*
 - **The subscription worker.** `SparkSubscriptionWorker<T>` runs on `ISparkSubscriptions` (D39).
   `LegacySubscriptionCleanup` lists and deletes through it too. `RetryNumerator`, a RavenDB counter, moves to
   Replication, its only user.
@@ -739,8 +740,8 @@ the RavenDB pin. What replaces each RavenDB construct:
 - **Finding an application by its client id** is the client-id reservation alone (`oidc/client-ids/{lower client
   id}` → the application id): strongly consistent on every store, where the `OidcApplications_ByClientId` index was
   eventually consistent. `ISparkSession.Reserve` writes the same compare-exchange key and value as the hand-written
-  code did. The reservation is claimed in the application's own save (its before-save interceptor, through
-  `SparkInterceptorContext.StorageSession`) and released in its delete's own save (the before-delete interceptor),
+  code did. The reservation is claimed in the application's own save (its before-save interceptor, through the
+  injected scoped `ISparkSession` since D50) and released in its delete's own save (the before-delete interceptor),
   so a refused write takes neither back. A RavenDB migration (`M_202611251310_OidcClientIdReservations`) claims the
   reservation of every application saved before reservations existed, leaves a key another live application holds to
   it (logged), and deletes the index.
@@ -799,6 +800,51 @@ default Guid kind makes the key a `uniqueidentifier`/`uuid` column. It refused 1
   the key becomes a text column holding the part after `oidcapplications/`.
 - The other IdP types with a business key (`OidcResource`, `OidcKey`, `OidcRefreshFamily`, `OidcDeveloper`) were
   already Natural.
+
+**D50 (owner, 2026-11-26): nothing passes a session around; code injects the scope's `ISparkSession`.** The owner, on
+`SongActions` broadcasting through `IMessageOutbox.EnqueueAsync(context.Session.AsSparkSession(), …)`: "why do we need
+to pass in a IDocumentSession when broadcasting a message? SaveContext exposes some kind of session? Why? Why wouldn't
+we just inject the ISparkSession and use that one?", "That's all anti-pattern", "Each actions class should already
+always be Scoped". D40 had carried the session through each API to port the outbox; the scope already owns one unit of
+work, and the pipeline commits through it (`DatabaseAccess` saves the scope's `ISparkSession`), so a second handle on
+it only invites passing the wrong one.
+- **The interceptor contexts carry no session.** `SparkInterceptorContext.Session` (an `object`, RavenDB's session) and
+  `StorageSession` are removed, with `GetSession()` (`SparkInterceptorContextExtensions`, RavenDB package) and
+  `GetSparkSession()`. Interceptors and Actions classes are scoped and inject `ISparkSession`. The library interceptors
+  (Organizations, Notifications, Contributions, the identity provider's two, Apps' entity events) do so. The exception
+  is `MaterializeContext.Session`: a `Before` materialize loads the stored row in a side session, and a hydrating
+  interceptor must read where the entity was loaded.
+- **The outboxes and the publisher take no session.** `IMessageOutbox.EnqueueAsync(message, options, ct)`,
+  `ISparkAfterCommitOutbox.EnqueueAsync(work, ct)` and `IWebhookPublisher.PublishAsync(data, owner[, idempotencyKey],
+  ct)` are scoped and write to the scope's session (`MessageBus` injects it). On RavenDB the scope's `ISparkSession`
+  wraps the scope's `IAsyncDocumentSession`, so code still writing through the raw session (CodeCoverage, SeoTester)
+  shares the unit of work.
+- **A retry in the same scope clears the session; it never opens a scope.** The owner, on a first draft that resolved
+  the scheduler again from a new scope: "WebhookScheduler is already registered as a scoped service. What's the exact
+  reason you want to create a new scope to resolve the same type again? … Also, IRecipients are ALWAYS already scoped
+  services. No need to create a new scope inside". `WebhookScheduler`'s and `WebhookFanOut`'s concurrency retries call
+  `ISparkSession.Clear()`, which forgets the attempt's tracked and pending writes, and read again. CodeCoverage's
+  `BackportRecipient.FailedAsync` clears the scope's session (RavenDB `Advanced.Clear()`) before recording the
+  failure, so the failed run's pending writes do not commit with it.
+- **A scope of its own only for a separate unit of work, with the reason at the call:** `SparkNotifier` commits the
+  notifications on their own, whatever the caller has pending. CodeCoverage's `ParseSessionRecipient.ReportParseFailure`
+  reports through a fresh scope because the scope's session may be what failed (exhausted request budget, faulted
+  connection); `Clear()` forgets what is pending, not what broke the session.
+- `AsSparkSession()` stays, for tests and for static helpers handed a raw RavenDB session.
+- **Not changed** (same shape, outside the write pipeline, left for their own port): `RowSecurityGate`'s context,
+  `LiveQueryArgs.Session`, the contribution handlers' contexts, `EntityMapper.PopulateObjectValuesAsync(po, entity,
+  session)`, and static helpers that take a session (each called with the scope's).
+
+*Evidence* (details in the plan's status log, "D50 built"):
+- Spark.Tests on RavenDB 174/174 over the messaging, Apps, identity-provider, Contributions, materialize, History
+  and durable-interceptor classes the change touches; `NeutralMessagingTests` + `NeutralNotificationTests` 4/4 on SQL
+  Server; CodeCoverage.Tests 470/470 over its outbox and webhook users; SeoTester's crawler, audits and rendering 62/62
+  (1 skipped); MintPlayer `SongHeroTests` 8/8.
+- The outbox's atomicity is pinned by `NeutralMessagingTests` (an outbox message stored in the scope's session is
+  handled once the session saves) and `WebhookDeliveryTests` (a publish whose write rolls back delivers nothing).
+- Found on the way: without the session parameter, `WebhookPublisher`'s internal core had the keyed overload's shape,
+  and the keyed overload resolved to itself (stack overflow, red in
+  `WebhookDeliveryTests.A_keyed_publish_that_runs_twice_queues_the_event_once`). The core is `PublishWithIdAsync`.
 
 **D3: the version is a `bigint` column on every table**, a concurrency token the provider increments. *(S4, §8.11:
 it is on every root table and covers the aggregate. A change to a child row (D25) or a join row (D26) moves the

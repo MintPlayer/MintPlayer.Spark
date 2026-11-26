@@ -5,8 +5,9 @@ using Raven.Client.Documents.Session;
 namespace CodeCoverage.PackageVersioning;
 
 /// <summary>
-/// Writes <see cref="BackportAttempt"/> records (release lines recovery plan, segment B). The caller saves the session.
-/// Every outcome passes here, so it also raises <see cref="BackportAttempted"/> (#691 D41), in the same session.
+/// Writes <see cref="BackportAttempt"/> records (release lines recovery plan, segment B). The caller saves the session, which
+/// is the scope's: every outcome passes here, so it also raises <see cref="BackportAttempted"/> (#691 D41), which the
+/// publisher stores in the scope's session (#536 D50).
 /// </summary>
 internal static class BackportAttempts
 {
@@ -17,7 +18,7 @@ internal static class BackportAttempts
         // Keyed by the line, the outcome and the pull request: a rerun of the same step sends nothing twice.
         await webhooks.PublishAsync(new BackportAttempted(repository.FullName, repository.Provider.ToString().ToLowerInvariant(), source, sourceSha, branch, outcome,
             pullRequest, detail is { Length: > BackportAttempt.MaxDetail } ? detail[..BackportAttempt.MaxDetail] : detail,
-            new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc))), repository, $"{id}/{outcome}/{pullRequest}", session, cancellationToken);
+            new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc))), repository, $"{id}/{outcome}/{pullRequest}", cancellationToken);
         await session.StoreAsync(new BackportAttempt
         {
             Id = Id<BackportAttempt>.FromTrusted(id), Repository = repository.Id.Value, Source = source, SourceSha = sourceSha, Branch = branch, Outcome = outcome, PullRequest = pullRequest,

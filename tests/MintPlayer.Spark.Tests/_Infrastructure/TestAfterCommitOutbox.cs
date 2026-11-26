@@ -56,9 +56,10 @@ public sealed class TestAfterCommitOutbox
     }
 }
 
-internal sealed class TestAfterCommitOutboxSeam(TestAfterCommitOutbox state) : ISparkAfterCommitOutbox
+/// <summary>Stores each unit of work in the scope's session, which the write saves through (#536 D50).</summary>
+internal sealed class TestAfterCommitOutboxSeam(TestAfterCommitOutbox state, ISparkSession session) : ISparkAfterCommitOutbox
 {
-    public async Task EnqueueAsync(ISparkSession session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
+    public async Task EnqueueAsync(SparkAfterCommitWork work, CancellationToken cancellationToken = default)
     {
         var stored = new TestAfterCommitOutbox.Stored { Work = work };
         await session.StoreAsync(stored, cancellationToken);

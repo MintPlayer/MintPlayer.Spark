@@ -45,7 +45,7 @@ internal sealed class ContributionsInterceptor(
         var names = context.Reason == MaterializeReason.Before ? null : services;
         var rows = context.Reason == MaterializeReason.Before ? null : state;
         foreach (var handler in catalog.ForTarget(context.EntityType))
-            await handler.HydrateAsync(context.Entity, context.GetSparkSession(), names, rows);
+            await handler.HydrateAsync(context.Entity, context.Session, names, rows);
     }
 
     /// <summary>

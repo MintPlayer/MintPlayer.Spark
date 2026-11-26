@@ -29,7 +29,8 @@ namespace MintPlayer.Spark.Apps;
 /// [WebhookEvent("report.completed", Permission = "reports:read")]
 /// public sealed record ReportCompleted(string ReportId, decimal LineRate);
 ///
-/// await webhooks.PublishAsync(new ReportCompleted(id, rate), WebhookOwner.Organization(orgId), session);
+/// // In the scope's session: the event commits with the business write's SaveChanges.
+/// await webhooks.PublishAsync(new ReportCompleted(id, rate), WebhookOwner.Organization(orgId));
 /// </code>
 /// </summary>
 public static class SparkAppsExtensions

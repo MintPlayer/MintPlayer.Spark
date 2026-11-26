@@ -20,7 +20,8 @@ namespace MintPlayer.Spark.Apps.Messaging;
 [Register(typeof(IRecipient<WebhookEventRaised>), Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
 {
-    [Inject] private readonly ISparkStore store;
+    /// <summary>The scope's session, which <see cref="WebhookScheduler"/> stores the deliveries in (#536 D50).</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly WebhookScheduler scheduler;
     [Inject] private readonly WebhookEventCatalog catalog;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
@@ -30,7 +31,6 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
         var owner = new WebhookOwner(message.OwnerKind, message.OwnerKey);
         for (var attempt = 1; ; attempt++)
         {
-            using var session = store.OpenSession();
             // A chain changed by another event in between is read again; so is a delivery made by a concurrent run.
             session.OptimisticConcurrency = true;
 
@@ -53,7 +53,7 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
             {
                 if (existing.TryGetValue(ids[i], out var made) && made is not null)
                     continue;
-                await scheduler.ScheduleAsync(session, New(ids[i], message, targets[i].Endpoint, targets[i].Payload), bypassChain: false, cancellationToken);
+                await scheduler.ScheduleAsync(New(ids[i], message, targets[i].Endpoint, targets[i].Payload), bypassChain: false, cancellationToken);
             }
 
             try
@@ -63,6 +63,8 @@ internal sealed partial class WebhookFanOut : IRecipient<WebhookEventRaised>
             }
             catch (SparkStoreConcurrencyException) when (attempt < 10)
             {
+                // Clear() forgets this attempt (its deliveries, chains and messages), so the next one reads everything again.
+                session.Clear();
             }
         }
     }

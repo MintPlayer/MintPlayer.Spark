@@ -165,7 +165,7 @@ public partial class ExportReportAction : SparkCustomAction
             return;
         }
         var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        await outbox.EnqueueAsync(session.AsSparkSession(), new PdfMessage(run.Id.Value, culture, userId), cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(new PdfMessage(run.Id.Value, culture, userId), cancellationToken: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         args.SetResult(new { url, ready = false });
         manager.Client.Notify(manager.GetTranslatedMessage("seo.reportBeingPrinted", run.Origin), MintPlayer.Spark.Abstractions.ClientOperations.NotificationKind.Info);

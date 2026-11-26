@@ -100,10 +100,10 @@ public static class SparkFacts
 public interface ISparkAfterCommitOutbox
 {
     /// <summary>
-    /// Stores one message for the interceptor <paramref name="work"/> names in <paramref name="session"/> (the session
-    /// the write commits through), so it commits — or is taken back — with the write. Only stores: the caller saves.
+    /// Stores one message for the interceptor <paramref name="work"/> names in the scope's session, the one the write
+    /// commits through, so it commits — or is taken back — with the write. Only stores: the caller saves.
     /// </summary>
-    Task EnqueueAsync(Storage.ISparkSession session, SparkAfterCommitWork work, CancellationToken cancellationToken = default);
+    Task EnqueueAsync(SparkAfterCommitWork work, CancellationToken cancellationToken = default);
 }
 
 /// <summary>One durable interceptor to run for one committed row.</summary>

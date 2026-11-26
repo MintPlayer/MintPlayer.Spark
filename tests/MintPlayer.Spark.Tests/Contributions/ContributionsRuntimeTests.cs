@@ -640,7 +640,7 @@ public sealed class CoProbeBefore(CoProbe probe) : IAfterMaterialize
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
     {
         if (context.Reason == MaterializeReason.Load)
-            probe.Before(context.Entity, context.GetSession().Advanced.NumberOfRequests);
+            probe.Before(context.Entity, context.Session.AsRavenSession().Advanced.NumberOfRequests);
         return ValueTask.CompletedTask;
     }
 }
@@ -652,7 +652,7 @@ public sealed class CoProbeAfter(CoProbe probe) : IAfterMaterialize
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
     {
         if (context.Reason == MaterializeReason.Load)
-            probe.After(context.Entity, context.GetSession().Advanced.NumberOfRequests);
+            probe.After(context.Entity, context.Session.AsRavenSession().Advanced.NumberOfRequests);
         return ValueTask.CompletedTask;
     }
 }

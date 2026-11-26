@@ -127,10 +127,9 @@ public class WebhookDeliveryTests : AppsTestHost
         var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.User(ann.Id!));
 
         using (var scope = Factory.CreateScope())
-        using (var session = Store.OpenAsyncSession())
         {
-            (await Publisher(scope).PublishAsync(new OrderShipped("rolled-back", 1, null), WebhookOwner.User(ann.Id!), session.AsSparkSession())).Should().NotBeNull();
-            // no SaveChanges: the business write failed, so the event never happened
+            (await Publisher(scope).PublishAsync(new OrderShipped("rolled-back", 1, null), WebhookOwner.User(ann.Id!))).Should().NotBeNull();
+            // no SaveChanges on the scope's session: the business write failed, so the event never happened
         }
         (await PublishAsync(new OrderShipped("bob's", 1, null), WebhookOwner.User(bob.Id!))).Should().BeNull("bob has no webhook");
 
@@ -149,9 +148,8 @@ public class WebhookDeliveryTests : AppsTestHost
         async Task<string?> Keyed(string orderId, string key)
         {
             using var scope = Factory.CreateScope();
-            using var session = Store.OpenAsyncSession();
-            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key, session.AsSparkSession());
-            await session.SaveChangesAsync();
+            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key);
+            await ScopeSession(scope).SaveChangesAsync();
             return id;
         }
 
@@ -539,8 +537,7 @@ public class WebhookDeliveryTests : AppsTestHost
     {
         var ann = await SeedUserAsync("ann");
         using var scope = Factory.CreateScope();
-        using var session = Store.OpenAsyncSession();
-        var publish = () => Publisher(scope).PublishAsync(new { Hello = "world" }, WebhookOwner.User(ann.Id!), session.AsSparkSession());
+        var publish = () => Publisher(scope).PublishAsync(new { Hello = "world" }, WebhookOwner.User(ann.Id!));
         (await publish.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("not a webhook event");
     }
 }

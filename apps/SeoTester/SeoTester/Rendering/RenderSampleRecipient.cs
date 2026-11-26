@@ -26,7 +26,6 @@ namespace SeoTester.Rendering;
 public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly IMessageContext context;
     [Inject] private readonly RunPipeline pipeline;
     [Inject] private readonly ChromiumBrowser chromium;
@@ -85,7 +84,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
         }
 
         RunPipeline.AddFindings(session, run, pages, site);
-        await pipeline.FinishStageAsync(session, outbox, run.Id.Value, PipelineStages.Render, cancellationToken);
+        await pipeline.FinishStageAsync(run.Id.Value, PipelineStages.Render, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 

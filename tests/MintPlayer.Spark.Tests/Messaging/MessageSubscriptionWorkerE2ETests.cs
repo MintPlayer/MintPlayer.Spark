@@ -122,7 +122,7 @@ public class MessageSubscriptionWorkerE2ETests : MessagingRavenTestDriver
 
     private async Task<string> SeedAsync<T>(T payload, int maxAttempts = 5)
     {
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }));
         await bus.BroadcastAsync(payload);
 
         await Store.WaitForIndexingAsync();
@@ -491,7 +491,7 @@ public class MessageSubscriptionWorkerE2ETests : MessagingRavenTestDriver
         var recipient = new SuccessRecipient();
         var sp = ProviderFor<SuccessMessage, SuccessRecipient>(recipient);
 
-        var bus = new MessageBus(Store.SparkStore(), Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         await bus.DelayBroadcastAsync(new SuccessMessage("orders/delayed"), TimeSpan.FromSeconds(1));
         await Store.WaitForIndexingAsync();
         string id;

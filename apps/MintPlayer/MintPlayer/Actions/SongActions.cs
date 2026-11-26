@@ -64,14 +64,14 @@ public partial class SongActions : DefaultPersistentObjectActions<Song>, IBefore
     internal const string ThumbnailMediumAttribute = "ThumbnailMedium";
 
     /// <summary>
-    /// Queues the thumbnails of the media this save adds (#601 D11). The message is stored in the save's own
-    /// session, so it commits with the song and is dropped with a refused save.
+    /// Queues the thumbnails of the media this save adds (#601 D11). The outbox stores the message in the scope's
+    /// session, which the save commits through, so it commits with the song and is dropped with a refused save.
     /// </summary>
     public async ValueTask OnBeforeSaveAsync(Song entity, SaveContext context)
     {
         var added = AddedMediaUrls(context.Before as Song, entity);
         if (added.Length > 0)
-            await outbox.EnqueueAsync(context.GetSession().AsSparkSession(), new MediaUrlsAdded(added));
+            await outbox.EnqueueAsync(new MediaUrlsAdded(added));
     }
 
     /// <summary>The media URLs <paramref name="after"/> has and <paramref name="before"/> had not, that a player plugin recognises.</summary>

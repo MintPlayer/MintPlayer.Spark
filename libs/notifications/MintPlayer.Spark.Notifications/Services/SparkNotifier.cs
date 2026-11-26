@@ -21,7 +21,6 @@ namespace MintPlayer.Spark.Notifications.Services;
 /// expiring with the visitor (<see cref="SparkVisitorOptions.Lifetime"/>).
 /// </remarks>
 internal sealed class SparkNotifier(
-    ISparkStore store,
     IServiceProvider services,
     SparkWebPushSender push,
     IOptions<SparkNotificationsOptions> options,
@@ -48,12 +47,15 @@ internal sealed class SparkNotifier(
             throw new ArgumentException($"A notification URL is {SparkLinkUrl.AllowedForms}.", nameof(notification));
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var outbox = services.GetService<IMessageOutbox>();
         var ids = new List<string>();
         var mails = new List<ISparkAccount>();
         var pushes = 0;
 
-        using var session = store.OpenSession();
+        // The notifications commit on their own, whatever the caller has pending: a unit of work of its own, so a scope
+        // of its own (#536 D50), whose session the push outbox writes to as well.
+        await using var scope = services.CreateAsyncScope();
+        var session = scope.ServiceProvider.GetRequiredService<ISparkSession>();
+        var outbox = scope.ServiceProvider.GetService<IMessageOutbox>();
         var userIds = Clean(notification.UserIds);
         // A visitor id always carries its prefix, so one can never address a user's notifications.
         var visitorIds = Clean(notification.VisitorIds).Where(id => id.StartsWith(SparkVisitorOptions.IdPrefix, StringComparison.Ordinal)).ToList();
@@ -103,7 +105,7 @@ internal sealed class SparkNotifier(
                 var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 64, cancellationToken: cancellationToken);
                 foreach (var device in devices)
                 {
-                    await outbox.EnqueueAsync(session, new WebPushDeliveryMessage
+                    await outbox.EnqueueAsync(new WebPushDeliveryMessage
                     {
                         SubscriptionId = device.Id.Value,
                         Payload = payload,

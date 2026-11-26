@@ -186,16 +186,18 @@ public class ParseSessionRecipientTests : CoverageRavenTest
     private static ParseSessionRecipient CreateRecipient(IDocumentStore store, Raven.Client.Documents.Session.IAsyncDocumentSession session, RecordingWebhooks? webhooks = null)
     {
         // ActivatorUtilities resolves the generated constructor's parameters
-        // by type, so this doesn't depend on the [Inject] field order.
+        // by type, so this doesn't depend on the [Inject] field order. The
+        // recipient gets the given session; a scope it opens (its failure
+        // report) gets a session of its own, as the host's scopes do.
         var services = new ServiceCollection()
             .AddSingleton(store)
-            .AddSingleton(session)
+            .AddScoped(_ => store.OpenAsyncSession())
             .AddSingleton<ICoverageParserFactory, CoverageParserFactory>()
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         // Without a recorder, webhooks are off: the wrapper finds no IWebhookPublisher and publishes nothing.
         if (webhooks is null) services.AddSingleton<CodeCoverage.Webhooks.CoverageWebhookPublisher>();
         else services.AddSingleton(webhooks.Publisher);
-        return ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services.BuildServiceProvider());
+        return ActivatorUtilities.CreateInstance<ParseSessionRecipient>(services.BuildServiceProvider(), session);
     }
 
     private static async Task SeedBuildWithLcovReport(IDocumentStore store, int fileCount, bool withOids = false)

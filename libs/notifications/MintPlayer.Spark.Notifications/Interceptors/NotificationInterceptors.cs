@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Notifications.Models;
 
 namespace MintPlayer.Spark.Notifications.Interceptors;
@@ -11,8 +13,10 @@ namespace MintPlayer.Spark.Notifications.Interceptors;
 /// <c>NotificationPreferences/{userId}/{organization or default}</c> (one row per organization, so a second
 /// create for the same organization is a 400, not a duplicate), and an edit keeps owner and organization.
 /// </summary>
-internal sealed class NotificationPreferenceInterceptors : IBeforeSave<NotificationPreference>
+internal sealed partial class NotificationPreferenceInterceptors : IBeforeSave<NotificationPreference>
 {
+    [Inject] private readonly ISparkSession session;
+
     public async ValueTask OnBeforeSaveAsync(NotificationPreference entity, SaveContext context)
     {
         if (context.Before is NotificationPreference stored)
@@ -34,7 +38,7 @@ internal sealed class NotificationPreferenceInterceptors : IBeforeSave<Notificat
         entity.UserId = userId;
         entity.OrganizationId = string.IsNullOrWhiteSpace(entity.OrganizationId) ? null : entity.OrganizationId.Trim();
         entity.Id = NotificationPreference.IdFor(userId, entity.OrganizationId);
-        if (await context.GetSparkSession().ExistsAsync(entity.Id))
+        if (await session.ExistsAsync(entity.Id))
             throw new SparkValidationException(entity.OrganizationId is null
                 ? "You already have default notification preferences: edit them instead."
                 : "You already have notification preferences for this organization: edit them instead.");

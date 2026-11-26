@@ -1,3 +1,4 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
@@ -37,16 +38,20 @@ public sealed class CrawlOptions
 /// (<c>CancelRequested</c>), and the live push (X4, "live": true) sees each change. Also the run's endings that are
 /// not a score: cancelled, blocked by robots.txt, failed.
 /// </summary>
-public sealed class RunPipeline(
-    IDocumentStore store,
-    ISparkSettings settings,
-    ISparkNotifier notifier,
-    AuditLog auditLog,
-    IOptions<SparkMessagingOptions> messaging,
-    IOptions<CrawlOptions> crawlOptions,
-    TimeProvider time,
-    ILogger<RunPipeline> logger)
+public sealed partial class RunPipeline
 {
+    [Inject] private readonly IDocumentStore store;
+    /// <summary>The scope's session: the stage's unit of work, which the outbox writes to as well (#536 D50).</summary>
+    [Inject] private readonly IAsyncDocumentSession scopeSession;
+    [Inject] private readonly IMessageOutbox outbox;
+    [Inject] private readonly ISparkSettings settings;
+    [Inject] private readonly ISparkNotifier notifier;
+    [Inject] private readonly AuditLog auditLog;
+    [Inject] private readonly IOptions<SparkMessagingOptions> messaging;
+    [Inject] private readonly IOptions<CrawlOptions> crawlOptions;
+    [Inject] private readonly TimeProvider time;
+    [Inject] private readonly ILogger<RunPipeline> logger;
+
     public CrawlOptions Options => crawlOptions.Value;
 
     public DateTime NowUtc => time.GetUtcNow().UtcDateTime;
@@ -108,13 +113,13 @@ public sealed class RunPipeline(
     }
 
     /// <summary>
-    /// Ends a stage in the caller's unit of work: its findings were written in the same session; this adds the stage to
+    /// Ends a stage in the scope's unit of work: its findings were written in the same session; this adds the stage to
     /// <c>StagesDone</c> and enqueues the aggregate, which runs once every stage before it is done (§4.3).
     /// </summary>
-    public async Task FinishStageAsync(IAsyncDocumentSession session, IMessageOutbox outbox, string runId, string stage, CancellationToken cancellationToken)
+    public async Task FinishStageAsync(string runId, string stage, CancellationToken cancellationToken)
     {
-        session.Advanced.Patch<AuditRun, string>(runId, r => r.StagesDone, stages => stages.Add(stage));
-        await outbox.EnqueueAsync(session.AsSparkSession(), new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
+        scopeSession.Advanced.Patch<AuditRun, string>(runId, r => r.StagesDone, stages => stages.Add(stage));
+        await outbox.EnqueueAsync(new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
     }
 
     /// <summary>

@@ -67,13 +67,16 @@ public abstract class AppsTestHost : OrganizationsTestHost
 
     internal IWebhookPublisher Publisher(IServiceScope scope) => scope.ServiceProvider.GetRequiredService<IWebhookPublisher>();
 
+    /// <summary>The scope's session, which the publisher stores the event in (#536 D50): saving it is the business write's commit.</summary>
+    internal static MintPlayer.Spark.Abstractions.Storage.ISparkSession ScopeSession(IServiceScope scope)
+        => scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Abstractions.Storage.ISparkSession>();
+
     /// <summary>Publishes <paramref name="data"/> for <paramref name="owner"/> and commits; returns the webhook-id.</summary>
     internal async Task<string?> PublishAsync(object data, WebhookOwner owner)
     {
         using var scope = Factory.CreateScope();
-        using var session = Store.OpenAsyncSession();
-        var id = await Publisher(scope).PublishAsync(data, owner, session.AsSparkSession());
-        await session.SaveChangesAsync();
+        var id = await Publisher(scope).PublishAsync(data, owner);
+        await ScopeSession(scope).SaveChangesAsync();
         return id;
     }
 

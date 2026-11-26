@@ -222,7 +222,7 @@ public partial class DependencyPropagation : IDependencyPropagation
         fleet.ProducerEvents.RemoveAll(mine.Contains);
         if (fleet.ProducerEvents.Count > DependencyFleetState.MaxEntries)
             fleet.ProducerEvents = [.. fleet.ProducerEvents.OrderByDescending(e => e.AtUtc).Take(DependencyFleetState.MaxEntries)];
-        await outbox.EnqueueAsync(session.AsSparkSession(), new DependencyPropagationMessage
+        await outbox.EnqueueAsync(new DependencyPropagationMessage
         {
             AccountId = message.AccountId, ProducerRepositoryId = message.ProducerRepositoryId, EventAtUtc = message.AtUtc,
         }, new BroadcastOptions { Delay = Debounce }, cancellationToken);

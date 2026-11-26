@@ -109,7 +109,7 @@ public class NeutralMessagingTests : SparkTestDriver
         using (var scope = host.CreateScope())
         {
             var session = scope.ServiceProvider.GetRequiredService<ISparkSession>();
-            await scope.ServiceProvider.GetRequiredService<IMessageOutbox>().EnqueueAsync(session, new Ping { Text = "outbox" });
+            await scope.ServiceProvider.GetRequiredService<IMessageOutbox>().EnqueueAsync(new Ping { Text = "outbox" });
             (await MessagesAsync(host)).Should().BeEmpty("only stored, not saved");
             await session.SaveChangesAsync();
         }

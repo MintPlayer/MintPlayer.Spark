@@ -1241,7 +1241,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             run.FirstPullRequestOpened = true;
             run.Note(Now, $"opened #{pull.Number}{(draft ? " as a draft" : string.Empty)}");
             await webhooks.PublishAsync(new DependencyPullRequestOpened(DependencyRun.Of(run, repository), pull.Number, title, run.RollingBranchName, draft, Utc(Now)),
-                repository, $"{run.Id}/{run.Run}/opened/{pull.Number}", session, ct);
+                repository, $"{run.Id}/{run.Run}/opened/{pull.Number}", ct);
         }
         else
         {
@@ -1530,7 +1530,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         if (refusal is null && run.PullRequestNumber is { } pr)
         {
             // R5: auto-merge is the merge queue, only; it re-checks the rules, the approvals and the checks itself.
-            await outbox.EnqueueAsync(session.AsSparkSession(), new MergeQueueSignalMessage
+            await outbox.EnqueueAsync(new MergeQueueSignalMessage
             {
                 RepositoryId = repository.Id.Value, Kind = EMergeQueueSignal.Command, Number = pr, Command = EMergeQueueCommand.Enqueue,
                 Actor = QueueActor, Source = EMergeQueueCommandSource.DependencyUpdates,
@@ -2046,7 +2046,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.FinishedAtUtc = Now;
         Transition(run, EDependencyRunState.Idle, $"run {run.Run} ended: {outcome} ({message})");
         await webhooks.PublishAsync(new DependencyRunCompleted(DependencyRun.Of(run, context.Repository), outcome, message, run.PullRequestNumber, Utc(Now)),
-            context.Repository, $"{run.Id}/{run.Run}/completed", session, ct);
+            context.Repository, $"{run.Id}/{run.Run}/completed", ct);
         // #660 G3: a /refresh or /bisect still going ends with its run: 👍 when there was nothing to update, else 👎 (a
         // published refresh and a found culprit were told already, so this reaches only the ones still started).
         FinishCommand(run, outcome is "nothing-planned" or "nothing-applied" ? ECommandOutcome.NoChange : ECommandOutcome.Failed, $"The run ended: {message}");
@@ -2080,7 +2080,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var run = context.Run;
         if (run.WorkRefSha is not { } sha) return;
         run.WorkRefSha = null;
-        await outbox.EnqueueAsync(session.AsSparkSession(), new DependencyUpdateStepMessage
+        await outbox.EnqueueAsync(new DependencyUpdateStepMessage
         {
             RepositoryId = run.Repository, Line = run.Line, Run = run.Run, Generation = run.Generation, Step = EDependencyStep.Cleanup, ExpectedSha = sha,
         }, null, ct);
@@ -2264,7 +2264,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     }
 
     private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct, bool expedite = false)
-        => outbox.EnqueueAsync(session.AsSparkSession(), new DependencyUpdateStepMessage
+        => outbox.EnqueueAsync(new DependencyUpdateStepMessage
         {
             RepositoryId = run.Repository, Line = run.Line, Run = run.Run, Generation = run.Generation, Step = step,
         }, delay is null && !expedite ? null : new BroadcastOptions { Delay = delay, Expedite = expedite }, ct);
@@ -2306,7 +2306,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             EWorkflowHookStep.PollRun => engine.ScheduleAsync(context.Run, EDependencyStep.PollRun, delay, cancellationToken),
             EWorkflowHookStep.Timeout => engine.ScheduleAsync(context.Run, EDependencyStep.Timeout, delay, cancellationToken),
-            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session.AsSparkSession(), new DependencyUpdateStepMessage
+            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(new DependencyUpdateStepMessage
             {
                 RepositoryId = context.Run.Repository, Line = context.Run.Line, Run = context.Run.Run, Generation = context.Run.Generation, Step = EDependencyStep.CancelRun, RunId = runId,
             }, null, cancellationToken),

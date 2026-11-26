@@ -87,7 +87,7 @@ SeoTester is a Docker container on Debian on the VPS shared with CodeCoverage. I
 | Sign-in with Microsoft, GitHub, X, Google | `spark.AddExternalProviders(config)`; presets in `SparkExternalProviderExtensions.cs` / `GitHubAuthenticationExtensions.cs`; config `Spark:Auth:Providers:{GitHub,Google,MicrosoftAccount,Twitter}`; X is OAuth 2.0 + PKCE. No new packages needed | research: external logins |
 | PWA-safe popup login | `withExternalLogin()`, `loginWithProvider` (#464/#490) | PR #499 |
 | Account linking | `ExternalLoginLinking.ConfirmByEmail` (D7); unlink guard | research: external logins |
-| Durable background work | `AddMessaging()`, `IMessageOutbox.EnqueueAsync(session,msg)` (atomic with the save), `IRecipient<T>`, `IMessageCheckpoint`, `NonRetryableException`, per-queue `MaxConcurrency`/`MaxPerInterval` | `libs/messaging/.../SparkBuilderExtensions.cs:136`, `IMessageOutbox.cs:187`, `SparkQueueOptions.cs:38,58`, `MessageProcessor.cs:174,260,279-293` |
+| Durable background work | `AddMessaging()`, `IMessageOutbox.EnqueueAsync(msg)` (atomic with the save: the scope's session, #536 D50), `IRecipient<T>`, `IMessageCheckpoint`, `NonRetryableException`, per-queue `MaxConcurrency`/`MaxPerInterval` | `libs/messaging/.../SparkBuilderExtensions.cs:136`, `IMessageOutbox.cs:187`, `SparkQueueOptions.cs:38,58`, `MessageProcessor.cs:174,260,279-293` |
 | Restart survival | the retry sweeper reclaims abandoned claims every 30 s | `Services/MessageRetrySweeper.cs:10-60` |
 | Scheduled sweeps | `ISparkCronJob` + sweep → `BroadcastOnceAsync({siteId}:{slot})` | `SparkCronScheduler.cs:228`, `ManifestScanScheduler.cs:38-72` |
 | Mail | `AddMailManager()`, `ISparkMailer.SendAsync` (MJML) | `ISparkMailer.cs:13-60`, `docs/guide-outgoing-mail.md` |
@@ -217,7 +217,7 @@ We never store raw HTML, full PSI JSON or screenshots. Texts, grades and preview
 **`StartAudit`** is a custom action on `Site`. It:
 1. checks the role (Member+), the quotas (X3: runs/day, D14's weekly full crawl), the cool-down, and the robots.txt opt-out;
 2. if a run of the same origin is in progress **and** the user is a member of that run's org, **joins** it by adding a participant (D17, D18);
-3. otherwise creates the `AuditRun` and calls `IMessageOutbox.EnqueueAsync(session, new SiteProbeMessage(runId))` in **one** `SaveChanges`.
+3. otherwise creates the `AuditRun` and calls `IMessageOutbox.EnqueueAsync(new SiteProbeMessage(runId))` (the scope's session, #536 D50) in **one** `SaveChanges`.
 
 Queues (`[MessageQueue]`; per-queue `HandlerTimeout`, X7):
 

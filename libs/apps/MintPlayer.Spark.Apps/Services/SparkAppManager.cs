@@ -53,6 +53,8 @@ internal sealed partial class SparkAppManager
     private static readonly Regex KeyIdShape = new("^[0-9a-f]{16}$", RegexOptions.CultureInvariant);
 
     [Inject] private readonly ISparkStore store;
+    /// <summary>The request scope's session: each call is one unit of work, which the webhook's ping joins (#536 D50).</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly WebhookOwnerResolver owners;
     [Inject] private readonly WebhookEventCatalog catalog;
     [Inject] private readonly WebhookSecretProtector secrets;
@@ -68,7 +70,6 @@ internal sealed partial class SparkAppManager
         if (!await owners.CanManageAsync(owner, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<SparkAppView>>.NotFound();
 
-        using var session = store.OpenSession();
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(owner).Value, cancellationToken);
         if (registry is null || registry.AppIds.Count == 0)
             return WebhookResult<IReadOnlyList<SparkAppView>>.Ok([]);
@@ -85,7 +86,6 @@ internal sealed partial class SparkAppManager
     {
         if (slug is null || !SlugShape.IsMatch(slug))
             return WebhookResult<object>.NotFound();
-        using var session = store.OpenSession();
         if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug).Value, cancellationToken) is not { } app)
             return WebhookResult<object>.NotFound();
         if (await owners.CanManageAsync(app.Owner, userId, cancellationToken))
@@ -118,7 +118,6 @@ internal sealed partial class SparkAppManager
         if (ValidateGrants(permissions, events) is { } grantError)
             return WebhookResult<SparkAppCreated>.Invalid(grantError);
 
-        using var session = store.OpenSession();
         session.OptimisticConcurrency = true;
         var registryId = WebhookOwnerRegistry.IdFor(owner);
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(registryId.Value, cancellationToken);
@@ -159,7 +158,7 @@ internal sealed partial class SparkAppManager
         string? secret = null;
         WebhookEndpoint? hook = null;
         if (!string.IsNullOrEmpty(input.WebhookUrl))
-            (hook, secret) = await AddWebhookAsync(session, app, input.WebhookUrl, cancellationToken);
+            (hook, secret) = await AddWebhookAsync(app, input.WebhookUrl, cancellationToken);
 
         try
         {
@@ -174,7 +173,7 @@ internal sealed partial class SparkAppManager
     }
 
     public async Task<WebhookResult<SparkAppCreated>> UpdateAsync(SparkAppChange change, string userId, CancellationToken cancellationToken)
-        => await WithAppAsync(change.Slug, userId, async (session, app) =>
+        => await WithAppAsync(change.Slug, userId, async app =>
         {
             if (ValidateText(change.Name ?? app.Name, change.Description) is { } textError)
                 return WebhookResult<SparkAppCreated>.Invalid(textError);
@@ -209,7 +208,7 @@ internal sealed partial class SparkAppManager
             }
             else if (change.WebhookUrl is { Length: > 0 } url && hook is null)
             {
-                (hook, secret) = await AddWebhookAsync(session, app, url, cancellationToken);
+                (hook, secret) = await AddWebhookAsync(app, url, cancellationToken);
             }
             else if (hook is not null)
             {
@@ -218,7 +217,7 @@ internal sealed partial class SparkAppManager
                 {
                     hook.Url = newUrl.Trim();
                     if (hook.Enabled)
-                        await endpoints.SchedulePingAsync(session, hook, cancellationToken);
+                        await endpoints.SchedulePingAsync(hook, cancellationToken);
                 }
             }
 
@@ -232,7 +231,7 @@ internal sealed partial class SparkAppManager
     public async Task<WebhookResult<bool>> DeleteAsync(string? slug, string userId, CancellationToken cancellationToken)
     {
         string? clientId = null;
-        var result = await WithAppAsync(slug, userId, async (session, app) =>
+        var result = await WithAppAsync(slug, userId, async app =>
         {
             if (await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(app.Owner).Value, cancellationToken) is { } registry)
                 // Ignoring case: an App listed before #536 is "SparkApps/…" there, its loaded id lower case.
@@ -258,7 +257,7 @@ internal sealed partial class SparkAppManager
     /// half is returned this once. Up to <see cref="SparkAppsOptions.MaxKeysPerApp"/>, so a key can be rotated.
     /// </summary>
     public Task<WebhookResult<SparkAppKeyCreated>> GenerateKeyAsync(string? slug, string userId, CancellationToken cancellationToken)
-        => WithAppAsync(slug, userId, async (session, app) =>
+        => WithAppAsync(slug, userId, async app =>
         {
             if (app.Keys.Count >= options.Value.MaxKeysPerApp)
                 return WebhookResult<SparkAppKeyCreated>.Invalid($"An App holds at most {options.Value.MaxKeysPerApp} keys; delete one first.");
@@ -290,7 +289,7 @@ internal sealed partial class SparkAppManager
 
     /// <summary>Removes a key; assertions it signs are refused from then on.</summary>
     public Task<WebhookResult<SparkAppView>> DeleteKeyAsync(string? slug, string? keyId, string userId, CancellationToken cancellationToken)
-        => WithAppAsync(slug, userId, async (session, app) =>
+        => WithAppAsync(slug, userId, async app =>
         {
             if (keyId is null || !KeyIdShape.IsMatch(keyId) || app.Keys.RemoveAll(k => k.KeyId == keyId) == 0)
                 return WebhookResult<SparkAppView>.NotFound();
@@ -310,7 +309,7 @@ internal sealed partial class SparkAppManager
         return true;
     }
 
-    private async Task<(WebhookEndpoint Hook, string Secret)> AddWebhookAsync(ISparkSession session, SparkApp app, string url, CancellationToken cancellationToken)
+    private async Task<(WebhookEndpoint Hook, string Secret)> AddWebhookAsync(SparkApp app, string url, CancellationToken cancellationToken)
     {
         var secret = WebhookSecret.Generate();
         var hook = new WebhookEndpoint
@@ -327,22 +326,21 @@ internal sealed partial class SparkAppManager
         };
         await session.StoreAsync(hook, hook.Id.Value, cancellationToken);
         app.WebhookEndpointId = hook.PublicId;
-        await endpoints.SchedulePingAsync(session, hook, cancellationToken);
+        await endpoints.SchedulePingAsync(hook, cancellationToken);
         return (hook, secret.ToString());
     }
 
-    private async Task<WebhookResult<T>> WithAppAsync<T>(string? slug, string userId, Func<ISparkSession, SparkApp, Task<WebhookResult<T>>> action, CancellationToken cancellationToken)
+    private async Task<WebhookResult<T>> WithAppAsync<T>(string? slug, string userId, Func<SparkApp, Task<WebhookResult<T>>> action, CancellationToken cancellationToken)
     {
         if (slug is null || !SlugShape.IsMatch(slug))
             return WebhookResult<T>.NotFound();
-        using var session = store.OpenSession();
         session.OptimisticConcurrency = true;
         var app = await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug).Value, cancellationToken);
         if (app is null || !await owners.CanManageAsync(app.Owner, userId, cancellationToken))
             return WebhookResult<T>.NotFound();
         try
         {
-            return await action(session, app);
+            return await action(app);
         }
         catch (SparkStoreConcurrencyException)
         {

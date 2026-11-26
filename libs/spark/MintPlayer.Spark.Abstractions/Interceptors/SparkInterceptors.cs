@@ -70,8 +70,9 @@ public enum InterceptorStage
 /// <summary>
 /// Before a save is checked and written: after mapping, before WITH CHECK. May validate, mutate
 /// <see cref="SaveContext.Entity"/> (what it stamps is what WITH CHECK judges and what is written),
-/// store side documents in <see cref="SparkInterceptorContext.Session"/> (committed with the save, taken back
-/// on refusal), prompt with <c>Retry.Action</c> (be idempotent up to the prompt), or throw.
+/// store side documents in the injected <see cref="Storage.ISparkSession"/> (the save commits through that same scoped
+/// session, so they commit with it and are taken back on refusal), prompt with <c>Retry.Action</c> (be idempotent
+/// up to the prompt), or throw.
 /// </summary>
 public interface IBeforeSave : ISparkInterceptor
 {
@@ -240,19 +241,9 @@ public abstract class SparkInterceptorContext
     /// <summary>Whether the caller is the system (module sync, background work) rather than a viewer.</summary>
     public bool IsSystemContext { get; init; }
 
-    /// <summary>
-    /// The RavenDB <c>IAsyncDocumentSession</c> the write commits through (for a materialize, the
-    /// session the entity was loaded in). Documents a before-interceptor stores here commit with the write and
-    /// are taken back when it is refused. Typed <see cref="object"/> because Abstractions carries no
-    /// RavenDB dependency; <c>GetSession()</c> in <c>MintPlayer.Spark</c> returns it typed.
-    /// </summary>
-    public required object Session { get; init; }
-
-    /// <summary>
-    /// The same unit of work as <see cref="Session"/>, through the provider-neutral storage contract
-    /// (docs/spark_editor_PRD.md D2/D3). Null only where a context is built outside the framework (a test).
-    /// </summary>
-    public Storage.ISparkSession? StorageSession { get; init; }
+    // No session here (#536 D50): saves, deletes and loads run on the scope's ISparkSession, which every
+    // interceptor (scoped) and Actions class (resolved per scope) injects. Only a materialize names its
+    // session, since the Before copy is loaded in a side session.
 
     /// <summary>
     /// Small facts a before-interceptor records for the durable after-commit interceptors (#482, D17): they get a
@@ -342,7 +333,7 @@ public enum MaterializeReason
     Before,
 }
 
-/// <summary>An entity just loaded from RavenDB (see <see cref="IAfterMaterialize"/>).</summary>
+/// <summary>An entity just loaded from the store (see <see cref="IAfterMaterialize"/>).</summary>
 public sealed class MaterializeContext : SparkInterceptorContext
 {
     /// <summary>The loaded entity; fill its satellite properties here.</summary>
@@ -350,6 +341,13 @@ public sealed class MaterializeContext : SparkInterceptorContext
 
     /// <summary>Which load this is.</summary>
     public required MaterializeReason Reason { get; init; }
+
+    /// <summary>
+    /// The session <see cref="Entity"/> was loaded in; load its satellite rows through this one. It is the scope's
+    /// own session, except for <see cref="MaterializeReason.Before"/>: that copy is loaded in a side session, so its
+    /// rows are never the instances the save changes (#536 D50).
+    /// </summary>
+    public required Storage.ISparkSession Session { get; init; }
 }
 
 /// <summary>A load through <c>IDatabaseAccess.GetPersistentObjectAsync</c> / <c>GetPersistentObjectsByIdAsync</c>.</summary>
@@ -357,16 +355,4 @@ public sealed class LoadContext : SparkInterceptorContext
 {
     /// <summary>The object as it will be returned; interceptors may decorate it.</summary>
     public required PersistentObject PersistentObject { get; init; }
-}
-
-/// <summary>Provider-neutral access to the unit of work a <see cref="SparkInterceptorContext"/> carries (#536 M6).</summary>
-public static class SparkInterceptorContextStorageExtensions
-{
-    /// <summary>The session the write commits through (for a materialize, the one the entity was loaded in).</summary>
-    public static Storage.ISparkSession GetSparkSession(this SparkInterceptorContext context)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        return context.StorageSession
-            ?? throw new InvalidOperationException("This interceptor context was built without a storage session.");
-    }
 }

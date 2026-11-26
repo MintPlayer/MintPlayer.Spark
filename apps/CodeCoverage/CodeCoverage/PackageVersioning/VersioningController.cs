@@ -279,7 +279,7 @@ public partial class VersioningController : ControllerBase
         // #570 D11: which repository releases each package, and what each release brought, for a later backport's report.
         await UpstreamReleases.RecordAsync(session, repository.Id.Value, record.Releases, cancellationToken);
         // #691 D41: saved with the run record; keyed by the run, so the action's retry of the same call sends nothing twice.
-        await webhooks.PublishAsync(VersioningRunResult.Of(record, repository, clock.GetUtcNow().UtcDateTime), repository, record.Id.Value, session, cancellationToken);
+        await webhooks.PublishAsync(VersioningRunResult.Of(record, repository, clock.GetUtcNow().UtcDateTime), repository, record.Id.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         // D15: the Releases follow on the versioning lane, one at a time, so a secondary rate limit parks the message
         // instead of holding this request (and the action's fallback clock) open.

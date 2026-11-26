@@ -1,21 +1,20 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Messaging.Abstractions;
-using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
 /// <summary>
 /// The framework's durable after-commit interceptors (#482, D17), delivered by Messaging: one message per
-/// committed row and interceptor, stored in the write's own session, handled with Messaging's retries and
-/// dead-lettering.
+/// committed row and interceptor, stored in the scope's session (the one the write commits through), handled with
+/// Messaging's retries and dead-lettering.
 /// </summary>
 internal sealed partial class SparkAfterCommitOutbox : ISparkAfterCommitOutbox
 {
     [Inject] private readonly IMessageOutbox outbox;
 
-    public Task EnqueueAsync(ISparkSession session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
-        => outbox.EnqueueAsync(session, work, cancellationToken: cancellationToken);
+    public Task EnqueueAsync(SparkAfterCommitWork work, CancellationToken cancellationToken = default)
+        => outbox.EnqueueAsync(work, cancellationToken: cancellationToken);
 }
 
 /// <summary>Runs the durable interceptor a <see cref="SparkAfterCommitWork"/> message names; a throw is retried.</summary>

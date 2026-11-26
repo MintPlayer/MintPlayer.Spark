@@ -35,6 +35,8 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly ISparkStore store;
+    /// <summary>The scope's session, which the save and the delete commit through.</summary>
+    [Inject] private readonly ISparkSession session;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
@@ -54,16 +56,12 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
         ValidateDefinition(entity, options);
 
-        // Not a session only when the interceptor is called by hand (unit tests of the rules above).
-        if (context.StorageSession is { } session)
-        {
-            await ApplyScopeApprovalsAsync(session, entity, context);
-            // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with a 400 while
-            // staying stored. The reservation is both the check (its holder, read now, gives the validation error) and
-            // the atomic half (O17): two concurrent saves of one client id cannot both claim it (#536 D47; the
-            // collection query that checked before built an auto index on RavenDB, D42).
-            await OidcClientIdReservation.ReserveAsync(session, entity);
-        }
+        await ApplyScopeApprovalsAsync(session, entity, context);
+        // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with a 400 while
+        // staying stored. The reservation is both the check (its holder, read now, gives the validation error) and
+        // the atomic half (O17): two concurrent saves of one client id cannot both claim it (#536 D47; the
+        // collection query that checked before built an auto index on RavenDB, D42).
+        await OidcClientIdReservation.ReserveAsync(session, entity);
     }
 
     /// <summary>
@@ -402,7 +400,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
         // Frees the client id in the delete's own save (#536 D47): free exactly when the application is gone, and kept
         // when the delete is refused.
-        if (context.StorageSession is { } session && !string.IsNullOrEmpty(entity.ClientId) && !entity.Id.IsEmpty)
+        if (!string.IsNullOrEmpty(entity.ClientId) && !entity.Id.IsEmpty)
             OidcClientIdReservation.Release(session, entity);
     }
 

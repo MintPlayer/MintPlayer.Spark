@@ -58,23 +58,23 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             body.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() : null);
     }
 
-    private static SaveContext Saving<T>(T entity, T before, ISparkSession session) where T : class => new()
+    private static SaveContext Saving<T>(T entity, T before) where T : class => new()
     {
         EntityType = typeof(T),
         Operation = PersistentObjectOperation.Save,
         PersistentObject = new PersistentObject { Name = typeof(T).Name, ObjectTypeId = Guid.NewGuid() },
         Entity = entity,
         Before = before,
-        Session = session.Native,
-        StorageSession = session,
     };
 
-    private OidcApplicationInterceptors ApplicationInterceptors() => new(
+    /// <summary>The interceptors of a scope whose session is <paramref name="session"/>, the save's (#536 D50).</summary>
+    private OidcApplicationInterceptors ApplicationInterceptors(ISparkSession session) => new(
         corsOrigins: new OidcCorsOrigins(),
         accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(),
         options: new SparkIdentityProviderOptions(),
         audit: new OidcAudit(new SparkIdentityProviderOptions()),
-        store: Store);
+        store: Store,
+        session: session);
 
     private async Task<OidcGrant?> GrantAsync(Issued issued)
     {
@@ -153,7 +153,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             app.Enabled = false;
             await session.SaveChangesAsync();
 
-            await ApplicationInterceptors().OnAfterSaveAsync(app, Saving(app, before, session));
+            await ApplicationInterceptors(session).OnAfterSaveAsync(app, Saving(app, before));
         }
 
         var tokens = await TokensOfAsync(disabled.App);
@@ -226,7 +226,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             app.Enabled = false;
             await session.SaveChangesAsync();
 
-            await ApplicationInterceptors().OnAfterSaveAsync(app, Saving(app, before, session));
+            await ApplicationInterceptors(session).OnAfterSaveAsync(app, Saving(app, before));
         }
 
         (await TokensOfAsync(issued.App)).Should().OnlyContain(t => t.Status == "valid");
@@ -258,8 +258,8 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             resource.Scopes.Single(s => s.Name == scope).Enabled = false;
             await session.SaveChangesAsync();
 
-            await new OidcResourceInterceptors(audit: new OidcAudit(new SparkIdentityProviderOptions()), store: Store)
-                .OnAfterSaveAsync(resource, Saving(resource, before, session));
+            await new OidcResourceInterceptors(audit: new OidcAudit(new SparkIdentityProviderOptions()), store: Store, session: session)
+                .OnAfterSaveAsync(resource, Saving(resource, before));
         }
 
         (await TokensOfAsync(carrying.App)).Where(t => t.Scopes.Contains(scope))

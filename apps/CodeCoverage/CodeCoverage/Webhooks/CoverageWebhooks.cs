@@ -120,14 +120,18 @@ public static class CoverageWebhooks
         [.. upload.Reports.Select(r => new CoverageReportFile(r.FileName, r.Parsed, r.Format, r.FilesCount, r.Reason, r.Detail))],
         new DateTimeOffset(DateTime.SpecifyKind(upload.UploadedAtUtc, DateTimeKind.Utc)));
 
-    /// <summary>Publishes <see cref="CoverageReportProcessed"/> in <paramref name="session"/>, keyed by the upload: a re-parse sends nothing twice.</summary>
+    /// <summary>
+    /// Publishes <see cref="CoverageReportProcessed"/>, keyed by the upload: a re-parse sends nothing twice. The commit and
+    /// repository are read from <paramref name="session"/>, the session of <paramref name="webhooks"/>' scope, which the event
+    /// is stored in (#536 D50).
+    /// </summary>
     internal static async Task PublishReportAsync(CoverageWebhookPublisher webhooks, IAsyncDocumentSession session, Build build, BuildSession upload, CancellationToken cancellationToken)
     {
         if (!webhooks.Enabled) return;
         if (await session.LoadAsync<Commit>(build.Commit, cancellationToken) is not { } commit
             || await session.LoadAsync<Repository>(commit.Repository, cancellationToken) is not { } repository)
             return;
-        await webhooks.PublishAsync(DescribeReport(build, upload, commit, repository), repository, $"{build.Id}/{upload.SessionId}", session, cancellationToken);
+        await webhooks.PublishAsync(DescribeReport(build, upload, commit, repository), repository, $"{build.Id}/{upload.SessionId}", cancellationToken);
     }
 
     internal static CoverageBuildCompleted Describe(Build build, Commit commit, Repository repository)
@@ -151,8 +155,9 @@ public static class CoverageWebhooks
 }
 
 /// <summary>
-/// #691 D41: the features' way to raise a webhook event for a repository's forge account. It publishes in the caller's
-/// session, before that session saves the state change the event reports, so the event goes out only if the change commits.
+/// #691 D41: the features' way to raise a webhook event for a repository's forge account. It publishes in the scope's
+/// session (#536 D50), before that session saves the state change the event reports, so the event goes out only if the
+/// change commits.
 /// A no-op while webhooks are off. The key makes a re-run (an at-least-once message handler) send nothing twice: it names
 /// the state change, e.g. a run and its outcome.
 /// </summary>
@@ -168,12 +173,12 @@ public sealed partial class CoverageWebhookPublisher
     /// <summary>Whether webhooks are on: a caller that would load documents only to describe an event checks this first.</summary>
     public bool Enabled => services.GetService<IWebhookPublisher>() is not null;
 
-    public async Task PublishAsync<TEvent>(TEvent data, Repository repository, string key, IAsyncDocumentSession session, CancellationToken cancellationToken)
+    public async Task PublishAsync<TEvent>(TEvent data, Repository repository, string key, CancellationToken cancellationToken)
         where TEvent : notnull
     {
         if (services.GetService<IWebhookPublisher>() is not { } webhooks || repository.OwnerLogin is not { Length: > 0 })
             return;
-        await webhooks.PublishAsync(data, CoverageWebhooks.Account(repository.OwnerKey), key, session.AsSparkSession(), cancellationToken);
+        await webhooks.PublishAsync(data, CoverageWebhooks.Account(repository.OwnerKey), key, cancellationToken);
     }
 }
 
@@ -185,18 +190,19 @@ public record CoverageBuildCompletedWebhookMessage
 }
 
 /// <summary>
-/// Queues the webhook of a finalize in the finalize's own session. Only a message is stored: the finalize cron closes up
-/// to 128 builds in one session, which has no request budget left for each build's repository and owner registry.
+/// Queues the webhook of a finalize in the scope's session, which the finalize saves through (#536 D50). Only a message is
+/// stored: the finalize cron closes up to 128 builds in one session, which has no request budget left for each build's
+/// repository and owner registry.
 /// </summary>
 [Register(ServiceLifetime.Scoped)]
 public sealed partial class CoverageWebhookQueue
 {
     [Inject] private readonly IServiceProvider services;
 
-    /// <summary>A no-op while webhooks are off. Stored in <paramref name="session"/>: it goes out only if the finalize commits.</summary>
-    public Task EnqueueCompletedAsync(IAsyncDocumentSession session, Build build, CancellationToken cancellationToken)
+    /// <summary>A no-op while webhooks are off. Stored in the scope's session: it goes out only if the finalize commits.</summary>
+    public Task EnqueueCompletedAsync(Build build, CancellationToken cancellationToken)
         => build.Id is { } id && services.GetService<IWebhookPublisher>() is not null
-            ? services.GetRequiredService<MintPlayer.Spark.Messaging.IMessageOutbox>().EnqueueAsync(session.AsSparkSession(), new CoverageBuildCompletedWebhookMessage { BuildId = id.Value }, cancellationToken: cancellationToken)
+            ? services.GetRequiredService<MintPlayer.Spark.Messaging.IMessageOutbox>().EnqueueAsync(new CoverageBuildCompletedWebhookMessage { BuildId = id.Value }, cancellationToken: cancellationToken)
             : Task.CompletedTask;
 }
 
@@ -221,7 +227,7 @@ public sealed partial class CoverageBuildCompletedRecipient : IRecipient<Coverag
         if (commit?.Repository is null || await session.LoadAsync<Repository>(commit.Repository, cancellationToken) is not { } repository)
             return;
 
-        await webhooks.PublishAsync(CoverageWebhooks.Describe(build, commit, repository), CoverageWebhooks.Account(repository.OwnerKey), build.Id.Value, session.AsSparkSession(), cancellationToken);
+        await webhooks.PublishAsync(CoverageWebhooks.Describe(build, commit, repository), CoverageWebhooks.Account(repository.OwnerKey), build.Id.Value, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 }

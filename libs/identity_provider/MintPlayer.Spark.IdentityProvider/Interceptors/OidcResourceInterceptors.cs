@@ -21,6 +21,8 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
 {
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly ISparkStore store;
+    /// <summary>The scope's session, which the save commits through.</summary>
+    [Inject] private readonly ISparkSession session;
 
     public async ValueTask OnBeforeSaveAsync(OidcResource entity, SaveContext context)
     {
@@ -40,8 +42,7 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
         var naturalId = OidcScopeCatalog.ResourceId(entity.Name);
         if (context.IsNew || string.IsNullOrEmpty(entity.Id.Value))
         {
-            // Not a session only when the interceptor is called by hand (unit tests of the rules above).
-            if (context.StorageSession is { } session && await session.ExistsAsync(typeof(OidcResource), naturalId))
+            if (await session.ExistsAsync(typeof(OidcResource), naturalId))
                 throw new SparkValidationException($"A resource named '{entity.Name}' already exists.", nameof(entity.Name));
 
             entity.Id = Id<OidcResource>.FromTrusted(naturalId);
