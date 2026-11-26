@@ -17,12 +17,25 @@ Start a PostgreSQL 17 or later, then:
 
 ```bash
 cd apps/SqlDemo/SqlDemo
-ConnectionStrings__Spark="Host=localhost;Port=5432;Database=SparkSqlDemo;Username=postgres;Password=..." \
-  dotnet run --launch-profile https      # https://localhost:5017
+dotnet run --launch-profile https      # https://localhost:5017
 ```
 
-Without the variable, `appsettings.Development.json` connects as `postgres` and Npgsql takes the password from
-`PGPASSWORD` or your pgpass file. Spark creates the database at the first start.
+The `https` profile connects to the database `SparkSqlDemo` on `localhost:5432` as `postgres`, and Spark creates the
+database at the first start. Neither the profile nor `appsettings.Development.json` holds a password, and none belongs in
+the repository: Npgsql reads it from your pgpass file or from `PGPASSWORD`. Set one of them once per machine:
+
+- **The pgpass file:** `%APPDATA%\postgresql\pgpass.conf` on Windows; `~/.pgpass` on Linux and macOS, where it must be
+  `chmod 600` or it is ignored. Each line is `host:port:database:user:password`:
+
+  ```
+  localhost:5432:*:postgres:<your password>
+  ```
+
+- **`PGPASSWORD`:** `setx PGPASSWORD <your password>` on Windows, which reaches only processes started afterwards (restart
+  Visual Studio or the terminal), or `export PGPASSWORD=<your password>` in your shell profile.
+
+The profile sets `ConnectionStrings__Spark`, so a value from your shell does not override it. For another server or user,
+change it in the profile, and keep the password out of it.
 
 `dotnet run` is the whole command: the host starts the Angular dev server itself (`UseAngularCliServer`), so don't run
 `ng serve` next to it. Mail is not sent: every message is an `.eml` file in `apps/SqlDemo/SqlDemo/mail-pickup/`
