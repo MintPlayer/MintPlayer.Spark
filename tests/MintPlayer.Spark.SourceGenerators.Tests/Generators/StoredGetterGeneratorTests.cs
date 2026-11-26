@@ -206,6 +206,57 @@ public class StoredGetterGeneratorTests
         Combined(result).Should().Contain("__stored_Age").And.Contain("__stored_EmployerName").And.Contain("__stored_Plain");
     }
 
+    [Theory]
+    [InlineData("DateTimeOffset.Now.Ticks", "DateTimeOffset.Now")]
+    [InlineData("Environment.TickCount64", "Environment.TickCount64")]
+    [InlineData("Stopwatch.GetTimestamp()", "Stopwatch.GetTimestamp")]
+    [InlineData("Clock.GetUtcNow().Ticks", "TimeProvider.GetUtcNow")]
+    public void Every_clock_is_reported(string getter, string clock)
+    {
+        var result = Run($$"""
+            using System;
+            using System.Diagnostics;
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp;
+
+            public partial class Ticket
+            {
+                private static readonly TimeProvider Clock = TimeProvider.System;
+                public Id<Ticket> Id { get; set; }
+                public long Stamp => {{getter}};
+            }
+            """);
+
+        result.FinalCompilationDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();
+        result.GeneratorDiagnostics.Where(d => d.Id == "SPARK068").Select(d => d.GetMessage()).Should()
+            .ContainSingle().Which.Should().Contain("Ticket.Stamp").And.Contain(clock);
+    }
+
+    [Fact]
+    public void A_getter_that_reads_its_own_type_is_not_reported()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp;
+
+            public partial class Person
+            {
+                public Id<Person> Id { get; set; }
+                public string Name { get; set; } = "";
+            }
+
+            public partial class Employee : Person
+            {
+                public string Label => this.Name + ((Person)this).Name;
+            }
+            """);
+
+        result.GeneratorDiagnostics.Where(d => d.Id == "SPARK068").Should().BeEmpty("the type itself and its base are not another entity");
+        Combined(result).Should().Contain("__stored_Label");
+    }
+
     [Fact]
     public void A_record_is_reported_because_its_equality_would_include_the_field()
     {

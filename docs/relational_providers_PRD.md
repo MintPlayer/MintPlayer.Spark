@@ -2125,7 +2125,8 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
     - RavenDB documents are unchanged: `StoredGetterRavenDocumentTests` shows that Spark's contract resolver writes
       the getter and not the private field.
     - **Evidence:**
-      - `StoredGetterGeneratorTests`: 7 tests, green.
+      - `StoredGetterGeneratorTests`: 12 tests, green. Every clock is covered, and a read of the type itself is not
+        reported.
       - `A_stored_getter_is_written_on_every_save_and_queries_as_its_column` (PostgreSQL 18 + LocalDB):
         - red first, on `RelPerson.Home` (JSON): "could not be mapped";
         - green after the `MapValue` change;
@@ -2134,7 +2135,9 @@ decided O14–O17, and O8 and O9 last. The plan §3 has the log.
         - filter, sort, ignore-case;
         - no column without the field or with `[JsonIgnore]`.
       - The neutral `A_get_only_member_is_stored_and_filters_and_sorts`: green on all four stores.
-      - `StoredGetterHashTests`: 4/4, plus the existing hash and gate tests (60).
+      - `StoredGetterHashTests`: 5/5 (formula changed, new, removed), plus the existing hash and gate tests (60).
+      - CI was green on bf8c643b3. Its coverage showed untested clock arms and new/removed drift lines; tests for both
+        followed.
     - **The apps:** the solution build gives no SPARK067/068 warning. `--spark-verify-model` then failed exactly
       for the models that gained stored getters:
       - CodeCoverage: 7 — `Account`/`Repository.OwnerKey`, `Commit.Date`, `UpcomingChangelog.Notes`/`Packages`,

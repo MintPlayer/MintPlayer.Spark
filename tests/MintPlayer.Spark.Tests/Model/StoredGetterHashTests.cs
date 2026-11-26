@@ -64,6 +64,21 @@ public class StoredGetterHashTests : IDisposable
     }
 
     [Fact]
+    public void The_drift_names_a_new_and_a_removed_stored_getter()
+    {
+        var expected = Hashes<FormulaAContext>();
+        var actual = Hashes<FormulaAContext>();
+        expected.StoredGetters!.Remove("StoredProbe.Inherited");
+        expected.StoredGetters!["StoredProbe.Gone"] = FormulaA;
+
+        var drift = ModelHashVerifier.DescribeDrift(expected, actual).ToList();
+
+        drift.Should().Contain(line => line.Contains("stored getter StoredProbe.Inherited") && line.Contains("new since"));
+        drift.Should().Contain(line => line.Contains("stored getter StoredProbe.Gone") && line.Contains("removed since"));
+        drift.Should().NotContain(line => line.Contains("StoredProbe.Label"), "an unchanged formula is no drift");
+    }
+
+    [Fact]
     public void Synchronize_names_the_changed_and_the_new_stored_getters()
     {
         var before = Hashes<FormulaAContext>();

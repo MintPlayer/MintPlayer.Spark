@@ -12,8 +12,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     `FullName` could not be filtered or sorted).
     - `SparkStoredGetterAttribute` (Attributes; `FieldPrefix`).
     - `StoredGetterGenerator` + `StoredGetterReporter`. SPARK067 covers a record or a non-partial derived type;
-      SPARK068 a getter that reads the clock or another entity. 7 tests in `StoredGetterGeneratorTests`, green; the
-      whole SourceGenerators.Tests is green.
+      SPARK068 a getter that reads the clock or another entity. 12 tests in `StoredGetterGeneratorTests`, green; the
+      whole SourceGenerators.Tests is green (752).
     - `SparkDbContext.MapValue`: a get-only member with the field takes the normal column path (JSON, primitive
       list, enum, id, scalar) plus `HasField`. The field is looked up on the declaring type. A get-only id is a plain
       value (no FK).
@@ -22,7 +22,9 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - The neutral `A_get_only_member_is_stored_and_filters_and_sorts`: green on all four stores.
     - `StoredGetterRavenDocumentTests`: the RavenDB document keeps the getter and not the field.
     - `modelHashes.json` `storedGetters`, part of the model hash when non-empty. Verify names a new, removed or
-      changed formula; synchronize prints them, with the `ISparkMigration` advice. `StoredGetterHashTests` 4/4.
+      changed formula; synchronize prints them, with the `ISparkMigration` advice. `StoredGetterHashTests` 5/5.
+    - Pushed as bf8c643b3, CI green (31 checks). Its coverage showed untested clock arms and new/removed drift
+      lines; tests for both followed.
     - The apps: CodeCoverage (7 getters), HR and MintPlayer (`Person.FullName`) were re-synchronized; their
       `modelHashes.json` change, and RavenDB already stored all of them. The other six verify in sync. SqlDemo's
       synchronize wrote no migration.
