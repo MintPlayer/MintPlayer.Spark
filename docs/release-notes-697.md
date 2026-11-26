@@ -187,7 +187,8 @@ tags, and everything ships once the merged pull request is backported to `releas
    - `SetExpiry`/`GetExpiry`: when the store may delete a document (RavenDB's `@expires`).
    - `StreamAsync(query)`: every row of a query as untracked `SparkStreamResult<T>` (id, document, version).
    - `Reserve`/`Release`/`GetReservationAsync`: unique keys claimed with the save. A key held by another existing
-     document fails the save with `SparkReservationTakenException`; one whose holder is gone is taken over.
+     document fails the save with `SparkReservationTakenException`; one whose holder is gone is taken over (on RavenDB,
+     a claim whose save is still in flight is not: Fixed 6).
    - `DeleteWhereAsync`/`UpdateWhereAsync`: set-based delete and update by a predicate, with constant assignments
      (`set => set.Set(x => x.Status, Status.Archived)`).
    - `PatchAppend`: an append to a stored list that concurrent writers cannot lose.
@@ -329,3 +330,11 @@ tags, and everything ships once the merged pull request is backported to `releas
    are one document stored without a version check. Each edit now stores at the version it read and is applied again
    to a fresh read when another one landed first. On SQL Server and PostgreSQL dynamic lookups get the table
    `DynamicLookupReferenceDocuments`, which every relational app's migration now includes.
+6. **A RavenDB reservation is no longer taken over while its owner's save is in flight** (PRD §3, Reservations).
+   RavenDB claims a key before it writes the documents, so a second claimant in between found no owner, took the key
+   over, and both documents were saved: two users with one email address, for example. A claim is now marked pending
+   until its documents are written, and a pending claim is never taken over within 5 minutes. A key whose owner was
+   deleted is still freed at once; one a crash left behind, after those 5 minutes.
+7. **The identity provider logs a key ring it cannot decrypt as an error** (PRD D47). The background reload logged a
+   stored key that this instance's Data Protection key ring cannot decrypt as a warning, though the next start fails
+   on it. It is an error now; the keys already held keep signing.

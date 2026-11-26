@@ -33,11 +33,25 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       version, so the next renewal's compare-and-swap failed and `Lost` fired while nobody else held the key. A
       failed renewal now reads the value back and keeps the lease when it names this holder (only this lease writes
       it). Red: `A_renewal_the_store_applied_but_never_answered_keeps_the_lease`; `SparkStoreLockTests` 10/10.
-    - Reported, not fixed:
-      - Two minor new findings left to the owner: `StoreSearchProvider` reads an unordered `take × 4` window before
-        its whole-word match, and `OidcKeyRing`'s background reload logs a lost Data Protection ring as a warning.
-      - One finding already on master: a RavenDB reservation can be taken over while its owner's save is in flight;
-        master's `UserStore` has the same takeover.
+    - Reported first, then fixed at the owner's request (2026-11-26):
+      - **`StoreSearchProvider` read one unordered `take × 4` window** before its whole-word match, so a whole word
+        behind more rows that hold it only inside a longer word was never found. It now pages in key order until a
+        type has `take` best matches, its rows run out, or `MaxRows` (5000) (PRD D44). Red:
+        `A_whole_word_is_found_behind_many_rows_that_hold_it_only_inside_a_word` returned nothing for
+        `/spark/search?q=lobster&take=1` on InMemory and SQL Server; green on InMemory, SQL Server and RavenDB. The
+        suggestion-ranking half of the test skips RavenDB, which orders by its index's score.
+      - **`OidcKeyRing`'s background reload logged an undecryptable key as a warning.** It is an error now, since the
+        next start fails on it. Red: `A_reload_that_cannot_decrypt_the_stored_keys_logs_an_error` saw
+        `LogLevel.Warning`; green.
+      - **A RavenDB reservation could be taken over while its owner's save was in flight** (also on master). A claim
+        carries `Spark-Pending-Since` until its documents are written, and a pending claim is never taken over within
+        5 minutes (PRD §3, Reservations). Red: `A_claim_whose_save_is_still_in_flight_is_not_taken_over` ran a
+        second save between the first's claim and its write (`OnBeforeStore`), and the second took the key over.
+        Green, with `RavenSparkStoreConformanceTests`, `UserStoreTests`, `OidcKeyRingTests` and
+        `OidcStoreNeutralMigrationTests` (84 passed, 1 skipped).
+    - **NuGet READMEs** for the seven new packages (SqlServer, PostgreSql, Relational, Relational.Design,
+      Testing.RavenDB, Testing.SqlServer, Testing.PostgreSql), packed through `PackageReadmeFile`. A local
+      `dotnet pack` of `MintPlayer.Spark.SqlServer` holds `README.md`.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).
@@ -1076,8 +1090,9 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
   - **M7f (2026-11-25): S10, site search on any store (PRD D44).** RavenDB keeps the generated `Spark_Search` index and
     `RavenSearchProvider`. Every other store gets `StoreSearchProvider` (`libs/search/MintPlayer.Spark.Search/`):
     - A substring prefilter per word over the type's search fields (`LIKE`/`strpos`, a parameter per word, `IsDeleted`
-      excluded, `take × 4` rows), then whole words in memory with the term's own tokenizer, the last word a prefix
-      while suggesting. Ranking: whole words, type order, natural id.
+      excluded), then whole words in memory with the term's own tokenizer, the last word a prefix while suggesting.
+      Ranking: whole words, type order, natural id. The read was one `take × 4` window; since the review fix it pages
+      in key order (PRD D44).
     - `SearchProviderSelector` picks RavenDB's provider or the store's from `ISparkStore.ProviderName`, also as the
       engine's fallback.
     - `AddSearch` requires no provider any more. `UseOpenSearch` requires RavenDB (requirement

@@ -90,7 +90,7 @@ public class NeutralSearchTests : SparkTestDriver
         Queries = [new SparkQuery { Id = Guid.NewGuid(), Name = "NsrchTracks", Source = "Database.NsrchTracks", EntityType = nameof(NsrchTrack) }],
     };
 
-    private async Task<SparkEndpointFactory<NsrchContext>> StartAsync()
+    private async Task<SparkEndpointFactory<NsrchContext>> StartAsync(Func<ISparkSession, Task>? more = null)
     {
         var host = new SparkEndpointFactory<NsrchContext>(Database, [TrackModel()],
             configureSpark: spark => spark.AddSearch(),
@@ -107,6 +107,8 @@ public class NeutralSearchTests : SparkTestDriver
             await session.StoreAsync(new NsrchTrack { Id = "nsrchtracks/2", Title = "Radio Ga Ga", Artist = "Queen" });
             await session.StoreAsync(new NsrchTrack { Id = "nsrchtracks/3", Title = "Rhapsody in Blue", Artist = "Gershwin", Tags = ["jazz"] });
             await session.StoreAsync(new NsrchTrack { Id = "nsrchtracks/4", Title = "Bohemian Like You", Artist = "The Dandy Warhols", IsDeleted = true });
+            if (more is not null)
+                await more(session);
         });
         await host.WaitForConsistencyAsync();
         return host;
@@ -140,6 +142,26 @@ public class NeutralSearchTests : SparkTestDriver
         (await IdsAsync(client, "/spark/search/suggest?q=bohem")).Should().Equal(["nsrchtracks/1"]);
         (await IdsAsync(client, "/spark/search?q=bohem")).Should().BeEmpty("a complete search matches whole words");
         (await IdsAsync(client, "/spark/search?q=hapsody")).Should().BeEmpty("a substring inside a word is not a word");
+    }
+
+    [Fact]
+    public async Task A_whole_word_is_found_behind_many_rows_that_hold_it_only_inside_a_word()
+    {
+        // The store narrows by substring and the whole-word match happens after the read, so the rows that hold
+        // "lobster" only inside "Lobsters" come first in key order and outnumber what one read asks for (8 suggestions).
+        await using var host = await StartAsync(async session =>
+        {
+            for (var i = 1; i <= 120; i++)
+                await session.StoreAsync(new NsrchTrack { Id = $"nsrchtracks/l{i:000}", Title = $"Lobsters {i}" });
+            await session.StoreAsync(new NsrchTrack { Id = "nsrchtracks/z", Title = "Rock Lobster", Artist = "The B-52's" });
+        });
+        using var client = host.CreateClient();
+
+        (await IdsAsync(client, "/spark/search?q=lobster&take=1")).Should().Equal(["nsrchtracks/z"]);
+        // RavenDB orders suggestions by its index's score (D44); the other stores rank whole words first.
+        if (Database.ProviderName != SparkStoreProviders.RavenDb)
+            (await IdsAsync(client, "/spark/search/suggest?q=lobster")).FirstOrDefault().Should().Be("nsrchtracks/z",
+                "a whole word ranks before the start of one, however many rows hold only the start");
     }
 
     [Fact]

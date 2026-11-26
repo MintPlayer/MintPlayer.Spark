@@ -25,8 +25,15 @@ namespace MintPlayer.Spark.Search;
 /// </remarks>
 internal sealed partial class StoreSearchProvider : ISparkSearchProvider
 {
-    /// <summary>Rows read per wanted candidate: a substring that is not a whole word is dropped after the read.</summary>
+    /// <summary>Rows read first per wanted candidate: a substring that is not a whole word is dropped after the read.</summary>
     internal const int Prefetch = 4;
+
+    /// <summary>
+    /// The most rows a search reads of one type. Below it, a type is read page by page, in key order, until it has as
+    /// many best matches as wanted (every word whole) or its rows run out, so a whole word is found however many rows
+    /// hold it only inside a longer word.
+    /// </summary>
+    internal const int MaxRows = 5000;
 
     [Inject] private readonly ISparkStore store;
     [Inject] private readonly IModelLoader models;
@@ -55,14 +62,25 @@ internal sealed partial class StoreSearchProvider : ISparkSearchProvider
             if (specs.GetOrAdd(typeName, Describe) is not { } spec)
                 continue;
 
-            var rows = await spec.ReadAsync(session, words, take * Prefetch, cancellationToken);
-            foreach (var row in rows)
+            var best = 0;
+            var read = 0;
+            for (var page = Math.Min(take * Prefetch, MaxRows); ; page = Math.Min(page * 2, MaxRows - read))
             {
-                if ((session.GetId(row) ?? SparkIdValues.ReadEntityId(row)) is not { Length: > 0 } id)
-                    continue;
-                var whole = Matches(spec.Text(row), words, prefix);
-                if (whole >= 0)
+                var rows = await spec.ReadAsync(session, words, read, page, cancellationToken);
+                foreach (var row in rows)
+                {
+                    if ((session.GetId(row) ?? SparkIdValues.ReadEntityId(row)) is not { Length: > 0 } id)
+                        continue;
+                    var whole = Matches(spec.Text(row), words, prefix);
+                    if (whole < 0)
+                        continue;
                     found.Add((new SparkSearchCandidate(typeName, id), whole, order));
+                    if (whole == words.Count)
+                        best++;
+                }
+                read += rows.Count;
+                if (rows.Count < page || best >= take || read >= MaxRows)
+                    break;
             }
         }
 
@@ -129,7 +147,8 @@ internal sealed partial class StoreSearchProvider : ISparkSearchProvider
 
     private abstract class SearchSpec(IReadOnlyList<PropertyInfo> fields)
     {
-        public abstract Task<IReadOnlyList<object>> ReadAsync(ISparkSession session, IReadOnlyList<string> words, int take, CancellationToken cancellationToken);
+        /// <summary>The rows that hold every word as a substring, in key order, from <paramref name="skip"/> on.</summary>
+        public abstract Task<IReadOnlyList<object>> ReadAsync(ISparkSession session, IReadOnlyList<string> words, int skip, int take, CancellationToken cancellationToken);
 
         /// <summary>The searched text of a row, field by field.</summary>
         public IEnumerable<string> Text(object row)
@@ -156,10 +175,29 @@ internal sealed partial class StoreSearchProvider : ISparkSearchProvider
         private static readonly MethodInfo ToLower = typeof(string).GetMethod(nameof(string.ToLower), Type.EmptyTypes)!;
         private static readonly MethodInfo Contains = typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!;
 
-        public override async Task<IReadOnlyList<object>> ReadAsync(ISparkSession session, IReadOnlyList<string> words, int take, CancellationToken cancellationToken)
+        /// <summary>
+        /// Orders by the key, typed (<c>x =&gt; x.Id</c>): pages are only stable in a fixed order, and memory compares an
+        /// <see cref="Id{T}"/> through its own <see cref="IComparable{T}"/>.
+        /// </summary>
+        private static readonly Func<IQueryable<T>, IQueryable<T>> ByKey = typeof(T).GetProperty("Id", BindingFlags.Public | BindingFlags.Instance) is { CanRead: true } id
+            ? OrderBy(id)
+            : static query => query;
+
+        public override async Task<IReadOnlyList<object>> ReadAsync(ISparkSession session, IReadOnlyList<string> words, int skip, int take, CancellationToken cancellationToken)
         {
-            var rows = await session.ToListAsync(session.Query<T>().Where(Filter(words)).Take(take), cancellationToken);
+            var query = ByKey(session.Query<T>().Where(Filter(words)));
+            var rows = await session.ToListAsync(query.Skip(skip).Take(take), cancellationToken);
             return rows;
+        }
+
+        private static Func<IQueryable<T>, IQueryable<T>> OrderBy(PropertyInfo id)
+        {
+            var x = Expression.Parameter(typeof(T), "x");
+            var key = Expression.Lambda(Expression.Property(x, id), x);
+            var orderBy = typeof(Queryable).GetMethods()
+                .Single(m => m.Name == nameof(Queryable.OrderBy) && m.GetParameters().Length == 2)
+                .MakeGenericMethod(typeof(T), id.PropertyType);
+            return query => (IQueryable<T>)orderBy.Invoke(null, [query, key])!;
         }
 
         /// <summary>

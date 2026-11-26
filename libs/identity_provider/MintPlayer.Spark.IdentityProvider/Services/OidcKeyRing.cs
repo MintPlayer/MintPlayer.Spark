@@ -205,6 +205,12 @@ internal sealed class OidcKeyRing(
             if (reloaded.Count > 0)
                 keys = reloaded;
         }
+        catch (InvalidOperationException ex) when (ex.InnerException is CryptographicException)
+        {
+            // Open could not decrypt a stored key: this instance lacks the Data Protection key ring that protected it. The
+            // keys held keep signing, but the next start fails (InitializeAsync), so this is no passing refresh failure.
+            logger.LogError(ex, "Reloading the identity provider's key ring failed: a stored key cannot be decrypted with this instance's Data Protection key ring (Spark:DataProtection). Keeping the loaded keys; the next start will fail.");
+        }
         catch (Exception ex)
         {
             // A reload is a refresh; the keys already held keep working.

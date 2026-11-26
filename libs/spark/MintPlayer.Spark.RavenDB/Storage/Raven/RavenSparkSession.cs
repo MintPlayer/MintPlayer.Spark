@@ -184,29 +184,35 @@ internal sealed class RavenSparkSession : ISparkSession
 
     /// <remarks>
     /// Reservations are compare-exchange values, which a session that is not cluster-wide cannot write with its
-    /// documents. So the claims come first, the documents second, and a failed write frees the claims it made; the
-    /// releases follow a successful write. A crash in between leaves a claim whose owner does not exist, which the
-    /// next claimant takes over.
+    /// documents. So the claims come first, marked pending (<see cref="PendingSince"/>), the documents second, and a
+    /// failed write frees the claims it made; after a successful write the claims lose their mark and the releases
+    /// follow. A claim still pending may be a write in flight, so nobody takes it over for <see cref="PendingGrace"/>.
+    /// A crash in between leaves a claim whose owner does not exist, which a claimant takes over after that.
     /// </remarks>
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var claimed = new List<(string Key, long Index)>();
+        var claimed = new List<(string Key, string Owner, long Index)>();
         try
         {
             foreach (var (key, owner, _) in reservations.Where(r => r.Claim))
                 if (await ClaimAsync(key, owner, cancellationToken) is { } index)
-                    claimed.Add((key, index));
+                    claimed.Add((key, owner, index));
 
             await Session.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            foreach (var (key, index) in claimed)
+            foreach (var (key, _, index) in claimed)
                 await Operations.SendAsync(new DeleteCompareExchangeValueOperation<string>(key, index), token: CancellationToken.None);
             if (ex is global::Raven.Client.Exceptions.ConcurrencyException)
                 throw new SparkStoreConcurrencyException("A document changed since the write expected it.", ex);
             throw;
         }
+
+        // The owners are written: their claims are no longer in flight. Without a mark, a claim whose owner is deleted
+        // later is taken over at once.
+        foreach (var (key, owner, index) in claimed)
+            await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, index), token: CancellationToken.None);
 
         foreach (var (key, owner, _) in reservations.Where(r => !r.Claim))
         {
@@ -299,10 +305,22 @@ internal sealed class RavenSparkSession : ISparkSession
     }
 
     /// <summary>
-    /// Claims <paramref name="key"/> for <paramref name="owner"/>: the new index when this call wrote it, or
-    /// <see langword="null"/> when the owner already held it. Takes over a key whose holder no longer exists, against
-    /// the index just read, so two claimants cannot both win. An empty value (a claim in flight under the pre-#536
-    /// protocol) is never taken over.
+    /// The metadata of a claim whose documents are not written yet: when it was claimed (UTC, round-trip format).
+    /// </summary>
+    internal const string PendingSince = "Spark-Pending-Since";
+
+    /// <summary>
+    /// How long a pending claim is never taken over. A write lasts seconds; past this, a pending claim whose owner does
+    /// not exist is what a crash between the claim and the write left behind. The margin also covers the clocks of
+    /// different hosts.
+    /// </summary>
+    internal static readonly TimeSpan PendingGrace = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Claims <paramref name="key"/> for <paramref name="owner"/>, marked pending: the new index when this call wrote it,
+    /// or <see langword="null"/> when the owner already held it. Takes over a key whose holder no longer exists and is
+    /// not a pending claim within <see cref="PendingGrace"/>, against the index just read, so two claimants cannot both
+    /// win. An empty value (a claim in flight under the pre-#536 protocol) is never taken over.
     /// </summary>
     private async Task<long?> ClaimAsync(string key, string owner, CancellationToken cancellationToken)
     {
@@ -311,7 +329,7 @@ internal sealed class RavenSparkSession : ISparkSession
             var existing = await Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
             if (existing is null)
             {
-                var created = await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, 0), token: cancellationToken);
+                var created = await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, 0, Pending()), token: cancellationToken);
                 if (created.Successful)
                     return created.Index;
                 continue;
@@ -319,10 +337,10 @@ internal sealed class RavenSparkSession : ISparkSession
 
             if (string.Equals(existing.Value, owner, StringComparison.OrdinalIgnoreCase))
                 return null;
-            if (string.IsNullOrEmpty(existing.Value) || await OwnerExistsAsync(existing.Value, cancellationToken))
+            if (string.IsNullOrEmpty(existing.Value) || InFlight(existing) || await OwnerExistsAsync(existing.Value, cancellationToken))
                 throw new SparkReservationTakenException(key, existing.Value ?? string.Empty);
 
-            var takenOver = await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, existing.Index), token: cancellationToken);
+            var takenOver = await Operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, owner, existing.Index, Pending()), token: cancellationToken);
             if (takenOver.Successful)
                 return takenOver.Index;
         }
@@ -330,6 +348,16 @@ internal sealed class RavenSparkSession : ISparkSession
         var holder = await Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
         throw new SparkReservationTakenException(key, holder?.Value ?? string.Empty);
     }
+
+    private static global::Raven.Client.Json.MetadataAsDictionary Pending()
+        => new() { [PendingSince] = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture) };
+
+    /// <summary>A claim marked pending less than <see cref="PendingGrace"/> ago: its owner may be being written right now.</summary>
+    private static bool InFlight(CompareExchangeValue<string> claim)
+        => claim.Metadata is { } metadata
+            && metadata.TryGetValue(PendingSince, out object? since)
+            && DateTime.TryParse(since?.ToString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var at)
+            && DateTime.UtcNow - at.ToUniversalTime() < PendingGrace;
 
     /// <summary>Asked of a session of its own: this one's request budget and identity map stay untouched.</summary>
     private async Task<bool> OwnerExistsAsync(string id, CancellationToken cancellationToken)

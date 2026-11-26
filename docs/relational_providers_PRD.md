@@ -621,8 +621,12 @@ collections.** `spark.AddSearch()` no longer requires RavenDB.
     `search.label` (else of the breadcrumb), then `search.fields`, kept when they hold a string or a string
     collection: the same fields the generator indexes.
   - **The prefilter, in the store:** every word must be a lower-cased substring of one field, and `IsDeleted` rows are
-    excluded. Each word is a captured value, so SQL gets it as a parameter (`LIKE`, `strpos`), never as text. The
-    query reads `take × 4` rows.
+    excluded. Each word is a captured value, so SQL gets it as a parameter (`LIKE`, `strpos`), never as text.
+  - **The read, page by page (review fix, 2026-11-26):** in key order, `take × 4` rows first and each next page
+    twice as large. A type stops once it has `take` best matches (every word whole), when its rows run out, or at
+    `MaxRows` (5000) rows. Before the fix one unordered read of `take × 4` rows was all: when more rows held a word only
+    inside a longer word ("Lobsters"), the whole-word row ("Rock Lobster") behind them was never found, and the
+    suggestion that ranked first depended on the store's row order.
   - **The match, in memory:** every word must be a whole word of the text, split by `SearchTerms.Words`, the same
     tokenizer as the term. The last word may be a prefix while typing (suggest).
   - **Order:** more whole words first, then the type's order, then natural id order.
@@ -639,6 +643,9 @@ collections.** `spark.AddSearch()` no longer requires RavenDB.
     and memory folds both sides.
   - The prefilter scans: it is a `LIKE '%word%'` on SQL. A full-text dialect (SQL Server `CONTAINS`, PostgreSQL
     `tsvector`) stays the opt-in of §4.1 (O5).
+  - Past `MaxRows` rows of a type that hold the words, a whole-word match further on is not read. Among equally good
+    matches, the ones read are the first in key order: on a text key that is ordinal (`…/10` before `…/2`), and the
+    results then sort in natural id order.
   - The OpenSearch engine syncs from RavenDB's `Spark_Search` index (spark_search_PRD D8), so `UseOpenSearch`
     requires RavenDB (store requirement "Spark.Search.OpenSearch", also `[SparkRequiresStore]` for SPARK060). Another
     engine (`UseProvider<T>`) is not bound to a store: it need not read that index.
@@ -649,6 +656,9 @@ collections.** `spark.AddSearch()` no longer requires RavenDB.
 - `NeutralSearchTests` 3/3 on InMemory, SQL Server, PostgreSQL and RavenDB. It goes through the real endpoints
   (`/spark/search`, `/suggest`, `/resolve`): a search field, words from different fields, a string collection, a
   soft-deleted row, case, every-word-must-match, prefix only while suggesting, a substring that is not a word.
+- The paged read: `A_whole_word_is_found_behind_many_rows_that_hold_it_only_inside_a_word` (120 "Lobsters" rows,
+  then "Rock Lobster") was red on InMemory and SQL Server before the fix: `/spark/search?q=lobster&take=1` returned
+  nothing.
 - RavenDB search, OpenSearchDescription and store requirements: 28 passed, 9 skipped (the OpenSearch container
   tests), 0 failed.
 - Templates generator and manifest tests 17/17.
@@ -1165,6 +1175,14 @@ RavenDB a wrapped session is not cluster-wide, so the claim (compare exchange) p
 write frees the claim. ⚠️ A second claimant arriving between the claim and the owner's first write sees no owner and
 takes the key over. That race exists in `UserStore` and `OidcClientIdReservation` today; the relational transaction
 and InMemory's commit lock close it. Evidence: `SparkStoreConformanceTests` reservation cases, green on both providers.
+*Closed on RavenDB (review fix, 2026-11-26):* a claim is written with the metadata `Spark-Pending-Since` (UTC) and
+re-put without it once the documents are written. A pending claim is never taken over within `PendingGrace` (5
+minutes), even when its owner does not exist yet. Past that, or once the mark is gone, a key whose owner is gone is
+taken over as before: a document deleted later frees its key at once, and a claim a crash left behind after the grace.
+A claim from before the fix has no mark and counts as written.
+Evidence: `A_claim_whose_save_is_still_in_flight_is_not_taken_over` (`RavenSparkStoreConformanceTests`) runs a second
+claim and save inside the first save, between its claim and its document write (`OnBeforeStore`). Red before the fix:
+the second save took the key over and stored its document.
 
 **Lookup references:** a dynamic lookup gets its own table. Entities store the key, and labels are resolved after
 load. **There is a gap on every provider:** `LookupReferenceService.AddValueAsync`/`UpdateValueAsync`/`DeleteValueAsync`

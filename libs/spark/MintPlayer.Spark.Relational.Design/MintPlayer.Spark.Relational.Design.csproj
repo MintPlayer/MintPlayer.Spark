@@ -18,6 +18,7 @@
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 
 		<!--
 		  #536 O17 setting 1: dotnet add and Visual Studio then write PrivateAssets="all" (it does not flow on) and an
@@ -25,6 +26,10 @@
 		-->
 		<DevelopmentDependency>true</DevelopmentDependency>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />

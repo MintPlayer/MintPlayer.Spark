@@ -1,12 +1,16 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
+using MintPlayer.Spark.Storage.InMemory;
 using MintPlayer.Spark.Testing;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
@@ -73,6 +77,47 @@ public class OidcKeyRingTests
 
         act.Should().Throw<InvalidOperationException>(
             "falling back to the RSA key would stamp alg=ES256 on an RSA signature");
+    }
+
+    [Fact]
+    public async Task A_reload_that_cannot_decrypt_the_stored_keys_logs_an_error()
+    {
+        // The stored key was protected with a Data Protection key ring this instance does not have: lost, or not shared
+        // between hosts. The held keys keep signing, but the next start fails, so the reload must say so as an error.
+        var store = new InMemorySparkStore(new InMemoryDatabase());
+        using (var session = store.OpenSession())
+        {
+            await session.StoreAsync(new OidcKey
+            {
+                Id = Id<OidcKey>.FromTrusted("OidcKeys/rsa-elsewhere"), Kid = "rsa-elsewhere", State = OidcKeyStates.Active, CreatedAt = DateTime.UtcNow,
+                ProtectedPrivateJwk = new EphemeralDataProtectionProvider().CreateProtector(OidcKeyRing.ProtectorPurpose).Protect("{}"),
+            });
+            await session.SaveChangesAsync();
+        }
+        var logger = new FirstProblemLogger();
+        var ring = new OidcKeyRing(store, new EphemeralDataProtectionProvider(), null!, new SparkIdentityProviderOptions(), logger);
+
+        _ = ring.Jwks; // the ring has never loaded, so this starts a reload in the background
+        var (level, exception) = await logger.Logged.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        level.Should().Be(LogLevel.Error);
+        exception.Should().BeOfType<InvalidOperationException>().Which.InnerException.Should().BeAssignableTo<CryptographicException>();
+    }
+
+    /// <summary>The first warning or worse the ring logs.</summary>
+    private sealed class FirstProblemLogger : ILogger<OidcKeyRing>
+    {
+        public TaskCompletionSource<(LogLevel Level, Exception? Exception)> Logged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Warning)
+                Logged.TrySetResult((logLevel, exception));
+        }
     }
 }
 

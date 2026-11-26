@@ -4,6 +4,7 @@ using MintPlayer.Spark.Storage.Raven;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Storage;
 
@@ -66,6 +67,51 @@ public sealed class RavenSparkStoreConformanceTests : SparkStoreConformanceTests
         var found = await session.ToListAsync(Settled(session.Query<ConfDoc, ConfDocs_ByName>()).Where(d => d.Name == "Indexed"));
 
         found.Select(d => d.Id).Should().Equal(["ConfDocs/indexed-1"]);
+    }
+
+    /// <summary>
+    /// RavenDB claims a reservation before it writes the documents: compare-exchange values are not in the batch of a
+    /// session that is not cluster-wide. A second claimant that arrives in between finds a holder whose document does not
+    /// exist yet. Taking the key over then would save both documents and leave the key to the second.
+    /// </summary>
+    [Fact]
+    public async Task A_claim_whose_save_is_still_in_flight_is_not_taken_over()
+    {
+        var raced = false;
+        Exception? second = null;
+        void Interleave(object? sender, BeforeStoreEventArgs e)
+        {
+            if (raced || !string.Equals(e.DocumentId, "ConfDocs/first", StringComparison.OrdinalIgnoreCase))
+                return;
+            raced = true;
+            // Between the first session's claim and its document write: the second claims the same key and saves.
+            second = Task.Run(() => Record.ExceptionAsync(async () =>
+            {
+                using var session = Store.OpenSession();
+                await session.StoreAsync(new ConfDoc { Id = "ConfDocs/second", Name = "Second" });
+                session.Reserve("conf-unique/race", "ConfDocs/second");
+                await session.SaveChangesAsync();
+            })).GetAwaiter().GetResult();
+        }
+
+        driver.DocumentStore.OnBeforeStore += Interleave;
+        try
+        {
+            using var first = Store.OpenSession();
+            await first.StoreAsync(new ConfDoc { Id = "ConfDocs/first", Name = "First" });
+            first.Reserve("conf-unique/race", "ConfDocs/first");
+            await first.SaveChangesAsync();
+        }
+        finally
+        {
+            driver.DocumentStore.OnBeforeStore -= Interleave;
+        }
+
+        raced.Should().BeTrue();
+        second.Should().BeOfType<SparkReservationTakenException>("the holder's document is being written");
+        using var read = Store.OpenSession();
+        Canon(await read.GetReservationAsync("conf-unique/race")).Should().Be("confdocs/first");
+        (await read.LoadAsync<ConfDoc>("ConfDocs/second")).Should().BeNull("a refused reservation writes nothing");
     }
 
     private sealed class Driver : RavenSparkTestDriver
