@@ -14,6 +14,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// (#536 M9b). A store with a table per type keys its rows per table, so the check can't load a target untyped, as it
 /// does on RavenDB: SqlDemo's first book with an author failed with "System.Object is not a stored type". The
 /// RavenDB-only shapes (stale CLR types, subtypes in their own collection) stay in <see cref="ReferenceTargetCollectionTests"/>.
+/// The reference's breadcrumb on load is here too, for a typed id (<see cref="RnTypedBook"/>).
 /// </summary>
 /// <remarks>Fixture names start with <c>Rn</c>: <c>ActionsResolver</c> matches actions classes by simple name.</remarks>
 public class NeutralReferenceTargetTests : SparkTestDriver
@@ -21,6 +22,7 @@ public class NeutralReferenceTargetTests : SparkTestDriver
     private static readonly Guid AuthorTypeId = Guid.Parse("536b0000-0000-4000-8000-0000000000a1");
     private static readonly Guid PublisherTypeId = Guid.Parse("536b0000-0000-4000-8000-0000000000a2");
     private static readonly Guid BookTypeId = Guid.Parse("536b0000-0000-4000-8000-0000000000a3");
+    private static readonly Guid TypedBookTypeId = Guid.Parse("536b0000-0000-4000-8000-0000000000a4");
 
     private SparkEndpointFactory? factory;
 
@@ -32,7 +34,7 @@ public class NeutralReferenceTargetTests : SparkTestDriver
     }
 
     private SparkEndpointFactory Factory => factory ??= new SparkEndpointFactory(
-        Database, [AuthorModel(), PublisherModel(), BookModel()], security: SparkTestSecurity.Permissive);
+        Database, [AuthorModel(), PublisherModel(), BookModel(), TypedBookModel()], security: SparkTestSecurity.Permissive);
 
     private async Task<string> SeedAsync(object entity)
     {
@@ -49,10 +51,12 @@ public class NeutralReferenceTargetTests : SparkTestDriver
         return await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().SavePersistentObjectAsync(po);
     }
 
-    private static PersistentObject Book(string title, string? author) => new()
+    private static PersistentObject Book(string title, string? author) => Book("RnBook", BookTypeId, title, author);
+
+    private static PersistentObject Book(string type, Guid typeId, string title, string? author) => new()
     {
-        Name = "RnBook",
-        ObjectTypeId = BookTypeId,
+        Name = type,
+        ObjectTypeId = typeId,
         Attributes =
         [
             new PersistentObjectAttribute { Name = "Title", DataType = "string", Value = title, IsValueChanged = true },
@@ -97,6 +101,20 @@ public class NeutralReferenceTargetTests : SparkTestDriver
         thrown.Which.Result.Errors.Should().ContainSingle().Which.RuleType.Should().Be("referenceTarget");
     }
 
+    [Fact]
+    public async Task A_typed_id_reference_loads_with_the_breadcrumb_of_its_target()
+    {
+        // SqlDemo's Book.Author is an Id<Author>?. The breadcrumb resolver took a reference value only as a string or a
+        // list, so it never loaded the boxed typed id's target, and the book's form showed the raw id.
+        var author = await SeedAsync(new RnAuthor { Name = "Ursula" });
+        var saved = await SaveAsync(Book("RnTypedBook", TypedBookTypeId, "The Lathe of Heaven", author));
+
+        using var scope = Factory.CreateScope();
+        var loaded = await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().GetPersistentObjectAsync(TypedBookTypeId, saved.Id!);
+
+        loaded!.Attributes.Single(a => a.Name == "Author").Breadcrumb.Should().Be("Ursula");
+    }
+
     private static EntityTypeFile AuthorModel() => new()
     {
         PersistentObject = new EntityTypeDefinition
@@ -127,6 +145,19 @@ public class NeutralReferenceTargetTests : SparkTestDriver
             ],
         },
     };
+
+    private static EntityTypeFile TypedBookModel() => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = TypedBookTypeId, Name = "RnTypedBook", ClrType = typeof(RnTypedBook).FullName!, Breadcrumb = "{Title}",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Author", DataType = "Reference", ReferenceType = typeof(RnAuthor).FullName },
+            ],
+        },
+    };
 }
 
 public class RnAuthor
@@ -149,6 +180,21 @@ public class RnBook
 
     [Reference(typeof(RnAuthor))]
     public string? Author { get; set; }
+}
+
+/// <summary>SqlDemo's <c>Book</c>: the reference is a typed id (#536 D23).</summary>
+public class RnTypedBook
+{
+    public string? Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+
+    [Reference(typeof(RnAuthor))]
+    public Id<RnAuthor>? Author { get; set; }
+}
+
+public class RnTypedBookActions : DefaultPersistentObjectActions<RnTypedBook>
+{
+    public RnTypedBookActions(IEntityMapper entityMapper) : base(entityMapper) { }
 }
 
 public class RnBookActions : DefaultPersistentObjectActions<RnBook>

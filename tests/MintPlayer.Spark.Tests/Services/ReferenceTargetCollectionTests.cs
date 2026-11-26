@@ -215,22 +215,6 @@ public class ReferenceTargetCollectionTests : RavenSparkTestDriver
     }
 
     [Fact]
-    public async Task A_typed_id_reference_loads_with_the_breadcrumb_of_its_target()
-    {
-        // The breadcrumb resolver took a reference value only as a string or a list, so it never loaded a typed id's
-        // target, and the form showed the raw id.
-        await SeedAsync((new RT_Person { Name = "Ada" }, "rt_people/1"));
-        var po = Car(plate: "CAR-1");
-        po.AddAttribute(new PersistentObjectAttribute { Name = "Owner", DataType = "Reference", Value = "rt_people/1", IsValueChanged = true });
-        var saved = await SaveAsync(po);
-
-        using var scope = _factory.CreateScope();
-        var loaded = await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().GetPersistentObjectAsync(CarTypeId, saved.Id!);
-
-        loaded!.Attributes.Single(a => a.Name == "Owner").Breadcrumb.Should().Be("Ada");
-    }
-
-    [Fact]
     public async Task A_reference_to_a_document_this_request_stored_but_has_not_committed_saves()
     {
         // An Actions class (or a write batch) that creates the person and then the car in one request:

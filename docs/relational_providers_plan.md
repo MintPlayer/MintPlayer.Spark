@@ -94,6 +94,22 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
     - Two doc comments were fixed on the way. `QueryExecutor` had an orphaned summary whose cref named
       `Raven.Client`'s `SearchOperator`, which core cannot reference. `WildcardTerm` now records RavenDB's search
       semantics: every word must match, and `?` and mid-word `*` never match on 7.2.5.
+  - **Typed-id references had no breadcrumb (2026-11-26, found in the owner's SqlDemo run on PostgreSQL 19).** A book's
+    form showed its author as `authors/…` where the author's name belongs. `po/load` sent the Author attribute with
+    `breadcrumb: null`.
+    - Cause: provider-neutral. `BreadcrumbResolver` and `EmbeddedBreadcrumbRenderer` each read a reference value in
+      `ExtractIds` as a string or a list only. `Book.Author` is an `Id<Author>?` (D23), and the boxed typed id matched
+      neither, so its target was never loaded. The same gap was in `ReferenceTargetValidation`'s stored ids: a typed id
+      the row already held counted as the caller's new claim, so an edit that kept a dangling one was refused.
+    - Fix: `SparkIdValues.ReferenceTexts` gives a reference value's ids: one for a string or a typed id, each for a
+      collection. Both `ExtractIds` use it, and the validation takes an `ISparkId` before its entity case.
+    - Red first, on RavenDB with the fix stashed:
+      - `NeutralReferenceTargetTests.A_typed_id_reference_loads_with_the_breadcrumb_of_its_target` failed with the
+        breadcrumb `null`.
+      - `ReferenceTargetCollectionTests.A_dangling_typed_id_the_row_already_holds_does_not_block_an_edit` failed
+        with `SparkSaveValidationException`.
+    - Green: on RavenDB, 85 tests across the reference and breadcrumb classes; `NeutralReferenceTargetTests` (4) on
+      PostgreSQL (embedded) and SQL Server (LocalDB).
   O18–O20 were pushed as 460a17281. The audit of
   the plan's older entries found two items, built and pushed as 85958deb3, and O21, which the owner decided and which
   is built. PR #697 stays ready for review.
