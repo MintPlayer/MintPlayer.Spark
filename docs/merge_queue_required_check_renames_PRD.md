@@ -172,6 +172,10 @@ Non-goals and constraints:
 
 > **Superseded (2026-11-27):** "applied before the next `/release` (S1 says how urgent)". S1 found no release risk.
 
+> **Superseded by Dec2 and Dec3 (2026-11-27):** "The owner applies it, through 'Set up rulesets' or GitHub's UI".
+> Nobody edits the bot's rulesets by hand. A1 becomes the shape the setup writes for every repository, and Spark
+> switches to it when the owner runs the setup after the deploy (M7).
+
 **A1 hardening: pin each context to its App.** Under A1, the whole of GitHub's protection rests on one name. Pinning
 `pull-request` to GitHub Actions (`integration_id` 15368) and the two coverage checks to the CodeCoverage App (4574022)
 means no other App can satisfy them. The App ids were read from #697's head (S5), and `Line policy` is pinned this way
@@ -242,6 +246,183 @@ already. Re-running the setup keeps a pin: the planner keeps the `integration_id
 | Q4 | Setup: B1, B2 and B3, but not B4? | Yes | None worth noting |
 | Q5 | Guard: the static test (D1) and the queue's hint (D3), without the dynamic CI step (D2)? | Yes | Without D1, a renamed aggregate slips through |
 
+All five were answered in the grilling round of 2026-11-27, together with the follow-up questions Q1a–Q1f, Q2a and
+Q4b. §5.1 records the answers as Dec1–Dec12; where a decision differs from the table above, the decision wins.
+
+### 5.1 Decisions
+
+**Dec1 (owner, 2026-11-27, answering Q1): nobody edits a ruleset by hand.**
+- The owner's words: "The most important thing is that the developers don't need to manually modify their rulesets."
+  It "has to be as low-effort as possible for the user".
+- The flow:
+  - When a repository's required checks no longer match the checks its workflows report, the app shows a bell
+    notification.
+  - The notification offers to run the setup again.
+  - The setup's popup asks for the short-lived user token again, and the fix is one confirmation.
+- Q1 itself (A1 for Spark, and pinning) stays open. It is asked again once the automatic fix is settled.
+- Evidence that the parts exist (2026-11-27):
+  - **The bell.** CodeCoverage registers `AddNotifications()` (`Program.cs:327`), and format runs already notify
+    through `ISparkNotifier` (`FormatRunEngine.cs:337`).
+  - **The popup.** `MergeQueueRulesetSetup.AuthorizeAsync` gets a one-shot OAuth lease, which is revoked when the
+    action ends (`MergeQueueRulesetSetup.cs:31-34, 106-108`).
+- **What is missing.** The form starts from the ruleset's own list (`MergeQueueRulesets.cs:196-227`), so running it
+  again only repeats the stale names. It has to start from the corrected list instead.
+- **Pinning under Dec1.** The setup cannot add a pin. It keeps a pin that is already there (`MergeQueueRulesets.cs:107`)
+  and pins only `Line policy` (`:348`). So if checks are to be pinned, the setup has to learn to pin them.
+  `KnownChecks` records each name's App by slug, not by id (`ForgeCheck.cs:53`).
+
+**Dec2 (owner, 2026-11-27): people edit only the rulesets they made by hand.**
+- The owner's words: "We just need to modify the rulesets we created ourself/ weren't created by this bot".
+- **The cause.** A developer pull request renamed the jobs, and the rulesets were not updated. The app's only part
+  was the silent 60-minute wait (F2, F3).
+- **Spark has no hand-made ruleset that requires checks.** Live list, 2026-11-27, `includes_parents=true`, with no
+  organization rulesets:
+  - Four of the five rulesets are the bot's: `merge-queue: restrict updates` (26211184), `reviews and checks`
+    (26719109), `release-line checks` (27018553) and `backport branches` (27098177). Their names come from
+    `MergeQueueRulesets.cs:128-131`.
+  - The fifth, "Spark schema revisions (schemas/*)" (24486043), protects `refs/tags/schemas/*` with `update` and
+    `deletion` only. It requires no checks.
+- **So the drift sits in two of the bot's rulesets,** which hold the names of jobs from Spark's own workflows. Keeping
+  them in step is therefore the bot's job (Dec1). That reading is ours; it is put to the owner as Q1c.
+- **State on 2026-11-27:**
+  - Ruleset 2 was corrected at 07:59 and matches master. It holds `tests / Library + git suites`, `tests / PostgreSQL`
+    and `tests / SQL Server`.
+  - Ruleset 3 still matches the lines, which carry the old `test.yml`. It drifts at the next promotion.
+  - The `pull-request` summary job, with the same `needs`, is on master and on both lines.
+
+**Dec3 (owner, 2026-11-27, answering Q1c with "A"): the bot writes only names that a job rename cannot touch.**
+- **What it writes.** The bot's rulesets require the App's own checks (`coverage/patch`, `coverage/project`, and
+  `Line policy` on ruleset 3) plus one summary job. The user picks that job once in the setup; for Spark it is
+  `pull-request`. This is A1 made the setup's shape, and B3 becomes part of the form.
+- **What that buys.** Renaming, joining or splitting a job inside the workflow never touches a bot ruleset.
+- **Where Dec1's drift bell is still needed:**
+  - when someone renames the summary job;
+  - for a repository without a summary job, which keeps a list with one entry per job.
+- **What the setup must explain.** The bot never edits a CI workflow (`onboarding.md:17`), so it cannot add a summary
+  job itself. The setup explains why one is worth adding.
+- **Evidence:**
+  - S5: every check ruleset 2 required was in `pull-request`'s `needs`.
+  - Live, 2026-11-27: the summary job is on master and on both lines, with the same `needs`.
+- **Spark gets this through the setup itself.** After the deploy, the owner runs "Set up rulesets" again (M5). Nobody
+  edits a ruleset by hand (Dec2).
+
+**Dec4 (owner, 2026-11-27, answering Q1d with "A"): the bot pins every check it requires.**
+- **The App's own checks** get the App's id, as `Line policy` already does (`MergeQueueRulesets.cs:348`).
+- **The summary job** gets the id of the App seen reporting it: 15368 for GitHub Actions (S5). It stays unpinned while
+  that id is not known.
+- **`ForgeCheck` gains an `AppId`.** It is filled from the webhook's `check_run.app.id`, read next to the slug that
+  `GitHubEventsRecipient.cs:785` reads today, and from the backfill. It is a new property, so stored documents are safe.
+- **The risk accepted.** A summary job that moves to another CI service reports from another App. The queue ignores
+  pins (`CheckGate.cs:29`), so it sees the job green, and GitHub refuses the merge. Dec1's drift check therefore covers
+  this case too: a pinned name reported by a different App.
+
+**Dec5 (owner, 2026-11-27, answering Q1e with "A"): the queue detects drift, and managers see it when they come in.**
+- **Detection.** The queue records drift on the repository at two moments, both of them certain:
+  - an entry is stuck: a required name is missing and nothing else is pending (C1);
+  - GitHub refuses a merge because of a pin (Dec4).
+- **Delivery.** Each user who manages the repository gets one bell notification per drift, the next time they sign in
+  or open the app. Its link opens "Set up rulesets".
+- **Why at sign-in.** "Manages" can only be checked for the viewer who is present: a manager of the account, or an
+  admin of the repository on the forge, asked at that moment (`DependencyOnboardingService.cs:89-93`). So no list of
+  managers exists to notify in the background.
+- **Rejected:**
+  - Notifying whoever last ran the setup: they may have left.
+  - A live ruleset read at every sign-in: API calls on every sign-in for a rare event.
+- **The risk accepted.** The first pull request queued after a rename of the summary job is stuck once. C2 and C3
+  soften that (Q2).
+
+**Dec6 (owner, 2026-11-27, answering Q1f with "A"): opened from the bell, the form starts from the fixed list and
+guesses nothing.**
+- **A pin mismatch** is re-pinned to the App that reports the name now. That App is known, so nothing is guessed.
+- **A repository with one required check per job** has its dead names removed, and its new names listed unticked.
+  This was Q1a's option A, and it can never block a pull request.
+- **A renamed summary job** has its dead name removed. The summary-job field is left empty and highlighted, with the
+  names reported on the stuck pull request listed to pick from.
+- **Rejected: preselecting the job that started last.** Timing proves the order the jobs ran in, not what a job waits
+  on. A wrong pick that someone confirms without reading makes every pull request wait for the wrong job.
+
+**Dec7 (owner, 2026-11-27, answering Q2 with "A"): while stuck, the queue names the missing checks and re-reads the
+rules at every poll.**
+- **C3, naming them.** The check run's title becomes "Waiting for checks that never reported". Its summary lists each
+  missing name and the ruleset that requires it, and says that the managers have been notified (Dec5).
+- **C2, re-reading.** The rules are read again at every poll while the entry is stuck, every 2 minutes. A fixed
+  ruleset frees the entry at the next poll, whoever fixed it.
+  - It is not throttled. It costs about 3 calls per poll, so at most about 90 per stuck hour, against the
+    installation's 5,000 per hour.
+  - The queue cannot be told about a fix instead. GitHub sends ruleset events only to an App with Administration
+    access, which this App does not have (non-goal).
+- **The timeout stays at 60 minutes,** and its message names the missing checks.
+- **No early eviction (C5).** A workflow started by `workflow_run`, or an external status, may legitimately arrive
+  late (`CheckGate.cs:18-25`).
+
+**Dec8 (owner, 2026-11-27, answering Q2a with "A"): the queue comments once when an entry is stuck.**
+- **The owner's question:** "So the app will post a comment explaining that some required checks don't occur in the
+  github workflows?" Until now the queue commented only at eviction (`MergeQueueEngine.cs:2007-2009`) and for held
+  backports (`:700`, `:733`). While waiting for checks it updated only its check run.
+- **When.** One comment per entry, once the stuck state has held at two polls in a row (2 minutes, S3's condition 4).
+  It shares the "stuck since" time that C4 needs.
+- **What the comment says:**
+  - each missing name, and the ruleset that requires it (or "reported on the queued head", for an expected name);
+  - that nothing on this commit reported it, although every other check has finished;
+  - D3's hint, when the pull request changes workflows;
+  - that the managers will be notified (Dec5), that "Set up rulesets" fixes it, and that the queue picks up the fix by
+    itself (Dec7);
+  - when the entry will be removed otherwise.
+- **The wording.** The app never reads workflow files, so it cannot say that a check "doesn't occur in the
+  workflows". It says "hasn't reported", never "doesn't exist".
+- **Rejected:**
+  - Commenting at the first stuck poll: a workflow started by `workflow_run` can briefly look absent.
+  - Commenting only at eviction: that is the 60-minute silence #714 describes.
+
+**Dec9 (owner, 2026-11-27, answering Q3 with "A"): a stale expected name is dropped by S3's rule (C4).**
+- **The rule.** A missing expected name is dropped, with a note on the entry and in the check run, only when all four
+  conditions hold:
+  1. `BaseChangedWorkflows` is set;
+  2. the name was a GitHub Actions check run;
+  3. the gate is stuck;
+  4. it was also stuck at the previous poll.
+- **What is never dropped:** a commit status, or another App's check run. Dec8's comment names it instead.
+- **Storage:**
+  - Each expected name's App is captured when the entry is enabled. `GetCheckNamesOnCommitAsync` returns
+    `ForgeReportedCheck` instead of bare names.
+  - It is stored in a new property, so `ExpectedChecks` keeps its type and no data migration is needed.
+  - The "stuck since" time is shared with Dec8.
+- **Rejected:**
+  - Discarding the whole expected list after a workflow change: it stops waiting for late external checks.
+  - No drop at all: it leaves a manual `/dequeue` and `/queue` on an innocent pull request.
+
+**Dec10 (owner, 2026-11-27, answering Q4 with "A"): the setup shows what changes and marks stale names.**
+- **B1.** The confirmation names, for each ruleset, the checks it adds and the checks it drops. This is what makes
+  Dec6's one-click fix safe to confirm.
+- **B2.** When the form is opened by hand, a required name that no pull request reported in the last 14 days is marked
+  "not seen since …", from `ForgeCheck.LastSeenUtc` (`ForgeCheck.cs:56`). The mark removes nothing.
+- **B3** is part of Dec3. **B4** is replaced by Dec6's prefill.
+
+**Dec11 (owner, 2026-11-27, answering Q4b with "B, with another github-user-auth-popup if necessary"): one bell per
+repository invites the switch to a summary job.**
+- **Who is told.** The managers of every repository whose rulesets still require one check per job get a one-time bell:
+  "Your rulesets can switch to one summary job".
+  - It is delivered the way Dec5 delivers, at sign-in or when the app is opened.
+  - Its link opens "Set up rulesets", which shows the usual popup for the short-lived user token, offers the switch,
+    and lists the changes (B1).
+- **What counts as "one check per job".** The required list holds more than one name that the App does not report
+  itself. The App reads that list with its own token: `GetBranchRulesAsync` needs no admin rights.
+- **When it is checked:**
+  - each time the queue reads the rules at enable;
+  - once for every repository with a `mergeQueue` section after the deploy, so a quiet repository is told too.
+- **The same offer** appears whenever the setup opens on such a list, by hand or from a drift bell (Dec5).
+
+**Dec12 (owner, 2026-11-27, answering Q5 with "A"): a static test guards Spark's summary job (D1).**
+- **The test.** `tools/verify-pull-request-summary.test.mjs` asserts three things about `pull-request.yml`:
+  - the summary job is named `pull-request` and runs `if: always()`;
+  - its `needs` lists every other job in the file;
+  - it fails when any of them failed, was cancelled or was skipped.
+- **Where it runs.** It joins `npm run test:tools`, which every pull request already runs (`pull-request.yml:100`). The
+  precedent for parsing a workflow file is `tools/verify-backend-networks.test.mjs:32-37`.
+- **Why Spark guards this itself.** The bot never reads or edits workflows, so only Spark can catch a job left out of
+  `needs`. Such a job never makes an entry stuck, so the drift bell would never fire for it.
+- **D2 is dropped, and S4 with it.** D3 is part of Dec8.
+
 ## 6. Spikes
 
 | # | Question | Where | Done when |
@@ -249,7 +430,7 @@ already. Re-running the setup keeps a pin: the planner keeps the `integration_id
 | S1 | How do a promotion and a backport reach `release/*-*.x`, and which list holds them? Confirm F4: does the first line pull request that carries #697's `test.yml` wait for `tests / Library suites` for good? Does a promotion go through the queue's gate at all, or does the exempt App push it directly, so that only later backports stall? | This repo, read-only (`MergeQueueEngine.cs:542-547` and the promote path), plus GETs on the lines' latest pull requests | A trace with file:line, and an answer to "must ruleset 3 change before the next `/release`?". **Done 2026-11-27: no (§6.1).** |
 | S2 | End-to-end repro on a sandbox. A ruleset requires `ci / job-a`; pull request 1 renames that job to `job-b`; pull request 2 is queued behind it. Before the fix, both stall (F2, F3). After C2–C4 (dev App), fixing the ruleset frees pull request 1 within one poll, and pull request 2 drops `job-a` with a note. Under A1 (only the aggregate required), pull request 1 merges without any ruleset change | `PieterjanDeClippel/SparkTest` with the dev App. This writes to GitHub, so it needs the owner's approval first | The four outcomes recorded, with check-run titles and timestamps |
 | S3 | The rule for C4: which signals prove that an expected name is gone for good? Candidates: `BaseChangedWorkflows`; the name's App (`KnownChecks` keeps `AppSlug` for each name); every suite of that App completed on `FinalSha`; `RunsFollow`. What happens with a workflow started by `workflow_run`, and with a commit status? | This repo, read-only, then `CheckGate` table tests | The rule written down, with a test for each case, including the two "keep waiting" cases. **Rule done 2026-11-27 (§6.1); the tests belong to M2.** |
-| S4 | Can a workflow's default `GITHUB_TOKEN` (`contents: read`) read `GET /repos/{o}/{r}/rules/branches/{b}` on a public repository? | A throwaway workflow run on SparkTest | Answered, with the response. **Only if Q5 picks D2.** |
+| S4 | Can a workflow's default `GITHUB_TOKEN` (`contents: read`) read `GET /repos/{o}/{r}/rules/branches/{b}` on a public repository? | A throwaway workflow run on SparkTest | Answered, with the response. **Dropped: Q5 chose D1, not D2 (Dec12).** |
 | S5 | Does today's aggregate already cover everything ruleset 2 requires, on a real head? Compare the check runs of a recent master pull request's head with the aggregate's `needs` and the coverage statuses | This repo, plus GET `commits/<sha>/check-runs` | An empty "required but not covered" list, so A1 loses nothing. **Done 2026-11-27: empty (§6.1).** |
 
 ### 6.1 Results (2026-11-27)
@@ -322,18 +503,60 @@ check runs, not commit statuses. Evidence: GET `commits/6b25997d7…/check-runs`
 
 ## 7. Milestones (one pull request)
 
-- **M0.** S1, S3 and S5 are done (§6.1). The owner answers Q1–Q5. S2 and S4 only after approval.
-- **M1. Spark.** The owner changes rulesets 2 and 3 (Q1). Add the D1 guard test and the `CLAUDE.md` CI-layout note.
-- **M2. Engine.**
-  - `ForgeBranchRules` keeps each ruleset's required checks, in the GitHub forge and in the fake.
-  - C1 detection, C2's throttled re-read, and C4 as S3 settles it.
-  - C3's title, summary and timeout message, and D3's hint.
-  - Tests in `MergeQueueEngineTests` (the fake's `Rules` and `CheckStates` can change between polls) and
-    `GitHubForgeMergeQueueTests`.
-- **M3. Setup.** B1's list of added and dropped checks, B2's stale flag, B3's help text. Tests in
-  `MergeQueueRulesetPlannerTests` and `SetUpRulesetsActionTests`.
-- **M4. Docs.** `merge-queue.md` §3 with its troubleshooting entry, and `onboarding.md`.
-- **M5.** Run the touched test classes once, at the end. The owner deploys. Then the "after" half of S2 on SparkTest.
+> **Rewritten after the grilling round (2026-11-27).** The first version had the owner change rulesets 2 and 3 by hand
+> in M1, a throttled re-read in M2, and no bell. Dec1–Dec12 replace that.
+
+- **M0.** Done:
+  - S1, S3 and S5 (§6.1);
+  - Q1–Q5, answered as Dec1–Dec12 (§5.1);
+  - S4, dropped (Dec12).
+
+  S2 still needs the owner's approval, because it writes to GitHub.
+- **M1. Spark.**
+  - The D1 guard test, `tools/verify-pull-request-summary.test.mjs` (Dec12).
+  - The `CLAUDE.md` CI-layout note: the rulesets require only `pull-request` and the App's own checks; renaming
+    `pull-request` means running "Set up rulesets" again.
+- **M2. What the queue records.** Every change here adds a property; none renames one.
+  - `ForgeCheck.AppId`, from the webhook and from the backfill (Dec4).
+  - `GetCheckNamesOnCommitAsync` returns `ForgeReportedCheck`. The entry stores the expected names' Apps and a
+    "stuck since" time (Dec8, Dec9).
+  - `ForgeBranchRules` keeps each ruleset's required checks with its name and id (C3), in the GitHub forge and in the
+    fake.
+- **M3. Engine.**
+  - C1: the stuck state, held at two polls in a row.
+  - C2: the rules are re-read at every poll while the entry is stuck (Dec7).
+  - C3: the check run's title and summary, and the timeout message (Dec7).
+  - Dec8: one comment per stuck entry, with D3's hint.
+  - C4: a stale expected name is dropped by S3's rule (Dec9).
+  - Drift is recorded on the repository: an entry stuck on a required name, or GitHub refusing a merge because of a pin
+    (Dec5).
+  - A "one check per job" flag is set when the rules are read at enable (Dec11).
+  - Tests in `MergeQueueEngineTests` (the fake's `Rules` and `CheckStates` can change between polls), `CheckGateTests`
+    and `GitHubForgeMergeQueueTests`.
+- **M4. Setup.**
+  - Dec3's shape: the App's own checks, plus one summary job picked in the form, with the help text.
+  - Dec4's pins.
+  - Dec6's prefill when the form is opened from a bell.
+  - Dec10's change list (B1) and stale marks (B2).
+  - Dec11's offer to switch.
+  - The form's new field means running `--spark-synchronize-model`, and new strings in `translations.json` mean
+    regenerating the golden in the same commit.
+  - Tests in `MergeQueueRulesetPlannerTests` and `SetUpRulesetsActionTests`.
+- **M5. Bell.**
+  - At sign-in or when the app is opened, each manager of a repository with drift (Dec5), or with a per-job list
+    (Dec11), gets one notification through `ISparkNotifier`, linking to "Set up rulesets".
+  - Notifications are deduplicated per user, per drift and per repository.
+  - A one-off scan of the repositories with a `mergeQueue` section runs after the deploy (Dec11).
+  - A new endpoint, if one is needed, means updating `CsrfSurfaceTests` and the route snapshots.
+- **M6. Docs.**
+  - `merge-queue.md` §3: the stale lines 598-599, the summary-job shape, and a troubleshooting entry, "a required check
+    never reports".
+  - `onboarding.md` "Left to you": why a summary job is worth adding.
+- **M7.** Run the touched test classes once, at the end. Then:
+  - the owner deploys;
+  - the owner follows the bell, or runs "Set up rulesets" on Spark, to switch rulesets 2 and 3 to `pull-request`,
+    `coverage/patch` and `coverage/project` (plus `Line policy`), pinned;
+  - the "after" half of S2 on SparkTest, if the owner approves it.
 
 ## 8. Until this ships: the workaround
 
@@ -357,3 +580,11 @@ From comment 2, with F3 and F4 added.
   - S5 found nothing ruleset 2 requires outside the aggregate, and corrected F5 (the coverage checks are check runs).
     It also gave the App ids behind A1's hardening.
   - S3 wrote C4's rule.
+- **2026-11-27, grilling round.** The owner answered Q1–Q5 and the follow-ups Q1a–Q1f, Q2a and Q4b, recorded as
+  Dec1–Dec12 (§5.1). Facts were checked along the way:
+  - **The rulesets:** a live list of all five, and live reads of rulesets 2 and 3. Ruleset 2 was corrected at 07:59;
+    ruleset 3 still matches the lines.
+  - **The workflows:** the lines' `pull-request.yml`, which all have the summary job.
+  - **The code:** the bell (`ISparkNotifier`), the setup's OAuth lease, the manager check, D62 (`Merge queue` can
+    never be required) and the queue's comment sites.
+  - **The plan:** §7 was rewritten to match.
