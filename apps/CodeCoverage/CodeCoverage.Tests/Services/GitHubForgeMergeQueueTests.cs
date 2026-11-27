@@ -332,6 +332,10 @@ public class GitHubForgeMergeQueueTests
         rules.HasNativeMergeQueue.Should().BeTrue();
         rules.ClassicProtection.Should().Be(EForgeClassicProtection.Read);
         asked.Should().Contain("\"branch\":\"master\"").And.Contain("\"owner\":\"acme\"", "values go as variables, never into the query");
+        using var json = JsonDocument.Parse(asked!);
+        json.RootElement.GetProperty("query").GetString().Should().Be(
+            "query($name:String!,$owner:String!,$branch:String){repository(name:$name,owner:$owner){mergeQueue(branch:$branch){id}}}",
+            "the typed document as sent, captured live on 2026-11-27");
     }
 
     [Fact]
@@ -344,6 +348,28 @@ public class GitHubForgeMergeQueueTests
             .On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """{"data":{"repository":{"mergeQueue":null}}}""");
 
         (await Queue(github).GetBranchRulesAsync(Target(), "master")).HasNativeMergeQueue.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A GraphQL error on the merge-queue read is no queue, and a rate limit is thrown. Octokit.GraphQL's own connection would
+    /// turn both into one ResponseDeserializerException with the message only (measured 2026-11-27); the adapter reads the
+    /// error types itself.
+    /// </summary>
+    [Fact]
+    public async Task A_graphql_error_on_the_merge_queue_read_is_no_queue_and_a_rate_limit_is_thrown()
+    {
+        StubGitHub Classic(string answer) => new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/master", HttpStatusCode.OK, "[]")
+            .On(HttpMethod.Get, $"{Repo}/branches/master", HttpStatusCode.OK, """{"name":"master","protected":true,"protection":{"enabled":true}}""")
+            .On(HttpMethod.Get, $"{Repo}/branches/master/protection", HttpStatusCode.OK, """{"enforce_admins":{"enabled":false}}""")
+            .On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, answer);
+        var missing = Classic("""
+            {"data":{"repository":null},"errors":[{"type":"NOT_FOUND","path":["repository"],"message":"Could not resolve to a Repository with the name 'acme/widget'."}]}
+            """);
+        var limited = Classic("""{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}""");
+
+        (await Queue(missing).GetBranchRulesAsync(Target(), "master")).HasNativeMergeQueue.Should().BeFalse();
+        await Throws<ForgeRequestException>(() => Queue(limited).GetBranchRulesAsync(Target(), "master"));
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────────────────────────
@@ -1117,7 +1143,9 @@ public class GitHubForgeMergeQueueTests
             new ForgeClosingIssue(154, "acme/widget", false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
-        query.Should().Be(GitHubForgeMergeQueue.ClosingIssuesQuery);
+        // The typed document (Octokit.GraphQL) as sent, captured live on 2026-11-27 against #717.
+        query.Should().Be("query($name:String!,$owner:String!,$number:Int!,$first:Int){repository(name:$name,owner:$owner){pullRequest(number:$number)"
+            + "{closingIssuesReferences(first:$first){nodes{number state repository{nameWithOwner}}}}}}");
         query.Should().NotContain("acme").And.NotContain("518");
         var variables = json.RootElement.GetProperty("variables");
         variables.GetProperty("owner").GetString().Should().Be("acme");
@@ -1155,11 +1183,12 @@ public class GitHubForgeMergeQueueTests
 
     /// <summary>
     /// The documented shape of <c>statusCheckRollup</c>: the default branch's head with a check run and a status, and two
-    /// open pull requests, one repeating <c>build</c> and carrying the queue's own check, one with no rollup at all.
+    /// open pull requests, one repeating <c>build</c> and carrying the queue's own check, one with no rollup at all. The
+    /// target names its type, as GitHub answers the typed document (captured live on 2026-11-27).
     /// </summary>
     private const string ReportedChecks = """
         {"data":{"repository":{
-          "defaultBranchRef":{"target":{"statusCheckRollup":{"contexts":{"nodes":[
+          "defaultBranchRef":{"target":{"__typename":"Commit","statusCheckRollup":{"contexts":{"nodes":[
             {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
             {"__typename":"StatusContext","context":"ci/legacy"}]}}}},
           "pullRequests":{"nodes":[
@@ -1190,13 +1219,19 @@ public class GitHubForgeMergeQueueTests
             new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null, OnPullRequest: false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
-        query.Should().Be(GitHubForgeMergeQueue.ReportedChecksQuery);
+        // The typed document as sent, captured live on 2026-11-27. The two rollups take two variables: Octokit.GraphQL
+        // 0.4.0-beta declares a variable used twice twice, and GitHub refuses that ("There can only be one variable named").
+        query.Should().StartWith("query($name:String!,$owner:String!,$contexts:Int,$pulls:Int,$pullContexts:Int){repository(name:$name,owner:$owner)"
+            + "{defaultBranchRef{target{__typename ... on Commit{statusCheckRollup{contexts(first:$contexts)")
+            .And.Contain("pullRequests(first:$pulls,orderBy:{field:UPDATED_AT,direction:DESC},states:[OPEN]){nodes{commits(last:1)"
+                + "{nodes{commit{statusCheckRollup{contexts(first:$pullContexts)");
         query.Should().NotContain("acme").And.NotContain("widget");
         var variables = json.RootElement.GetProperty("variables");
         variables.GetProperty("owner").GetString().Should().Be("acme");
         variables.GetProperty("name").GetString().Should().Be("widget");
         variables.GetProperty("pulls").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPullRequests);
         variables.GetProperty("contexts").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPerCommit);
+        variables.GetProperty("pullContexts").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPerCommit);
     }
 
     [Fact]

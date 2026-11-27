@@ -635,3 +635,38 @@ From comment 2, with F3 and F4 added.
     evicted the entry with `merge-refused`, and production's queue merged #717 at 12:34:38.
   - **Not covered:** a required name that never reports, so neither the stuck state nor the bell ran. That remains S2's
     job.
+- **2026-11-27, the merge-queue adapter's GraphQL reads are typed documents (owner's request).** `MergeQueueQuery`,
+  `ReportedChecksQuery` and `ClosingIssuesQuery` in `GitHubForgeMergeQueue` are now Octokit.GraphQL documents
+  (`new Query()…Compile()`, every value a `Var`). They run over the adapter's own `SendAsync` through a small
+  `IConnection`, `GraphQLConnection`. Measured with the local instance first: a temporary recipient ran the typed
+  queries on two `issues.opened` deliveries (#718 and #719, opened as triggers and closed afterwards). Evidence from
+  its log:
+  - **The documents GitHub accepted** are asserted by `GitHubForgeMergeQueueTests`, e.g.
+    `query($name:String!,$owner:String!,$number:Int!,$first:Int){repository(name:$name,owner:$owner){pullRequest(number:$number){closingIssuesReferences(first:$first){…}}}}`.
+  - **The answers:**
+    - #717 gave `MintPlayer/MintPlayer.Spark#716`, closed.
+    - Spark's default branch gave 34 contexts and nine open pull requests, each check run with its App (github-actions
+      15368, gitguardian 46505).
+    - `mergeQueue` was null for Spark's master (it uses the bot's queue, not GitHub's) and for mintplayer-ng-video-player's
+      master, where #613 item 6 had found one. No MintPlayer repository has one today (`organization.repositories.mergeQueue`,
+      asked with a user token). The non-null answer is therefore covered by the test fixture only.
+  - **Why the adapter's own connection, not Octokit's `Connection`.**
+    - GitHub answers a missing pull request with 200, `data` and `errors[{"type":"NOT_FOUND"}]`.
+    - Octokit's connection turns that into a `ResponseDeserializerException` that carries only the message ("Could not
+      resolve to a PullRequest with the number of 999999.") and a line and column.
+    - With that, FORBIDDEN (access failure), NOT_FOUND (nothing) and RATE_LIMITED (retry) could no longer be told apart.
+    - `GraphQLConnection` throws a `GraphQLReplyException` with the error types instead, so the three methods keep their
+      readings. A new test, `A_graphql_error_on_the_merge_queue_read_is_no_queue_and_a_rate_limit_is_thrown`, guards the
+      merge-queue read's two.
+  - **Two Octokit.GraphQL 0.4.0-beta defects, worked around:**
+    - A `Var` used twice is declared twice (`$contexts: Int, $pulls: Int, $contexts: Int`), and GitHub refuses the
+      document: "There can only be one variable named \"contexts\"" (`variableNotUnique`). The two rollups therefore take
+      `$contexts` and `$pullContexts`.
+    - The rollup selection as a `Fragment<Commit, …>` threw a NullReferenceException while compiling, so it is written
+      twice.
+  - **`.Nodes` with `first`, not `.AllPages()`.** The bounds are decisions: D106's "at most `MaxListed`" closing issues,
+    and D109's one page of open pull requests and 100 contexts per commit, "the webhooks fill in the rest". `.AllPages()`
+    would read every page, with one more `node(id:)` query for each node that has another page. The owner asked; kept
+    pending their answer.
+  - **Not converted:** the raw GraphQL in `GitHubForgeLabels.FilesRequest`, `GitHubAvatarResolver`,
+    `GitHubRepositoryAdministration.CheckWithGraphQLAsync` and `GitHubPullRequestFacts`, outside the merge queue.
