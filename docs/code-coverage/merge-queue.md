@@ -536,7 +536,7 @@ not named like its check, "GitGuardian Security Checks"). So push a commit or op
   the oldest dropped); the picker never asks GitHub while it is open. Three sources fill it: the `check_run` and
   `status` webhooks, whether or not anything is queued (the App's own check runs are left out, and a `check_suite`
   names no check); the queue's own reads of a pull request's checks; and a backfill of the default branch's head and
-  the 50 most recently updated open pull requests' heads, one GraphQL query per repository, run after every account
+  every open pull request's head, one paged GraphQL read per repository, run after every account
   reconcile (the nightly one and the one an installation change queues) at most once a day, and once for every
   repository by the deploy that introduced it. Disconnected and archived repositories are skipped. A name is written
   again only when it is new or last seen a day ago, so a busy repository is not rewritten on every delivery. An

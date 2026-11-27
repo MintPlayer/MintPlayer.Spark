@@ -112,7 +112,7 @@ public interface IForgeMergeQueue
 
     /// <summary>
     /// Every check run and commit status that reported, with any outcome, on the default branch's head and on the heads
-    /// of the open pull requests (one page of the most recently updated), distinct by name, the queue's own check left
+    /// of every open pull request, distinct by name, the queue's own check left
     /// out: the backfill of the names the exclusion lists pick from (merge-queue PRD §11, D109). No forge lists the checks
     /// a repository <em>can</em> produce, only those that reported on a commit.
     /// </summary>
@@ -264,9 +264,9 @@ public interface IForgeMergeQueue
 
     /// <summary>
     /// The issues pull request <paramref name="number"/> says it closes (closing keywords in its description, or issues
-    /// linked to it by hand), each with its repository and whether it is still open, in the forge's order; at most
-    /// <see cref="ForgeClosingIssue.MaxListed"/>. Empty when there is none, or the pull request does not exist. Which of
-    /// them to close is the caller's call (merge-queue PRD §0 D106).
+    /// linked to it by hand), each with its repository and whether it is still open, in the forge's order; all of them,
+    /// page after page. Empty when there is none, or the pull request does not exist. Which of them to close is the
+    /// caller's call (merge-queue PRD §0 D106).
     /// </summary>
     Task<IReadOnlyList<ForgeClosingIssue>> GetClosingIssuesAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
@@ -543,11 +543,7 @@ public sealed record ForgeOpenPullRequest(int Number, string Title, string BaseR
 /// <param name="Number">The issue's number in <paramref name="RepositoryFullName"/>.</param>
 /// <param name="RepositoryFullName">The repository the issue lives in, <c>owner/name</c>: a pull request may name an issue of another repository.</param>
 /// <param name="IsOpen">The issue is still open.</param>
-public sealed record ForgeClosingIssue(int Number, string RepositoryFullName, bool IsOpen)
-{
-    /// <summary>The most closing issues read of one pull request; the rest are left as they are.</summary>
-    public const int MaxListed = 50;
-}
+public sealed record ForgeClosingIssue(int Number, string RepositoryFullName, bool IsOpen);
 
 /// <summary>One pull-request review.</summary>
 /// <param name="CommitSha">The head the review was given on; an approval counts for that commit only (O11).</param>

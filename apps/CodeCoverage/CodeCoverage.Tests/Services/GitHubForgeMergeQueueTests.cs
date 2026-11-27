@@ -1117,9 +1117,12 @@ public class GitHubForgeMergeQueueTests
 
     // ── Linked issues (§0 D106) ──────────────────────────────────────────────────────────────────
 
-    /// <summary>The documented GraphQL shape of <c>closingIssuesReferences</c>: one issue here, one elsewhere, one closed.</summary>
+    /// <summary>
+    /// The GraphQL shape of <c>closingIssuesReferences</c> read with <c>AllPages</c> (the pull request's id and the page
+    /// info beside the nodes, captured live on 2026-11-27): one issue here, one elsewhere, one closed.
+    /// </summary>
     private const string ClosingIssues = """
-        {"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"nodes":[
+        {"data":{"repository":{"pullRequest":{"id":"PR_kwDOAAAB","closingIssuesReferences":{"pageInfo":{"hasNextPage":false,"endCursor":"Mw"},"nodes":[
           {"number":284,"state":"OPEN","repository":{"nameWithOwner":"acme/widget"}},
           {"number":12,"state":"OPEN","repository":{"nameWithOwner":"acme/other"}},
           {"number":154,"state":"CLOSED","repository":{"nameWithOwner":"acme/widget"}}]}}}}}
@@ -1143,15 +1146,46 @@ public class GitHubForgeMergeQueueTests
             new ForgeClosingIssue(154, "acme/widget", false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
-        // The typed document (Octokit.GraphQL) as sent, captured live on 2026-11-27 against #717.
-        query.Should().Be("query($name:String!,$owner:String!,$number:Int!,$first:Int){repository(name:$name,owner:$owner){pullRequest(number:$number)"
-            + "{closingIssuesReferences(first:$first){nodes{number state repository{nameWithOwner}}}}}}");
+        // The typed document (Octokit.GraphQL, AllPages) as sent, captured live on 2026-11-27 against #717.
+        query.Should().Be("query($name:String!,$owner:String!,$number:Int!){repository(name:$name,owner:$owner){pullRequest(number:$number)"
+            + "{id closingIssuesReferences(first:100){pageInfo{hasNextPage endCursor} nodes{number state repository{nameWithOwner}}}}}}");
         query.Should().NotContain("acme").And.NotContain("518");
         var variables = json.RootElement.GetProperty("variables");
         variables.GetProperty("owner").GetString().Should().Be("acme");
         variables.GetProperty("name").GetString().Should().Be("widget");
         variables.GetProperty("number").GetInt32().Should().Be(518);
-        variables.GetProperty("first").GetInt32().Should().Be(ForgeClosingIssue.MaxListed);
+    }
+
+    [Fact]
+    public async Task Closing_issues_are_read_to_the_last_page()
+    {
+        var posted = new List<string?>();
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", (_, body) =>
+        {
+            posted.Add(body);
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK, posted.Count == 1
+                ? """
+                  {"data":{"repository":{"pullRequest":{"id":"PR_kwDOAAAB","closingIssuesReferences":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},
+                   "nodes":[{"number":284,"state":"OPEN","repository":{"nameWithOwner":"acme/widget"}}]}}}}}
+                  """
+                : """
+                  {"data":{"node":{"__typename":"PullRequest","closingIssuesReferences":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},
+                   "nodes":[{"number":285,"state":"CLOSED","repository":{"nameWithOwner":"acme/widget"}}]}}}}
+                  """);
+        });
+
+        var issues = await Queue(github).GetClosingIssuesAsync(Target(), 518);
+
+        issues.Should().Equal([new ForgeClosingIssue(284, "acme/widget", true), new ForgeClosingIssue(285, "acme/widget", false)]);
+        posted.Should().HaveCount(2);
+        using var next = JsonDocument.Parse(posted[1]!);
+        // The next page goes by the pull request's node id and the cursor, as Octokit.GraphQL pages (the files read's twin
+        // was captured live on 2026-11-27).
+        next.RootElement.GetProperty("query").GetString().Should().Be(
+            "query($__id:ID!,$__after:String){node(id:$__id){__typename ... on PullRequest"
+            + "{closingIssuesReferences(first:100,after:$__after){pageInfo{hasNextPage endCursor} nodes{number state repository{nameWithOwner}}}}}}");
+        next.RootElement.GetProperty("variables").GetProperty("__id").GetString().Should().Be("PR_kwDOAAAB");
+        next.RootElement.GetProperty("variables").GetProperty("__after").GetString().Should().Be("MQ");
     }
 
     [Fact]
@@ -1184,20 +1218,25 @@ public class GitHubForgeMergeQueueTests
     /// <summary>
     /// The documented shape of <c>statusCheckRollup</c>: the default branch's head with a check run and a status, and two
     /// open pull requests, one repeating <c>build</c> and carrying the queue's own check, one with no rollup at all. The
-    /// target names its type, as GitHub answers the typed document (captured live on 2026-11-27).
+    /// target names its type, and every paged connection carries its page info and its parent's id, as GitHub answers the
+    /// typed <c>AllPages</c> document (captured live on 2026-11-27).
     /// </summary>
     private const string ReportedChecks = """
-        {"data":{"repository":{
-          "defaultBranchRef":{"target":{"__typename":"Commit","statusCheckRollup":{"contexts":{"nodes":[
+        {"data":{"repository":{"id":"R_kgDOAAAB",
+          "defaultBranchRef":{"target":{"__typename":"Commit","statusCheckRollup":{"id":"SCR_head","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
             {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
             {"__typename":"StatusContext","context":"ci/legacy"}]}}}},
-          "pullRequests":{"nodes":[
-            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[
+          "pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"id":"SCR_pull","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"Mw"},"nodes":[
               {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
               {"__typename":"CheckRun","name":"Merge queue","checkSuite":{"app":{"slug":"coveragedevelopment","databaseId":4574022}}},
               {"__typename":"CheckRun","name":"GitGuardian Security Checks","checkSuite":{"app":{"slug":"gitguardian","databaseId":46505}}}]}}}}]}},
             {"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}]}}}}
         """;
+
+    /// <summary>The rollup selection both halves of the reported-checks document share, as sent.</summary>
+    private const string RollupContexts = "contexts(first:100){pageInfo{hasNextPage endCursor} nodes{__typename ... on CheckRun"
+        + "{name checkSuite{app{slug databaseId}}} ... on StatusContext{context}}}";
 
     [Fact]
     public async Task Reported_checks_are_read_through_one_graphql_query_with_every_value_a_variable()
@@ -1219,19 +1258,64 @@ public class GitHubForgeMergeQueueTests
             new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null, OnPullRequest: false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
-        // The typed document as sent, captured live on 2026-11-27. The two rollups take two variables: Octokit.GraphQL
-        // 0.4.0-beta declares a variable used twice twice, and GitHub refuses that ("There can only be one variable named").
-        query.Should().StartWith("query($name:String!,$owner:String!,$contexts:Int,$pulls:Int,$pullContexts:Int){repository(name:$name,owner:$owner)"
-            + "{defaultBranchRef{target{__typename ... on Commit{statusCheckRollup{contexts(first:$contexts)")
-            .And.Contain("pullRequests(first:$pulls,orderBy:{field:UPDATED_AT,direction:DESC},states:[OPEN]){nodes{commits(last:1)"
-                + "{nodes{commit{statusCheckRollup{contexts(first:$pullContexts)");
+        // The typed AllPages document as sent, captured live on 2026-11-27 (34 contexts and 9 open pull requests: one request).
+        const string rollup = "statusCheckRollup{id " + RollupContexts + "}";
+        query.Should().Be("query($name:String!,$owner:String!){repository(name:$name,owner:$owner){id defaultBranchRef{target{__typename ... on Commit{"
+            + rollup + "}}} pullRequests(states:[OPEN],first:100){pageInfo{hasNextPage endCursor} nodes{commits(last:1){nodes{commit{"
+            + rollup + "}}}}}}}");
         query.Should().NotContain("acme").And.NotContain("widget");
         var variables = json.RootElement.GetProperty("variables");
         variables.GetProperty("owner").GetString().Should().Be("acme");
         variables.GetProperty("name").GetString().Should().Be("widget");
-        variables.GetProperty("pulls").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPullRequests);
-        variables.GetProperty("contexts").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPerCommit);
-        variables.GetProperty("pullContexts").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPerCommit);
+    }
+
+    /// <summary>
+    /// A rollup with more contexts than a page, and more open pull requests than a page: each next page goes by its parent's
+    /// node id and the cursor (the shapes captured live on 2026-11-27 with pages of 5 contexts and 3 pull requests).
+    /// </summary>
+    [Fact]
+    public async Task Reported_checks_are_read_to_the_last_page_of_every_connection()
+    {
+        var posted = new List<string>();
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", (_, body) =>
+        {
+            posted.Add(body!);
+            var query = JsonDocument.Parse(body!).RootElement.GetProperty("query").GetString()!;
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK,
+                query.Contains("... on StatusCheckRollup", StringComparison.Ordinal)
+                    ? """
+                      {"data":{"node":{"__typename":"StatusCheckRollup","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+                        {"__typename":"StatusContext","context":"ci/second-page"}]}}}}
+                      """
+                    : query.Contains("... on Repository", StringComparison.Ordinal)
+                        ? """
+                          {"data":{"node":{"__typename":"Repository","pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+                            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"id":"SCR_pull2","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"MQ"},"nodes":[
+                              {"__typename":"CheckRun","name":"lint","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}}]}}}}]}}]}}}}
+                          """
+                        : """
+                          {"data":{"repository":{"id":"R_kgDOAAAB",
+                            "defaultBranchRef":{"target":{"__typename":"Commit","statusCheckRollup":{"id":"SCR_head","contexts":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},"nodes":[
+                              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}}]}}}},
+                            "pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},"nodes":[
+                              {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"id":"SCR_pull1","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"MQ"},"nodes":[
+                                {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}}]}}}}]}}]}}}}
+                          """);
+        });
+
+        var checks = await Queue(github).GetReportedCheckNamesAsync(Target());
+
+        checks.Should().Equal([
+            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
+            new ForgeReportedCheck("ci/second-page", EForgeCheckKind.Status, null, OnPullRequest: false),
+            new ForgeReportedCheck("lint", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368)]);
+        posted.Should().HaveCount(3);
+        var next = posted.Skip(1).Select(body => JsonDocument.Parse(body).RootElement).ToList();
+        next.Select(body => body.GetProperty("variables").GetProperty("__id").GetString())
+            .Should().BeEquivalentTo(["R_kgDOAAAB", "SCR_head"]);
+        next.Select(body => body.GetProperty("query").GetString()).Should().Contain(
+            "query($__id:ID!,$__after:String){node(id:$__id){__typename ... on StatusCheckRollup{contexts(first:100,after:$__after)"
+            + "{pageInfo{hasNextPage endCursor} nodes{__typename ... on CheckRun{name checkSuite{app{slug databaseId}}} ... on StatusContext{context}}}}}}");
     }
 
     [Fact]

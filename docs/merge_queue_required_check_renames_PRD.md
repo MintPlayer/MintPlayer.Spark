@@ -664,9 +664,35 @@ From comment 2, with F3 and F4 added.
       `$contexts` and `$pullContexts`.
     - The rollup selection as a `Fragment<Commit, …>` threw a NullReferenceException while compiling, so it is written
       twice.
-  - **`.Nodes` with `first`, not `.AllPages()`.** The bounds are decisions: D106's "at most `MaxListed`" closing issues,
-    and D109's one page of open pull requests and 100 contexts per commit, "the webhooks fill in the rest". `.AllPages()`
-    would read every page, with one more `node(id:)` query for each node that has another page. The owner asked; kept
-    pending their answer.
-  - **Not converted:** the raw GraphQL in `GitHubForgeLabels.FilesRequest`, `GitHubAvatarResolver`,
-    `GitHubRepositoryAdministration.CheckWithGraphQLAsync` and `GitHubPullRequestFacts`, outside the merge queue.
+  - **`.Nodes` with `first` at first, `.AllPages()` since** (the next entry).
+  - **Not converted at first:** the raw GraphQL in `GitHubForgeLabels.FilesRequest`, `GitHubAvatarResolver`,
+    `GitHubRepositoryAdministration.CheckWithGraphQLAsync` and `GitHubPullRequestFacts`, outside the merge queue. The
+    next entry converts the first.
+- **2026-11-27, the paged GraphQL reads use `.AllPages()` (owner's decision).** Asked whether `.Nodes` with a `first`
+  bound or `.AllPages()`, the owner chose `.AllPages()` and kept the compiled, typed documents ("all graphql code is
+  still strongly-typed. No strings anywhere"). This lifts two older bounds:
+  - D106's closing issues (`ForgeClosingIssue.MaxListed`, 50; the constant is gone);
+  - D109's "one page of open pull requests and 100 contexts per commit" (`ReportedChecksPullRequests`,
+    `ReportedChecksPerCommit`; gone). The pull requests are no longer ordered by update, since all of them are read.
+
+  The PR size check's files read (`GitHubForgeLabels.ListPullRequestFilesAsync`) became a typed `.AllPages()` document
+  too (it was a raw string with a hand-written cursor loop capped at 30 pages). It runs over the webhooks library's
+  installation connection, wrapped in `ErrorReadingConnection`. The wrapper reads GitHub's `errors` before Octokit's
+  deserializer does, so FORBIDDEN still names `pull_requests=read` and RATE_LIMITED is still a 429.
+
+  Measured live on 2026-11-27 with the temporary recipient (trigger #720, closed afterwards), against Spark:
+  - **One request when everything fits.** The reported-checks document with `.AllPages()` was one request: 34 contexts on
+    the default branch and nine open pull requests with 2–36 contexts each.
+  - **Same answers with tiny pages.** The same document with pages of 5 contexts and 3 pull requests took 42 requests and
+    gave the same answer. So did #715's 46 files with pages of 4 (12 requests).
+  - **How Octokit.GraphQL pages.** It selects the parent's `id` and the `pageInfo` itself. It fetches each next page by
+    `node(id: $__id)` and `after: $__after`, e.g.
+    `query($__id:ID!,$__after:String){node(id:$__id){__typename ... on StatusCheckRollup{contexts(first:5,after:$__after){…}}}}`,
+    and it passes the first request's variables along too.
+  - **The duplicate-variable workaround is gone.** With no `first` variables there is no `$pullContexts` either.
+
+  Not converted, for a reason the owner has yet to weigh: `GitHubAvatarResolver`,
+  `GitHubRepositoryAdministration.CheckWithGraphQLAsync` and `GitHubPullRequestFacts` batch up to 50–100 items into
+  one request through generated aliases (`c0…cN`, `r0…rN`, `pr<N>`). Octokit.GraphQL's typed API has no aliases, so a
+  typed version is one request per item. `GitHubPullRequestFacts` also lives in `CodeCoverage.Versioning`, which does
+  not reference Octokit.GraphQL.

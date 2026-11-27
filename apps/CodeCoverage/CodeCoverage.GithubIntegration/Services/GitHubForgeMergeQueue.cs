@@ -411,27 +411,21 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
 
     // ── The checks a repository has seen (§11 D109) ──────────────────────────────────────────────
 
-    /// <summary>The open pull requests whose head commit the backfill reads: one page, most recently updated first.</summary>
-    internal const int ReportedChecksPullRequests = 50;
-
-    /// <summary>The checks read per commit; a commit with more is rare, and the webhooks fill in the rest.</summary>
-    internal const int ReportedChecksPerCommit = 100;
-
     /// <summary>
-    /// The status check rollup of the default branch's head and of every listed open pull request's head commit, in one
-    /// request. Every value is a variable, never part of the text.
+    /// The status check rollup of the default branch's head and of every open pull request's head commit. Every
+    /// connection is read to its end (<c>AllPages</c>, owner's decision 2026-11-27): Octokit.GraphQL sends the first page
+    /// of each in one request and fetches the rest by cursor. Every value is a variable, never part of the text.
     /// </summary>
     /// <remarks>
-    /// The rollup selection is written twice. Octokit.GraphQL 0.4.0-beta threw a NullReferenceException compiling it as a
-    /// <c>Fragment</c>, and declares a variable that is used twice twice, which GitHub refuses ("There can only be one
-    /// variable named"), so each rollup has its own (<c>$contexts</c>, <c>$pullContexts</c>; measured live on 2026-11-27).
+    /// The rollup selection is written twice: Octokit.GraphQL 0.4.0-beta threw a NullReferenceException compiling it as a
+    /// <c>Fragment</c> (measured live on 2026-11-27).
     /// </remarks>
     private static readonly ICompiledQuery<ReportedAnswer> ReportedChecksQuery = new GraphQLQuery()
         .Repository(owner: Var("owner"), name: Var("name"))
         .Select(r => new ReportedAnswer(
             r.DefaultBranchRef
                 .Select(branch => branch.Target.Cast<Gql.Commit>().StatusCheckRollup
-                    .Select(rollup => rollup.Contexts(Var("contexts"), null, null, null).Nodes
+                    .Select(rollup => rollup.Contexts(null, null, null, null).AllPages()
                         .Select(context => context.Switch<RollupContext>(when => when
                             .CheckRun(run => new RollupContext(EForgeCheckKind.CheckRun, run.Name,
                                 run.CheckSuite.App.Select(app => new CheckApp(app.Slug, app.DatabaseId)).SingleOrDefault()))
@@ -439,13 +433,11 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                         .ToList())
                     .SingleOrDefault())
                 .SingleOrDefault(),
-            r.PullRequests(Var("pulls"), null, null, null, null, null, null,
-                    new Gql.IssueOrder { Field = Gql.IssueOrderField.UpdatedAt, Direction = Gql.OrderDirection.Desc },
-                    new[] { Gql.PullRequestState.Open })
-                .Nodes
+            r.PullRequests(null, null, null, null, null, null, null, null, new[] { Gql.PullRequestState.Open })
+                .AllPages()
                 .Select(pull => new PullHead(pull.Commits(null, null, 1, null).Nodes
                     .Select(node => node.Commit.StatusCheckRollup
-                        .Select(rollup => rollup.Contexts(Var("pullContexts"), null, null, null).Nodes
+                        .Select(rollup => rollup.Contexts(null, null, null, null).AllPages()
                             .Select(context => context.Switch<RollupContext>(when => when
                                 .CheckRun(run => new RollupContext(EForgeCheckKind.CheckRun, run.Name,
                                     run.CheckSuite.App.Select(app => new CheckApp(app.Slug, app.DatabaseId)).SingleOrDefault()))
@@ -468,9 +460,6 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         {
             ["owner"] = repository.OwnerLogin,
             ["name"] = repository.Name,
-            ["pulls"] = ReportedChecksPullRequests,
-            ["contexts"] = ReportedChecksPerCommit,
-            ["pullContexts"] = ReportedChecksPerCommit,
         };
 
         ReportedAnswer? answer;
@@ -1276,12 +1265,15 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
 
     // ── Linked issues (§0 D106) ──────────────────────────────────────────────────────────────────
 
-    /// <summary>The closing issue references of one pull request; every value is a variable, never part of the text.</summary>
+    /// <summary>
+    /// Every closing issue reference of one pull request, page after page (<c>AllPages</c>, owner's decision 2026-11-27);
+    /// every value is a variable, never part of the text.
+    /// </summary>
     private static readonly ICompiledQuery<IEnumerable<ClosingIssueAnswer>> ClosingIssuesQuery = new GraphQLQuery()
         .Repository(owner: Var("owner"), name: Var("name"))
         .PullRequest(Var("number"))
-        .ClosingIssuesReferences(first: Var("first"))
-        .Nodes
+        .ClosingIssuesReferences()
+        .AllPages()
         .Select(issue => new ClosingIssueAnswer(issue.Number, issue.State, issue.Repository.NameWithOwner))
         .Compile();
 
@@ -1298,7 +1290,6 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             ["owner"] = repository.OwnerLogin,
             ["name"] = repository.Name,
             ["number"] = number,
-            ["first"] = ForgeClosingIssue.MaxListed,
         };
 
         IEnumerable<ClosingIssueAnswer?>? issues;
