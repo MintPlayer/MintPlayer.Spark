@@ -103,14 +103,17 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
         }
         if (frontier is not null)
             session.Delete(frontier);
-        await session.SaveChangesAsync(cancellationToken);
 
+        // The notices are written in this session (the notifier never saves, #536 D50), so they commit with the run's
+        // completion: a completion that fails to commit tells nobody it finished.
         await pipeline.NotifyAsync(run,
             card.Overall is { } score ? $"Audit of {run.Origin} finished: {score} ({card.Grade})" : $"Audit of {run.Origin} finished",
             $"{pages.Count} pages checked; {checkResults.Count(r => r.Status == nameof(CheckStatus.Fail))} checks failed.", "audit-completed", cancellationToken);
 
         // F10: a monitored site's members hear about a score drop, a new critical issue or an expiry (M12).
         await alerter.AlertAsync(run, previousRun, snapshot, card.Overall, checkResults, cancellationToken);
+
+        await session.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>The site's latest completed run before this one, or null when there is none.</summary>

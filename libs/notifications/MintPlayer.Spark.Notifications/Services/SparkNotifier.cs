@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Configuration;
@@ -19,20 +19,29 @@ namespace MintPlayer.Spark.Notifications.Services;
 /// <see cref="ISparkAccountDirectory"/>. Without one, users get in-app notifications only, since mail and push
 /// need an account to address. Visitors (<see cref="SparkNotification.VisitorIds"/>) get in-app only, always,
 /// expiring with the visitor (<see cref="SparkVisitorOptions.Lifetime"/>).
+/// <para>
+/// Writes in the scope's session and never saves (#536 D50): the notifications and their
+/// <see cref="NotificationFanOutMessage"/> commit with the caller's <c>SaveChanges</c>, and a <c>Clear()</c> before a
+/// retry drops them. The caller's session pays one request per call: every user's preferences in one load.
+/// </para>
 /// </remarks>
-internal sealed class SparkNotifier(
-    IServiceProvider services,
-    SparkWebPushSender push,
-    IOptions<SparkNotificationsOptions> options,
-    IOptions<SparkVisitorOptions> visitorOptions,
-    TimeProvider timeProvider,
-    ILogger<SparkNotifier> logger,
-    IHttpContextAccessor? httpContextAccessor = null,
-    IConfiguration? configuration = null,
-    IHostEnvironment? environment = null) : ISparkNotifier
+internal sealed partial class SparkNotifier : ISparkNotifier
 {
     internal const int MaxTitle = 200;
     internal const int MaxBody = 2000;
+
+    [Inject] private readonly ISparkSession session;
+    [Inject] private readonly SparkWebPushSender push;
+    [Inject] private readonly IOptions<SparkNotificationsOptions> options;
+    [Inject] private readonly IOptions<SparkVisitorOptions> visitorOptions;
+    [Inject] private readonly TimeProvider timeProvider;
+    [Inject] private readonly ILogger<SparkNotifier> logger;
+    [Inject] private readonly IMessageOutbox? outbox;
+    [Inject] private readonly ISparkAccountDirectory? directory;
+    [Inject] private readonly ISparkMailer? mailer;
+    [Inject] private readonly IHttpContextAccessor? httpContextAccessor;
+    [Inject] private readonly IConfiguration? configuration;
+    [Inject] private readonly IHostEnvironment? environment;
 
     public async Task<SparkNotifyReceipt> NotifyAsync(SparkNotification notification, CancellationToken cancellationToken = default)
     {
@@ -48,45 +57,31 @@ internal sealed class SparkNotifier(
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var ids = new List<string>();
-        var mails = new List<ISparkAccount>();
-        var pushes = 0;
-
-        // The notifications commit on their own, whatever the caller has pending: a unit of work of its own, so a scope
-        // of its own (#536 D50), whose session the push outbox writes to as well.
-        await using var scope = services.CreateAsyncScope();
-        var session = scope.ServiceProvider.GetRequiredService<ISparkSession>();
-        var outbox = scope.ServiceProvider.GetService<IMessageOutbox>();
         var userIds = Clean(notification.UserIds);
         // A visitor id always carries its prefix, so one can never address a user's notifications.
         var visitorIds = Clean(notification.VisitorIds).Where(id => id.StartsWith(SparkVisitorOptions.IdPrefix, StringComparison.Ordinal)).ToList();
 
-        var directory = services.GetService<ISparkAccountDirectory>();
+        // With a directory, an unknown id is skipped; without one, the id is taken at its word (in-app only).
         IReadOnlyDictionary<string, ISparkAccount>? accounts = null;
         if (userIds.Count > 0 && directory is not null)
-            accounts = await directory.FindAsync(userIds, cancellationToken);
-
-        string? absoluteUrl = null;
-        var absoluteResolved = false;
-        string? AbsoluteUrl()
         {
-            if (!absoluteResolved)
-            {
-                absoluteUrl = Absolute(notification.Url);
-                absoluteResolved = true;
-            }
-            return absoluteUrl;
+            var found = await directory.FindAsync(userIds, cancellationToken);
+            userIds = userIds.Where(found.ContainsKey).ToList();
+            accounts = found;
         }
 
+        // Pushes and mails go out from the fan-out message, which needs the outbox (Messaging; MailManager requires it).
+        var canPush = push.Client is not null && outbox is not null;
+        var canMail = mailer is not null && outbox is not null;
+        var fanOut = new List<NotificationFanOutRecipient>();
+        var mails = 0;
+        var pushes = 0;
+        var channels = await ChannelsAsync(userIds, notification.OrganizationId, cancellationToken);
         foreach (var userId in userIds)
         {
-            // With a directory, an unknown id is skipped; without one, the id is taken at its word (in-app only).
-            ISparkAccount? account = null;
-            if (accounts is not null && !accounts.TryGetValue(userId, out account))
-                continue;
-
-            var channels = await ChannelsAsync(session, userId, notification.OrganizationId, cancellationToken);
+            var chosen = channels[userId];
             string? notificationId = null;
-            if (channels.InApp)
+            if (chosen.InApp)
             {
                 var stored = NewNotification(notification, title, now);
                 stored.UserId = userId;
@@ -96,29 +91,20 @@ internal sealed class SparkNotifier(
                 ids.Add(notificationId);
             }
 
-            if (account is null)
+            if (accounts?.GetValueOrDefault(userId) is not { } account)
                 continue;
-
-            if (channels.Push && push.Client is not null && outbox is not null)
+            var pushIt = chosen.Push && canPush;
+            var mailIt = chosen.Email && account.EmailConfirmed && !string.IsNullOrWhiteSpace(account.Email);
+            if (mailIt && !canMail)
             {
-                var payload = SparkWebPushSender.Payload(notificationId, title, notification.Body, AbsoluteUrl() ?? notification.Url, notification.Category);
-                var devices = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 64, cancellationToken: cancellationToken);
-                foreach (var device in devices)
-                {
-                    await outbox.EnqueueAsync(new WebPushDeliveryMessage
-                    {
-                        SubscriptionId = device.Id.Value,
-                        Payload = payload,
-                        Topic = Topic(notification.Category),
-                        Urgent = notification.Urgent,
-                        TimeToLiveSeconds = (long)options.Value.WebPush.TimeToLive.TotalSeconds,
-                    }, cancellationToken: cancellationToken);
-                    pushes++;
-                }
+                logger.LogDebug("No MailManager registered: the notification mail to {UserId} skipped.", userId);
+                mailIt = false;
             }
-
-            if (channels.Email && account.EmailConfirmed && !string.IsNullOrWhiteSpace(account.Email))
-                mails.Add(account);
+            if (!pushIt && !mailIt)
+                continue;
+            fanOut.Add(new NotificationFanOutRecipient { UserId = userId, NotificationId = notificationId, Push = pushIt, Mail = mailIt });
+            pushes += pushIt ? 1 : 0;
+            mails += mailIt ? 1 : 0;
         }
 
         foreach (var visitorId in visitorIds)
@@ -131,34 +117,22 @@ internal sealed class SparkNotifier(
             ids.Add(stored.Id.Value);
         }
 
-        await session.SaveChangesAsync(cancellationToken);
-
-        var sent = 0;
-        if (mails.Count > 0)
+        if (fanOut.Count > 0)
         {
-            if (services.GetService<ISparkMailer>() is not { } mailer)
+            await outbox!.EnqueueAsync(new NotificationFanOutMessage
             {
-                logger.LogDebug("No MailManager registered: {Count} notification mails skipped.", mails.Count);
-            }
-            else
-            {
-                var link = AbsoluteUrl();
-                foreach (var account in mails)
-                {
-                    await mailer.SendAsync(new SparkMailRequest
-                    {
-                        Template = options.Value.MailTemplate,
-                        To = account.Email!,
-                        ToName = account.UserName,
-                        Culture = account.PreferredCulture,
-                        Data = new { title, body = notification.Body, link, user_name = account.UserName },
-                    }, cancellationToken);
-                    sent++;
-                }
-            }
+                Id = Guid.CreateVersion7().ToString("N"),
+                Title = title,
+                Body = notification.Body,
+                Url = notification.Url,
+                Link = Absolute(notification.Url),
+                Category = notification.Category,
+                Urgent = notification.Urgent,
+                Recipients = fanOut,
+            }, cancellationToken: cancellationToken);
         }
 
-        return new SparkNotifyReceipt(ids, sent, pushes);
+        return new SparkNotifyReceipt(ids, mails, pushes);
     }
 
     private static List<string> Clean(IReadOnlyCollection<string>? ids)
@@ -175,16 +149,25 @@ internal sealed class SparkNotifier(
         CreatedAtUtc = now,
     };
 
-    /// <summary>The user's preference for the organization, else their default, else the configured defaults.</summary>
-    internal async Task<SparkNotificationChannels> ChannelsAsync(ISparkSession session, string userId, string? organizationId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Each user's preference for the organization, else their default, else the configured defaults: one load for
+    /// every user, since the caller's session (and its request budget) is shared.
+    /// </summary>
+    internal async Task<Dictionary<string, SparkNotificationChannels>> ChannelsAsync(IReadOnlyCollection<string> userIds, string? organizationId, CancellationToken cancellationToken)
     {
-        var scoped = NotificationPreference.IdFor(userId, organizationId).Value;
-        var fallback = NotificationPreference.IdFor(userId, null).Value;
-        var found = await session.LoadAsync<NotificationPreference>([scoped, fallback], cancellationToken);
-        var preference = (found.TryGetValue(scoped, out var s) ? s : null) ?? (found.TryGetValue(fallback, out var f) ? f : null);
-        return preference is null
-            ? options.Value.Defaults
-            : new SparkNotificationChannels { InApp = preference.InApp, Email = preference.Email, Push = preference.Push };
+        var channels = new Dictionary<string, SparkNotificationChannels>(StringComparer.OrdinalIgnoreCase);
+        if (userIds.Count == 0)
+            return channels;
+        var keys = userIds.Select(userId => (UserId: userId, Scoped: NotificationPreference.IdFor(userId, organizationId).Value, Fallback: NotificationPreference.IdFor(userId, null).Value)).ToList();
+        var found = await session.LoadAsync<NotificationPreference>(keys.SelectMany(k => new[] { k.Scoped, k.Fallback }).Distinct(), cancellationToken);
+        foreach (var (userId, scoped, fallback) in keys)
+        {
+            var preference = (found.TryGetValue(scoped, out var s) ? s : null) ?? (found.TryGetValue(fallback, out var f) ? f : null);
+            channels[userId] = preference is null
+                ? options.Value.Defaults
+                : new SparkNotificationChannels { InApp = preference.InApp, Email = preference.Email, Push = preference.Push };
+        }
+        return channels;
     }
 
     private string? Absolute(string? url)

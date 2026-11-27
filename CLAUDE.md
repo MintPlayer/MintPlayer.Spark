@@ -1,5 +1,17 @@
 # MintPlayer.Spark — repository instructions
 
+## Searching: always exclude `node_modules`
+
+Every recursive search over the repository leaves out `node_modules` (owner, 2026-11-26). The root and every app's
+`ClientApp` have one, and the build output (`bin`, `obj`) and the agent worktrees (`.claude/worktrees`) multiply the files
+again. A `grep -r` over `tests/` that walked them ran past the tool's 2-minute timeout; the same search without them answers
+at once.
+
+- **`grep -r`:** pass `--exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj`, add `--exclude-dir=.claude` for a
+  search from the root, and narrow it with `--include=*.cs` (or the file type you want).
+- **`find`:** prune them: `find . -name node_modules -prune -o -name bin -prune -o -name obj -prune -o -name '*.cs' -print`.
+- **The Grep and Glob tools:** give them a `path` or a `glob` that keeps out of those directories.
+
 ## `apps/` holds applications, and two of them are production
 
 `apps/` (renamed from `Demo/`) holds the five demos **and `apps/CodeCoverage`**, which is not a demo:

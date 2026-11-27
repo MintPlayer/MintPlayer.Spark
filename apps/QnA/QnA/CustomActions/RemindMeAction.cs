@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Notifications;
@@ -52,9 +53,11 @@ public sealed record QuestionReminderMessage(string QuestionId, string? Question
 public partial class QuestionReminderRecipient : IRecipient<QuestionReminderMessage>
 {
     [Inject] private readonly ISparkNotifier notifier;
+    [Inject] private readonly ISparkSession session;
 
-    public Task HandleAsync(QuestionReminderMessage message, CancellationToken cancellationToken = default)
-        => notifier.NotifyAsync(new SparkNotification
+    public async Task HandleAsync(QuestionReminderMessage message, CancellationToken cancellationToken = default)
+    {
+        await notifier.NotifyAsync(new SparkNotification
         {
             UserIds = message.UserId is { Length: > 0 } user ? [user] : [],
             VisitorIds = message.VisitorId is { Length: > 0 } visitor ? [visitor] : [],
@@ -63,4 +66,7 @@ public partial class QuestionReminderRecipient : IRecipient<QuestionReminderMess
             Url = $"/po/question/{Uri.EscapeDataString(message.QuestionId)}",
             Category = "reminders",
         }, cancellationToken);
+        // The notifier writes in the scope's session and never saves (#536 D50).
+        await session.SaveChangesAsync(cancellationToken);
+    }
 }

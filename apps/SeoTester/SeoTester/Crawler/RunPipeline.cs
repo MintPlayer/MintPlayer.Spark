@@ -92,24 +92,29 @@ public sealed partial class RunPipeline
         await session.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Ends the run without a score, deletes its frontier, logs and tells the participants.</summary>
+    /// <summary>
+    /// Ends the run without a score, deletes its frontier, logs and tells the participants, in one commit of the scope's
+    /// session: the notifier writes the notice there and never saves (#536 D50).
+    /// </summary>
     public async Task EndAsync(AuditRun run, string status, string? error, string? logKind, CancellationToken cancellationToken)
     {
-        using (var session = store.OpenAsyncSession())
-        {
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Status, status);
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Phase!, status.ToLowerInvariant());
-            session.Advanced.Patch<AuditRun, DateTime?>(run.Id.Value, r => r.CompletedAtUtc, NowUtc);
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Error!, error!);
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.CurrentUrl!, null!);
-            session.Delete(CrawlFrontier.IdFor(run.Id.Value));
-            if (logKind is not null && run.SiteId is not null && await session.LoadAsync<Site>(run.SiteId, cancellationToken) is { } site)
-                await session.StoreAsync(await auditLog.EntryAsync(logKind, run.StartedBy, site, run.Id.Value, error, cancellationToken), cancellationToken);
-            await session.SaveChangesAsync(cancellationToken);
-        }
+        // A stage that failed for the last time (GuardAsync) left its writes pending here, and may have spent the session's
+        // request budget (Clear() keeps the count): neither belongs to ending the run, which had a session of its own before
+        // the notice had to share the scope's.
+        scopeSession.Advanced.Clear();
+        using var budget = scopeSession.IgnoreMaxRequests();
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Status, status);
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Phase!, status.ToLowerInvariant());
+        scopeSession.Advanced.Patch<AuditRun, DateTime?>(run.Id.Value, r => r.CompletedAtUtc, NowUtc);
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Error!, error!);
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.CurrentUrl!, null!);
+        scopeSession.Delete(CrawlFrontier.IdFor(run.Id.Value));
+        if (logKind is not null && run.SiteId is not null && await scopeSession.LoadAsync<Site>(run.SiteId, cancellationToken) is { } site)
+            await scopeSession.StoreAsync(await auditLog.EntryAsync(logKind, run.StartedBy, site, run.Id.Value, error, cancellationToken), cancellationToken);
         if (status != AuditRunStatus.Cancelled)
             await NotifyAsync(run, status == AuditRunStatus.Blocked ? $"The audit of {run.Origin} was blocked by its robots.txt" : $"The audit of {run.Origin} failed",
                 error, "audit-ended", cancellationToken);
+        await scopeSession.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

@@ -11,9 +11,12 @@ namespace MintPlayer.Spark.Notifications;
 /// </list>
 /// </summary>
 /// <remarks>
-/// The documents and the push messages are committed in one <c>SaveChanges</c> (the Messaging outbox), so a
-/// failure stores nothing. Mails are queued by MailManager afterwards (its own durable queue). A channel that is
-/// not set up (no MailManager, no VAPID keys) is skipped, never an error.
+/// <see cref="NotifyAsync"/> writes in the scope's session (<c>ISparkSession</c>) and <b>never saves</b> (#536 D50):
+/// the in-app documents and one fan-out message (the Messaging outbox) commit with the caller's <c>SaveChanges</c>,
+/// so a failure stores and sends nothing, and a <c>Clear()</c> before a retry drops them. A caller with nothing else to
+/// save saves right after the call. The fan-out then queues the pushes (one per device) and the mails (MailManager's
+/// own durable queue). A channel that is not set up (no MailManager, no VAPID keys, no Messaging) is skipped, never an
+/// error. The call costs the caller's session one request, every user's preferences at once.
 /// </remarks>
 public interface ISparkNotifier
 {
@@ -61,6 +64,6 @@ public sealed record SparkNotification
 
 /// <summary>What was done.</summary>
 /// <param name="NotificationIds">The in-app notifications stored.</param>
-/// <param name="Mails">Mails queued.</param>
-/// <param name="Pushes">Push messages queued (one per device).</param>
+/// <param name="Mails">Users mailed: each gets one mail once the caller's save commits the notification.</param>
+/// <param name="Pushes">Users pushed: each of their devices gets a push once the caller's save commits the notification.</param>
 public sealed record SparkNotifyReceipt(IReadOnlyList<string> NotificationIds, int Mails, int Pushes);

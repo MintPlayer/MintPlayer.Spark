@@ -71,7 +71,8 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
       and `IWebhookPublisher` lost their session parameter. The library interceptors, Apps, Notifications, MintPlayer,
       CodeCoverage and SeoTester inject the scoped session instead.
     - Retries clear the scope's session (`WebhookScheduler`, `WebhookFanOut`, CodeCoverage's `BackportRecipient`);
-      only `SparkNotifier` and `ParseSessionRecipient.ReportParseFailure` open a scope, each with its reason at the call.
+      only `ParseSessionRecipient.ReportParseFailure` opens a scope, with its reason at the call (`SparkNotifier` did too
+      until the owner's decision below).
     - **Found on the way:** with the session parameter gone, `WebhookPublisher`'s internal
       `PublishAsync(object, owner, string? messageId, ct)` had the keyed overload's shape, and the generic keyed
       overload resolved to itself: a stack overflow on every keyed publish (CodeCoverage publishes keyed only). Red:
@@ -128,8 +129,27 @@ rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #
             already tolerate.
           - `StoreSearchProvider` pages by offset and does not deduplicate `found`, so a row inserted between two pages of
             one search can be listed twice.
-      - Owner question still open: `SparkNotifier` keeps its own scope (an independent commit), or writes in the
-        caller's session.
+    - **The notifier writes in the caller's unit of work (owner, 2026-11-26, built).** The owner: "drop the
+      CreateScope call … and move the dependencies from the primary-constructor to readonly [Inject] fields inside the
+      class". PRD D50 has the design.
+      - `SparkNotifier` is `partial` with `[Inject]` fields. `NotifyAsync` stores the notifications and one
+        `NotificationFanOutMessage` (outbox, queue `spark-notifications`) in the scope's session and never saves.
+      - `NotificationFanOutHandler` sends after the commit: the mails, keyed per fan-out and user, then one Web Push
+        delivery per device. The preferences load in one batch, so the call costs the caller's session one request.
+      - Callers save: QnA's `QuestionReminderRecipient`; SeoTester's `PdfRecipient`, `MonitoredAuditRecipient` (cleared
+        first on a refused start), `AggregateRecipient` (notice and alerts before the run's save) and
+        `RunPipeline.EndAsync` (now in the scope's session, cleared, budget lifted).
+      - **Red first** (local, RavenDB), three new `NotificationTests`:
+        - `A_notification_commits_with_the_callers_save_and_not_before`: "Expected … to be null because nothing is
+          committed before the caller saves, but found Notification …".
+        - `A_caller_that_clears_its_session_and_retries_notifies_once`: "Expected … to contain a single item, but
+          found 2".
+        - `Notifying_many_users_with_devices_costs_the_callers_session_one_request` (35 users): "The maximum number of
+          requests (30) allowed for this session has been reached".
+      - **Green** (local): every `MintPlayer.Spark.Tests.Notifications` class on RavenDB 28/28. `NeutralNotificationTests`
+        on SQL Server 2/2, with the new `A_confirmed_users_mail_goes_out_from_the_fan_out_after_the_callers_save`: the
+        fan-out message goes through Messaging on the store. SeoTester.Tests `CrawlPipelineTests`, `CrawlResumeTests`,
+        `MonitoringTests`, `CompositionTests` and `ReportSurfaceTests` 24/24. QnA.Tests and CodeCoverage.Tests build.
   - **O13 built (2026-11-26).** It was decided 2026-11-24 (PRD §10) but never implemented. `SparkDbContext` mapped
     a `__stored_<Name>` field when one existed, but no generator emitted one, so SQL ignored every getter (HR's
     `FullName` could not be filtered or sorted).

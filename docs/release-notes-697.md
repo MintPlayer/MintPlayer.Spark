@@ -166,6 +166,10 @@ tags, and everything ships once the merged pull request is backported to `releas
       On RavenDB the scope's `ISparkSession` wraps the scope's `IAsyncDocumentSession`, so writes through either commit
       together.
     - `MessageBus` takes the scope's `ISparkSession` in its constructor (only code that constructs it by hand notices).
+    - **`ISparkNotifier.NotifyAsync` no longer saves.** It writes the notifications in the scope's session, and they
+      commit with the caller's `SaveChanges`: save after the call when nothing else would. Pushes and mails go out once
+      that save commits, through one outbox message (`NotificationFanOutMessage`, queue `spark-notifications`), so both
+      channels need `AddMessaging()`. `SparkNotifyReceipt.Pushes` counts the users pushed, no longer their devices.
 
 ## New
 

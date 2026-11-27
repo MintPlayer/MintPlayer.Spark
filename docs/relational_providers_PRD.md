@@ -837,10 +837,32 @@ it only invites passing the wrong one.
   registered. Resolving it from `app.ApplicationServices` throws under `ValidateScopes` (Development), and since D50 it
   also built a root `ISparkSession` that lived until shutdown. *(Review of #697, 2026-11-26; the outbox was already
   scoped before D50.)*
-- **A scope of its own only for a separate unit of work, with the reason at the call:** `SparkNotifier` commits the
-  notifications on their own, whatever the caller has pending. CodeCoverage's `ParseSessionRecipient.ReportParseFailure`
-  reports through a fresh scope because the scope's session may be what failed (exhausted request budget, faulted
-  connection); `Clear()` forgets what is pending, not what broke the session.
+- **The notifier writes in the caller's unit of work and never saves.** The owner, on `SparkNotifier` opening a scope of
+  its own to commit independently: "drop the CreateScope call … and move the dependencies from the primary-constructor
+  to readonly [Inject] fields inside the class". `NotifyAsync` stores the notifications and one
+  `NotificationFanOutMessage` (outbox) in the scope's session. The caller's `SaveChanges` commits them with its own
+  writes, and a `Clear()` before a retry drops them, so a retried unit of work notifies once.
+  - **Pushes and mails go out from the fan-out message, after the commit.** Mails used to be queued through
+    `ISparkMailer.SendAsync`, which commits on its own (`IMessageBus.BroadcastAsync`), so without the notifier's own
+    save a mail could go out for a notification that rolled back. The handler queues each mail with a key per fan-out and
+    user, so a retried fan-out mails nobody twice. It reads each account again, so an account deleted or unconfirmed since
+    gets no mail. Then it writes one Web Push delivery per device in one commit.
+  - **The call costs the caller's session one request.** Every user's preferences load at once; the devices and accounts
+    are read by the handler. On the shared session, two requests per user would have hit RavenDB's cap of 30 at about
+    15 users, with `SiteAlerter` alerting up to 1,024 members. The receipt's `Pushes` counts users, no longer devices.
+  - **Callers save.** QnA's reminder recipient and SeoTester's report and monitoring notices save after the call. The
+    monitoring notice for a refused start clears the session first: a start that lost the cool-down race leaves its run,
+    cool-down and log entry pending there. SeoTester's aggregate writes its completion notice and alerts before the run's
+    save, so they commit together. `RunPipeline.EndAsync` ends the run in the scope's session (cleared first, with the
+    budget lifted: a stage that failed for the last time left its writes and may have spent the budget) and commits the
+    notice with it. CodeCoverage's format run already saved after its notice.
+  - **Evidence** (local, plan §1 "The notifier writes in the caller's unit of work"): red first on RavenDB, a
+    notification committed before the caller saved, a cleared retry notified twice, and 35 users hit the cap of 30
+    requests. Green: the notification classes on RavenDB 28/28; `NeutralNotificationTests` on SQL Server 2/2, one of
+    them a mail sent from the fan-out through Messaging on that store.
+- **A scope of its own only for a separate unit of work, with the reason at the call:** CodeCoverage's
+  `ParseSessionRecipient.ReportParseFailure` reports through a fresh scope because the scope's session may be what failed
+  (exhausted request budget, faulted connection); `Clear()` forgets what is pending, not what broke the session.
 - `AsSparkSession()` stays, for tests and for static helpers handed a raw RavenDB session.
 - **Not changed** (same shape, outside the write pipeline, left for their own port): `RowSecurityGate`'s context,
   `LiveQueryArgs.Session`, the contribution handlers' contexts, `EntityMapper.PopulateObjectValuesAsync(po, entity,

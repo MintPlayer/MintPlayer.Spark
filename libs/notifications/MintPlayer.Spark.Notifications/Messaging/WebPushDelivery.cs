@@ -9,13 +9,17 @@ using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Notifications.Messaging;
 
-/// <summary>The queue of Web Push deliveries: one message per device and notification.</summary>
+/// <summary>The notifications' queues.</summary>
 public static class SparkNotificationQueues
 {
+    /// <summary>Web Push deliveries: one message per device and notification.</summary>
     public const string WebPush = "spark-webpush";
+
+    /// <summary>The fan-out of a notification's pushes and mails, once the caller committed it (#536 D50).</summary>
+    public const string FanOut = "spark-notifications";
 }
 
-/// <summary>One push to one device, written to the Messaging outbox in the notifier's <c>SaveChanges</c>.</summary>
+/// <summary>One push to one device, written to the Messaging outbox by a notification's fan-out.</summary>
 [MessageQueue(SparkNotificationQueues.WebPush)]
 public sealed class WebPushDeliveryMessage
 {

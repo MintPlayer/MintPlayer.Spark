@@ -105,6 +105,8 @@ public partial class PdfRecipient : IRecipient<PdfMessage>
                     OrganizationId = run.OrganizationId,
                     Category = "report-ready",
                 }, cancellationToken);
+                // The notifier writes in the scope's session and never saves (#536 D50); the report is committed above.
+                await session.SaveChangesAsync(cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

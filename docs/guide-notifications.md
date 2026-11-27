@@ -56,9 +56,11 @@ work. With them, startup refuses keys that are malformed or not a pair, and a mi
 public sealed partial class AlertService
 {
     [Inject] private readonly ISparkNotifier notifier;
+    [Inject] private readonly ISparkSession session;
 
-    public Task ScoreDroppedAsync(Site site, string userId, int from, int to, CancellationToken ct)
-        => notifier.NotifyAsync(new SparkNotification
+    public async Task ScoreDroppedAsync(Site site, string userId, int from, int to, CancellationToken ct)
+    {
+        await notifier.NotifyAsync(new SparkNotification
         {
             UserIds = [userId],
             Title = $"Score dropped to {to}",
@@ -68,11 +70,19 @@ public sealed partial class AlertService
             Category = "score-drop",               // a newer push of the same kind replaces an undelivered one
             Urgent = true,
         }, ct);
+        await session.SaveChangesAsync(ct);        // the notifier never saves: it commits with your writes
+    }
 }
 ```
 
-- The in-app documents and the push messages are written in **one** `SaveChanges` (the Messaging outbox), so a
-  failure stores nothing. Mails are queued by MailManager right after.
+- `NotifyAsync` writes in the scope's session (`ISparkSession`) and **never saves** (#536 D50). The notification
+  commits with the caller's `SaveChanges`, together with whatever else the caller wrote, so a failure stores none of
+  it. A `Clear()` before a retry drops it, so a retried unit of work notifies once. A caller with nothing else to save
+  saves right after the call.
+- Pushes and mails wait for that commit. The call writes one outbox message, whose handler reads each user's devices
+  and account, then queues one push per device and one mail per user, so both channels need `AddMessaging()`
+  (MailManager requires it anyway). The call itself costs the caller's session one request, the preferences of every
+  user at once, however many users it addresses.
 - A mail goes only to a **confirmed** address (`EmailConfirmed`): an X or Entra sign-in without a verified email
   proves nothing about the address.
 - Unknown user ids are skipped. Title ≤ 200, body ≤ 2 000 characters; a push carries the first 1 000.
@@ -91,6 +101,7 @@ var visitorId = principal.EnsureVisitorId();   // issues the visitor cookie when
 await messageBus.DelayBroadcastAsync(new ReportMessage(visitorId), TimeSpan.FromSeconds(5));
 // … later, in the recipient:
 await notifier.NotifyAsync(new SparkNotification { VisitorIds = [message.VisitorId], Title = "Your report is ready" });
+await session.SaveChangesAsync();   // the scope's ISparkSession
 ```
 
 - The visitor id lives in `spark.visitor` (HttpOnly, Data Protection, 24 h sliding: `Spark:Visitor:Lifetime`;

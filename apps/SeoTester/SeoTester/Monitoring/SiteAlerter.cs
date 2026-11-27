@@ -37,7 +37,8 @@ public sealed class SiteAlerter(
 
     /// <summary>
     /// Alerts the members of <paramref name="run"/>'s site about what it found, compared with <paramref name="previous"/>
-    /// (the site's completed run before it, or null). Never throws: the run is over either way.
+    /// (the site's completed run before it, or null). The alerts are written in the scope's session, which the caller
+    /// saves with the run's completion (#536 D50). Never throws: an alert that fails must not keep the run from completing.
     /// </summary>
     public async Task<IReadOnlyList<SiteAlert>> AlertAsync(AuditRun run, AuditRun? previous, ScoringSnapshot snapshot, int? score, IReadOnlyList<RunCheckResult> results, CancellationToken cancellationToken)
     {
@@ -87,7 +88,10 @@ public sealed class SiteAlerter(
         }
     }
 
-    /// <summary>Tells <paramref name="userIds"/> about a monitored site (a skipped scheduled run). Never throws.</summary>
+    /// <summary>
+    /// Tells <paramref name="userIds"/> about a monitored site (a skipped scheduled run), in the scope's session: the caller
+    /// saves (#536 D50). Never throws.
+    /// </summary>
     public async Task NotifyAsync(Site site, IReadOnlyCollection<string> userIds, string title, string? body, string category, CancellationToken cancellationToken)
     {
         if (userIds.Count == 0)
