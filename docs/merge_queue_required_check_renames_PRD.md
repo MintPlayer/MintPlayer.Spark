@@ -620,3 +620,18 @@ From comment 2, with F3 and F4 added.
     Evidence: `SummaryJobOfferTests`.
   - **The bell's text is translated** in the viewer's language (`rulesets.bell.*` in `translations.json`, golden
     regenerated in the same commit).
+- **2026-11-27, first run on a real pull request.** A local CodeCoverage instance on this branch receives the MintPlayer
+  repositories' webhooks through the development App, so it handled the `/queue` on #717 alongside production. Evidence,
+  from its log and the check runs on `7469ae98e625`:
+  - **The entry moved as designed:** Queued, Preparing, AwaitingChecks ("the head already contains the latest base"),
+    then Merging ("checks passed") only after every required check had passed. `pull-request` concluded at 12:32:11, and
+    the move followed a delivery from 12:33:49.
+  - **M2's App selection is accepted and answered by GitHub.** The 24 GraphQL requests the queue sent during the run all
+    returned 200, and no GraphQL error was logged. The same `statusCheckRollup` selection, run by hand against that
+    commit, returned each check run's App id: 15368 (GitHub Actions) and 4574022 (CodeCoverage), as S5 recorded, plus
+    4567511 (the development App) and 46505 (GitGuardian).
+  - **Its merge was refused, as it should be:** "Repository rule violations found. Cannot update this protected ref".
+    The development App is not exempt from the rule that restricts updates to master, so its queue cannot merge there. It
+    evicted the entry with `merge-refused`, and production's queue merged #717 at 12:34:38.
+  - **Not covered:** a required name that never reports, so neither the stuck state nor the bell ran. That remains S2's
+    job.
