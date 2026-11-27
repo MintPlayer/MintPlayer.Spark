@@ -104,6 +104,15 @@ parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx 
   merges into the file.
 - **A new test project** lands in the catch-all "Other suites" automatically. Give a long one its own
   matrix entry, or add it to a group, and add it to "Other suites"' `exclude` too.
+- **The merge queue's rulesets require the summary job, not each job** (#714, Dec3 in
+  `docs/merge_queue_required_check_renames_PRD.md`). Rulesets 2 and 3 require `pull-request`, which is green only when
+  every other job is, plus the CodeCoverage App's own checks.
+  - Renaming, joining or splitting any other job needs no ruleset change.
+  - A new job in `pull-request.yml` goes into `pull-request`'s `needs`, or GitHub does not enforce it.
+    `tools/verify-pull-request-summary.test.mjs` fails the pull request otherwise.
+  - Renaming `pull-request` itself means running "Set up rulesets" again. Never edit the bot's rulesets by hand.
+  - #714 was two renamed test jobs that a per-job ruleset still required: every queued pull request waited 60 minutes
+    and was evicted. Spark switches to this shape when the setup runs after #714's deploy.
 
 - **CI runs cost money: never push just to get a test run.** The sweep runs locally. Making it fast
   is tracked work (see `docs/contributions_PRD.md` §5c).
