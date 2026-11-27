@@ -440,4 +440,119 @@ public class MergeQueueRulesetPlannerTests
         PlanFor([], classic: null).Steps.OfType<CreateRulesetStep>()
             .Should().NotContain(s => s.Definition.Name == BackportBranchesName);
     }
+
+    private const long GitHubActions = 15368;
+
+    private static long? PinOf(ForgeRulesetDefinition definition, string context)
+        => definition.Rules.Single(r => r.Type == "required_status_checks").Parameters!["required_status_checks"]!.AsArray().OfType<JsonObject>()
+            .Single(c => c["context"]!.GetValue<string>() == context)["integration_id"]?.GetValue<long>();
+
+    /// <summary>Ruleset 2 as GitHub returns it: <paramref name="checksJson"/> parsed, so its values are read from JSON text.</summary>
+    private static ForgeRulesetDefinition Ruleset2FromGitHub(string checksJson) => Ruleset2(0, []) with
+    {
+        Rules =
+        [
+            .. Ruleset2(0, []).Rules,
+            new("required_status_checks", (JsonObject)JsonNode.Parse($$"""{"strict_required_status_checks_policy":true,"required_status_checks":{{checksJson}}}""")!),
+        ],
+    };
+
+    /// <summary>
+    /// #714 Dec3, Dec4: with a summary job, rulesets 2 and 3 require the App's own checks among the picks and the job, nothing
+    /// else; the App's checks are pinned to the App and the job to the App that reports it.
+    /// </summary>
+    [Fact]
+    public void A_summary_job_stands_alone_beside_the_Apps_checks_and_each_is_pinned()
+    {
+        var plan = Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build", "test", "coverage/patch"],
+            ReleaseLines: [Lines],
+            LineRequiredChecks: ["build", "e2e"],
+            SummaryJob: "pull-request",
+            CheckApps: new Dictionary<string, long> { ["pull-request"] = GitHubActions, ["build"] = GitHubActions }));
+
+        var created = plan.Steps.OfType<CreateRulesetStep>().ToDictionary(s => s.Definition.Name, s => s.Definition);
+        ContextsOf(created[ReviewsAndChecksName]).Should().Equal(["coverage/patch", "pull-request"]);
+        PinOf(created[ReviewsAndChecksName], "coverage/patch").Should().Be(AppId);
+        PinOf(created[ReviewsAndChecksName], "pull-request").Should().Be(GitHubActions);
+        ContextsOf(created[LineChecksName]).Should().Equal([LinePolicyCheckName, "pull-request"], "the lines' picks hold none of the App's checks");
+        PinOf(created[LineChecksName], LinePolicyCheckName).Should().Be(AppId);
+    }
+
+    [Fact]
+    public void Without_a_summary_job_the_picks_stay_and_a_name_without_a_known_App_keeps_its_pin()
+    {
+        var existing = Ruleset2(0, ["build", "lint"]);
+        existing.Rules[1].Parameters!["required_status_checks"]![1]!["integration_id"] = 42L;
+
+        var plan = PlanFor([new(1, Ruleset1()), new(2, existing)], classic: null, checks: ["build", "lint", "test"]);
+
+        var update = plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>().Which;
+        ContextsOf(update.Definition).Should().Equal(["build", "lint", "test"]);
+        PinOf(update.Definition, "lint").Should().Be(42);
+        PinOf(update.Definition, "test").HasValue.Should().BeFalse("no App is known to report it");
+    }
+
+    /// <summary>#714 Dec10 B1: the confirmation names the checks an update adds, drops and re-pins.</summary>
+    [Fact]
+    public void An_update_names_the_checks_it_adds_drops_and_repins()
+    {
+        var existing = Ruleset2FromGitHub("""[{"context":"build","integration_id":999},{"context":"test"}]""");
+
+        var plan = Plan(new ForgeRulesetState(AppId, [new(1, Ruleset1()), new(2, existing)], null),
+            new MergeQueueRulesetChoices(0, ["build", "lint"], CheckApps: new Dictionary<string, long> { ["build"] = GitHubActions }));
+
+        plan.Steps.Should().ContainSingle().Which.Should().BeOfType<UpdateRulesetStep>().Which.Changes.Should().Equal([
+            "required checks added: lint",
+            "required checks dropped: test",
+            "\"build\" pinned: App 999 → App 15368",
+        ]);
+    }
+
+    /// <summary>Pins GitHub already holds, read from its JSON, compare equal to the plan's: a second run changes nothing.</summary>
+    [Fact]
+    public void Pins_github_already_holds_are_not_changed_again()
+    {
+        var existing = Ruleset2FromGitHub($$"""[{"context":"build","integration_id":15368},{"context":"coverage/patch","integration_id":{{AppId}}}]""");
+
+        Plan(new ForgeRulesetState(AppId, [new(1, Ruleset1()), new(2, existing)], null),
+                new MergeQueueRulesetChoices(0, ["build", "coverage/patch"], CheckApps: new Dictionary<string, long> { ["build"] = GitHubActions }))
+            .IsConfigured.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Only_a_strict_parameter_change_is_still_named_as_a_rule_change()
+    {
+        var existing = Ruleset2(0, ["build"]);
+        existing.Rules[1].Parameters!["strict_required_status_checks_policy"] = false;
+
+        PlanFor([new(1, Ruleset1()), new(2, existing)], classic: null).Steps.Should().ContainSingle()
+            .Which.Should().BeOfType<UpdateRulesetStep>().Which.Changes.Should().Equal(["rule changed: required_status_checks"]);
+    }
+
+    /// <summary>#714 Dec3: the form starts with the summary job only when the rules are in that shape already.</summary>
+    [Fact]
+    public void The_summary_job_starts_from_rules_that_already_require_one_job()
+    {
+        Defaults(new ForgeRulesetState(AppId, [new(2, Ruleset2(0, ["coverage/patch", "pull-request"]))], null))
+            .SummaryJob.Should().Be("pull-request");
+        Defaults(new ForgeRulesetState(AppId, [new(2, Ruleset2(0, ["build", "test"]))], null))
+            .SummaryJob.Should().BeNull("one check per job");
+        Defaults(new ForgeRulesetState(AppId, [new(2, Ruleset2(0, ["coverage/patch"]))], null))
+            .SummaryJob.Should().BeNull("no job at all");
+
+        var lines = Plan(new ForgeRulesetState(AppId, [], null),
+                new MergeQueueRulesetChoices(0, ["pull-request"], ReleaseLines: [Lines], LineRequiredChecks: ["e2e"]))
+            .Steps.OfType<CreateRulesetStep>().Select((s, i) => new ForgeExistingRuleset(i + 1, s.Definition)).ToList();
+        Defaults(new ForgeRulesetState(AppId, lines, null)).SummaryJob
+            .Should().BeNull("ruleset 3 requires another job, which the summary-job shape would drop");
+    }
+
+    /// <summary>#714 Dec11: what counts as one check per job.</summary>
+    [Theory]
+    [InlineData(new[] { "build", "test" }, true)]
+    [InlineData(new[] { "coverage/patch", "build" }, false)]
+    [InlineData(new[] { "coverage/patch", "coverage/project", LinePolicyCheckName }, false)]
+    [InlineData(new[] { "build", "build" }, false)]
+    public void Rules_require_one_check_per_job_with_more_than_one_name_the_App_does_not_report(string[] required, bool perJob)
+        => RequiresOneCheckPerJob(required).Should().Be(perJob);
 }

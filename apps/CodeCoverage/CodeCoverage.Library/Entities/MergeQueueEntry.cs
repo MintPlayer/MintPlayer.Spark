@@ -201,6 +201,33 @@ public partial class MergeQueueEntry
     /// <summary>O12's expected minimum: the checks that reported on the head pinned at enqueue (D45).</summary>
     public List<string> ExpectedChecks { get; set; } = [];
 
+    /// <summary>
+    /// The App slug of each <see cref="ExpectedChecks"/> name that was a check run, read with it at enqueue (#714 Dec9). A
+    /// commit status, or a run whose App the forge did not name, has no entry. Only a GitHub Actions run may be dropped as
+    /// stale once the base changed its workflows (<see cref="DroppedExpectedChecks"/>); a status or another App's run is
+    /// always waited for. Kept apart from <see cref="ExpectedChecks"/> so that list's stored shape does not change.
+    /// </summary>
+    public Dictionary<string, string> ExpectedCheckApps { get; set; } = [];
+
+    /// <summary>
+    /// The expected names this run stopped waiting for, because the base's workflow change removed them (#714 Dec9, S3's
+    /// rule). Shown on the check run.
+    /// </summary>
+    public List<string> DroppedExpectedChecks { get; set; } = [];
+
+    /// <summary>
+    /// Since when the gate has been stuck on <see cref="FinalSha"/>: nothing pending, no suite running, and a required or
+    /// expected name that never reported (#714 C1). Null while it is not. Held for a poll interval, it is the stuck state
+    /// that drops a stale expected name, comments once and records drift (Dec8, Dec9, Dec5).
+    /// </summary>
+    public DateTime? StuckSinceUtc { get; set; }
+
+    /// <summary>The names the gate is stuck on, each with the rule that requires it; empty while it is not stuck (#714 C3).</summary>
+    public List<MergeQueueMissingCheck> StuckChecks { get; set; } = [];
+
+    /// <summary>This run posted its one "checks that never reported" comment (#714 Dec8).</summary>
+    public bool StuckCommented { get; set; }
+
     /// <summary>Failed checks re-run so far (D9).</summary>
     public int CheckRetries { get; set; }
 
@@ -331,6 +358,30 @@ public enum EMergeQueueEntryState
     /// recovery plan, segment C). The reason and message are in the eviction fields.
     /// </summary>
     Held,
+}
+
+/// <summary>A check the gate waits for that never reported, and where the wait comes from (#714 C3).</summary>
+public sealed class MergeQueueMissingCheck
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>A ruleset or branch protection requires it; false: it reported on the head pinned at enqueue (O12, D45).</summary>
+    public bool Required { get; set; }
+
+    /// <summary>The ruleset that requires it; null for classic branch protection, an expected name, or rules that could not be read.</summary>
+    public long? RulesetId { get; set; }
+
+    public string? RulesetName { get; set; }
+
+    /// <summary>Classic branch protection requires it.</summary>
+    public bool BranchProtection { get; set; }
+
+    /// <summary>Where the wait comes from, in words: "ruleset 'x' (id)", "branch protection", "reported on the queued head".</summary>
+    public string Source()
+        => !Required ? "reported on the queued head"
+            : RulesetId is { } id ? $"required by ruleset '{RulesetName ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture)}' ({id.ToString(System.Globalization.CultureInfo.InvariantCulture)})"
+            : BranchProtection ? "required by the branch protection"
+            : "required by the branch's rules";
 }
 
 public static class MergeQueueEntryStates

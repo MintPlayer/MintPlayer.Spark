@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace CodeCoverage.Forge;
@@ -65,12 +67,24 @@ public sealed record ForgeRulesetApplied(string Description, string? Url);
 /// owner 2026-11-11). Null keeps ruleset 3's own checks, or takes <paramref name="RequiredChecks"/> when it does not
 /// exist; empty creates no ruleset 3 and leaves an existing one as it is.
 /// </param>
+/// <param name="SummaryJob">
+/// The one CI job that waits for every other job (#714 Dec3; Spark's <c>pull-request</c>). With it, rulesets 2 and 3
+/// require the App's own checks among the picks (<see cref="MergeQueueRulesetPlanner.AppCheckNames"/>) and this job,
+/// nothing else, so renaming, joining or splitting another job never touches them. Null keeps the picks as they are.
+/// </param>
+/// <param name="CheckApps">
+/// The App each check name is reported by (#714 Dec4: <see cref="Entities.ForgeCheck.AppId"/>, or the App a refused merge
+/// named): a required check is pinned to it (<c>integration_id</c>), so only that App's run satisfies it. The App's own
+/// checks are always pinned to the App; a name without an entry keeps the pin the forge holds.
+/// </param>
 public sealed record MergeQueueRulesetChoices(
     int RequiredApprovals,
     IReadOnlyList<string> RequiredChecks,
     bool? AdminsMayMergeByPullRequest = null,
     IReadOnlyList<string>? ReleaseLines = null,
-    IReadOnlyList<string>? LineRequiredChecks = null);
+    IReadOnlyList<string>? LineRequiredChecks = null,
+    string? SummaryJob = null,
+    IReadOnlyDictionary<string, long>? CheckApps = null);
 
 /// <summary>One change the plan makes, in the order it must be made.</summary>
 public abstract record MergeQueueRulesetStep;
@@ -136,6 +150,19 @@ public static class MergeQueueRulesetPlanner
     /// </summary>
     public const string LinePolicyCheckName = "Line policy";
 
+    /// <summary>
+    /// The checks the App reports itself that a ruleset may require (#714 Dec3): the coverage checks and the line policy. A
+    /// job rename never touches them. The queue's own check is not one (D62), and "PR size" and "Backport targets" only inform.
+    /// </summary>
+    public static readonly IReadOnlyList<string> AppCheckNames = ["coverage/patch", "coverage/project", LinePolicyCheckName];
+
+    /// <summary>
+    /// Rules that require more than one check the App does not report itself: one per CI job, which a job rename leaves
+    /// waiting for a name that never reports. Offered the switch to one summary job (#714 Dec11).
+    /// </summary>
+    public static bool RequiresOneCheckPerJob(IEnumerable<string> requiredChecks)
+        => requiredChecks.Distinct(StringComparer.Ordinal).Count(name => !AppCheckNames.Contains(name, StringComparer.Ordinal)) > 1;
+
     /// <summary>The branches the App's backports are pushed to (<c>backport/&lt;pr&gt;-&lt;line&gt;</c>).</summary>
     public const string BackportBranchesPattern = "refs/heads/backport/*";
 
@@ -163,10 +190,11 @@ public static class MergeQueueRulesetPlanner
 
         if (choices.RequiredApprovals is < 0 or > 10)
             blockers.Add($"The approval count must be between 0 and 10, not {choices.RequiredApprovals}.");
-        var checks = Checks(choices.RequiredChecks, blockers);
+        var checks = Checks(SummaryJobShape(choices.RequiredChecks, choices.SummaryJob), blockers);
         var existing3 = Single(state, LineChecksName, blockers);
         var lineChecks = lines.Count == 0 ? []
-            : Checks(choices.LineRequiredChecks ?? (existing3 is null ? choices.RequiredChecks : RequiredCheckNames(existing3.Definition)), blockers);
+            : Checks(SummaryJobShape(choices.LineRequiredChecks ?? (existing3 is null ? choices.RequiredChecks : RequiredCheckNames(existing3.Definition)),
+                choices.SummaryJob), blockers);
         // Segment E: the line policy is always required on the lines, whatever else the admin picks.
         lineChecks.RemoveAll(c => c == LinePolicyCheckName);
         if (state.Classic?.HasPushRestrictions == true)
@@ -176,12 +204,12 @@ public static class MergeQueueRulesetPlanner
         var existing2 = Single(state, ReviewsAndChecksName, blockers);
 
         var desired1 = RestrictUpdates(state, choices, restricted, existing1);
-        var desired2 = ReviewsAndChecks(state, choices.RequiredApprovals, checks, include, existing2);
+        var desired2 = ReviewsAndChecks(state, choices, checks, include, existing2);
         AddStep(steps, existing1, desired1);
         AddStep(steps, existing2, desired2);
         if (lines.Count > 0)
         {
-            AddStep(steps, existing3, LineChecks(state, lineChecks, lines, existing3));
+            AddStep(steps, existing3, LineChecks(state, choices.CheckApps, lineChecks, lines, existing3));
             var existing4 = Single(state, BackportBranchesName, blockers);
             AddStep(steps, existing4, BackportBranches(state, existing4));
         }
@@ -221,10 +249,36 @@ public static class MergeQueueRulesetPlanner
             : state.Classic?.RequiredChecks ?? [];
         // Ruleset 3's own checks; without it, null, so the form starts from ruleset 2's (a current line runs master's tree).
         var ruleset3 = state.Rulesets.FirstOrDefault(r => r.Definition.Name == LineChecksName)?.Definition;
-        return new MergeQueueRulesetChoices(approvals, Clean(checks),
+        var required = Clean(checks);
+        var lineRequired = ruleset3 is null ? null : Clean(RequiredCheckNames(ruleset3));
+        // The summary-job shape only when both rulesets are in it already: with a job set, ruleset 3 keeps nothing else, so
+        // a line that requires more would lose those checks to a guess.
+        var summaryJob = SummaryJobOf(required) is { } job
+            && (lineRequired ?? []).All(name => name == job || AppCheckNames.Contains(name, StringComparer.Ordinal)) ? job : null;
+        return new MergeQueueRulesetChoices(approvals, required,
             ruleset1?.BypassActors.Any(IsAdminByPullRequest) ?? false,
-            LineRequiredChecks: ruleset3 is null ? null : Clean(RequiredCheckNames(ruleset3)));
+            LineRequiredChecks: lineRequired,
+            SummaryJob: summaryJob);
     }
+
+    /// <summary>
+    /// The summary job a required list already has (#714 Dec3): its one name the App does not report itself. Null for a list
+    /// with none, or with one per CI job (<see cref="RequiresOneCheckPerJob"/>), which the setup offers to switch.
+    /// </summary>
+    public static string? SummaryJobOf(IEnumerable<string> requiredChecks)
+    {
+        var jobs = requiredChecks.Where(name => !string.IsNullOrWhiteSpace(name) && !AppCheckNames.Contains(name, StringComparer.Ordinal))
+            .Distinct(StringComparer.Ordinal).Take(2).ToList();
+        return jobs.Count == 1 ? jobs[0] : null;
+    }
+
+    /// <summary>
+    /// What a ruleset requires with a summary job (#714 Dec3): the App's own checks among <paramref name="picked"/>, and the
+    /// job. Without one, the picks as they are.
+    /// </summary>
+    internal static IEnumerable<string> SummaryJobShape(IEnumerable<string> picked, string? summaryJob)
+        => string.IsNullOrWhiteSpace(summaryJob) ? picked
+            : [.. picked.Where(name => AppCheckNames.Contains(name, StringComparer.Ordinal)), summaryJob.Trim()];
 
     /// <summary>The checks the form offers: never the queue's own (D62), nor the line policy, which the plan always adds.</summary>
     private static List<string> Clean(IEnumerable<string> checks)
@@ -301,9 +355,10 @@ public static class MergeQueueRulesetPlanner
     private static bool IsAdminByPullRequest(ForgeRulesetActor actor)
         => actor is { ActorType: "RepositoryRole", ActorId: RepositoryAdminRoleId, BypassMode: "pull_request" };
 
-    private static ForgeRulesetDefinition ReviewsAndChecks(ForgeRulesetState state, int approvals, List<string> checks, List<string> include,
-        ForgeExistingRuleset? existing)
+    private static ForgeRulesetDefinition ReviewsAndChecks(ForgeRulesetState state, MergeQueueRulesetChoices choices, List<string> checks,
+        List<string> include, ForgeExistingRuleset? existing)
     {
+        var approvals = choices.RequiredApprovals;
         var classic = state.Classic;
         var kept = existing?.Definition.Rules ?? [];
         var rules = new List<ForgeRulesetRule>();
@@ -317,7 +372,7 @@ public static class MergeQueueRulesetPlanner
         rules.Add(new("pull_request", pullRequest));
 
         if (checks.Count > 0)
-            rules.Add(StatusChecks(kept, checks));
+            rules.Add(StatusChecks(kept, checks, state.AppId, choices.CheckApps));
 
         if (classic?.RequiredLinearHistory == true && kept.All(r => r.Type != "required_linear_history"))
             rules.Add(new("required_linear_history"));
@@ -337,15 +392,12 @@ public static class MergeQueueRulesetPlanner
     /// required checks, which a commit never carries for a branch that does not exist yet: SpaServices' cut answered 422)
     /// and pushes promotions; its other line changes go through the queue, which waits for these checks itself.
     /// </summary>
-    private static ForgeRulesetDefinition LineChecks(ForgeRulesetState state, List<string> checks, List<string> lines,
-        ForgeExistingRuleset? existing)
+    private static ForgeRulesetDefinition LineChecks(ForgeRulesetState state, IReadOnlyDictionary<string, long>? checkApps, List<string> checks,
+        List<string> lines, ForgeExistingRuleset? existing)
     {
         var kept = existing?.Definition.Rules ?? [];
-        var statusChecks = StatusChecks(kept, [.. checks, LinePolicyCheckName]);
-        // Bound to this App, replacing whatever the check was bound to: another App's green must not pass it.
-        foreach (var check in ((JsonArray)statusChecks.Parameters!["required_status_checks"]!).OfType<JsonObject>())
-            if (check["context"] is JsonValue v && v.TryGetValue<string>(out var name) && name == LinePolicyCheckName)
-                check["integration_id"] = state.AppId;
+        // The line policy is one of the App's own checks, so it is bound to this App: another App's green must not pass it.
+        var statusChecks = StatusChecks(kept, [.. checks, LinePolicyCheckName], state.AppId, checkApps);
         List<ForgeRulesetRule> rules = [statusChecks, .. kept.Where(r => r.Type != "required_status_checks")];
         var actors = (existing?.Definition.BypassActors ?? [])
             .Where(a => !(a.ActorType == "Integration" && a.ActorId == state.AppId))
@@ -371,10 +423,12 @@ public static class MergeQueueRulesetPlanner
     }
 
     /// <summary>
-    /// A <c>required_status_checks</c> rule with these checks, strict, keeping what the forge holds for a check already
-    /// required (its <c>integration_id</c>) and the rule's other parameters.
+    /// A <c>required_status_checks</c> rule with these checks, strict, keeping the rule's other parameters and what the forge
+    /// holds for a check already required. Each check is pinned (#714 Dec4): the App's own checks to the App, a name in
+    /// <paramref name="checkApps"/> to the App that reports it; any other keeps the pin it has, or none.
     /// </summary>
-    private static ForgeRulesetRule StatusChecks(IReadOnlyList<ForgeRulesetRule> kept, List<string> checks)
+    private static ForgeRulesetRule StatusChecks(IReadOnlyList<ForgeRulesetRule> kept, List<string> checks, long appId,
+        IReadOnlyDictionary<string, long>? checkApps)
     {
         var statusChecks = Clone(kept.FirstOrDefault(r => r.Type == "required_status_checks")?.Parameters);
         var byContext = (statusChecks["required_status_checks"] as JsonArray ?? [])
@@ -383,10 +437,24 @@ public static class MergeQueueRulesetPlanner
             .GroupBy(c => c["context"]!.GetValue<string>(), StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         statusChecks["strict_required_status_checks_policy"] = true;
-        statusChecks["required_status_checks"] = new JsonArray([.. checks.Order(StringComparer.Ordinal)
-            .Select(c => (JsonNode)(byContext.TryGetValue(c, out var known) ? known.DeepClone() : new JsonObject { ["context"] = c }))]);
+        statusChecks["required_status_checks"] = new JsonArray([.. checks.Order(StringComparer.Ordinal).Select(c =>
+        {
+            var check = byContext.TryGetValue(c, out var known) ? (JsonObject)known.DeepClone() : new JsonObject { ["context"] = c };
+            long? pin = AppCheckNames.Contains(c, StringComparer.Ordinal) ? appId
+                : checkApps?.TryGetValue(c, out var reporter) == true ? reporter
+                : null;
+            // Written only when it differs, so the pin GitHub returns (a number read from its JSON) stays as it was.
+            if (pin is { } app && PinOf(check) != app)
+                check["integration_id"] = app;
+            return (JsonNode)check;
+        })]);
         return new("required_status_checks", statusChecks);
     }
+
+    /// <summary>The App a required check is pinned to (<c>integration_id</c>); null for any source.</summary>
+    private static long? PinOf(JsonObject check)
+        => check["integration_id"] is JsonValue id && id.GetValueKind() == JsonValueKind.Number
+            && long.TryParse(id.ToJsonString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var app) ? app : null;
 
     private static void AddStep(List<MergeQueueRulesetStep> steps, ForgeExistingRuleset? existing, ForgeRulesetDefinition desired)
     {
@@ -415,7 +483,12 @@ public static class MergeQueueRulesetPlanner
         {
             var current = actual.Rules.FirstOrDefault(r => r.Type == rule.Type);
             if (current is null) changes.Add($"rule added: {rule.Type}");
-            else if (!JsonNode.DeepEquals(current.Parameters ?? [], rule.Parameters ?? [])) changes.Add($"rule changed: {rule.Type}");
+            else if (!JsonNode.DeepEquals(current.Parameters ?? [], rule.Parameters ?? []))
+            {
+                // #714 Dec10 B1: the checks a ruleset adds, drops and re-pins, which is what makes a fix safe to confirm.
+                var checkChanges = rule.Type == "required_status_checks" ? CheckChanges(current, rule) : [];
+                changes.AddRange(checkChanges.Count > 0 ? checkChanges : [$"rule changed: {rule.Type}"]);
+            }
         }
         foreach (var rule in actual.Rules.Where(r => desired.Rules.All(d => d.Type != r.Type)))
             changes.Add($"rule removed: {rule.Type}");
@@ -430,6 +503,39 @@ public static class MergeQueueRulesetPlanner
         foreach (var actor in actual.BypassActors.Where(a => desired.BypassActors.All(d => d.ActorType != a.ActorType || d.ActorId != a.ActorId)))
             changes.Add($"bypass removed: {Describe(actor)}");
         return changes;
+    }
+
+    /// <summary>
+    /// The required checks a <c>required_status_checks</c> rule adds, drops and re-pins, one line each; empty when only its
+    /// other parameters differ.
+    /// </summary>
+    private static List<string> CheckChanges(ForgeRulesetRule actual, ForgeRulesetRule desired)
+    {
+        var before = Pins(actual);
+        var after = Pins(desired);
+        var changes = new List<string>();
+        var added = after.Keys.Where(name => !before.ContainsKey(name)).Order(StringComparer.Ordinal).ToList();
+        var dropped = before.Keys.Where(name => !after.ContainsKey(name)).Order(StringComparer.Ordinal).ToList();
+        if (added.Count > 0)
+            changes.Add($"required checks added: {string.Join(", ", added)}");
+        if (dropped.Count > 0)
+            changes.Add($"required checks dropped: {string.Join(", ", dropped)}");
+        foreach (var name in after.Keys.Where(before.ContainsKey).Order(StringComparer.Ordinal))
+            if (before[name] != after[name])
+                changes.Add($"\"{name}\" pinned: {Source(before[name])} → {Source(after[name])}");
+        return changes;
+
+        static string Source(long? app) => app is { } id ? $"App {id}" : "any source";
+    }
+
+    /// <summary>A <c>required_status_checks</c> rule's contexts and the App each is pinned to (null: any source).</summary>
+    private static Dictionary<string, long?> Pins(ForgeRulesetRule rule)
+    {
+        var pins = new Dictionary<string, long?>(StringComparer.Ordinal);
+        foreach (var check in (rule.Parameters?["required_status_checks"] as JsonArray ?? []).OfType<JsonObject>())
+            if (check["context"] is JsonValue context && context.TryGetValue<string>(out var name))
+                pins.TryAdd(name, PinOf(check));
+        return pins;
     }
 
     private static List<string> ClassicNotes(ForgeClassicProtection classic, int approvals, List<string> checks)

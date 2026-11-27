@@ -588,3 +588,35 @@ From comment 2, with F3 and F4 added.
   - **The code:** the bell (`ISparkNotifier`), the setup's OAuth lease, the manager check, D62 (`Merge queue` can
     never be required) and the queue's comment sites.
   - **The plan:** §7 was rewritten to match.
+- **2026-11-27, M1–M6 implemented** on `fix/issue714-required-check-renames`, in one pull request. Every stored change
+  adds a property or a document; none renames one. The decisions made while building, with their evidence:
+  - **Notices are documents, one per repository and kind** (`RulesetNotices/{repository}/{kind}`, kinds
+    `MissingCheck`, `PinMismatch` and `SummaryJob`; `RulesetNotice.cs`). A drift raised again with other names gets a new
+    `Key` and an empty `NotifiedUsers`, so each manager is told once per drift (Dec5's deduplication). "Set up rulesets"
+    resolves the repository's notices when it applies, and the stuck queue resolves a `MissingCheck` itself when a
+    re-read finds the rules fixed (C2). Evidence: `RulesetNoticesTests`.
+  - **Delivery is a request from the client, not `ISparkSignedInHandler`.** That handler runs before the sign-in ticket
+    is issued (`SparkAccountContracts.cs:47`), so `ISparkCurrentPrincipal` is still anonymous there and the manager check
+    (`IDependencyOnboardingService.CheckAsync`, the same one "Set up rulesets" uses) cannot run. The handler is also meant
+    to stay "a load by id, not a query" (`:53`). Instead `RulesetNoticesService` posts `POST api/me/ruleset-notices`
+    whenever the auth state turns signed in. That covers both Dec5 moments, signing in and opening the app already signed
+    in, and a refreshed user object asks nothing more. The endpoint loads the open notices first, and makes no forge call
+    when none waits for this user. Evidence: `RulesetNoticeBellTests`, `ruleset-notices.service.spec.ts`; the route
+    snapshot gained that one line, antiforgery required.
+  - **A drift raised while the bell delivers is not lost.** The bell marks the user through a deferred patch that runs
+    only when the notice's `Key` is still the one delivered. The notification and the mark commit in one `SaveChanges`.
+    Evidence: `RulesetNoticeBellTests.A_drift_raised_while_the_bell_delivers_still_reaches_the_viewer`.
+  - **⚠️ Deviation from Dec5's "Its link opens 'Set up rulesets'".** The link opens the account's page,
+    `/{forge}/a/{owner}`. The bell's text says to select the repository and run "Set up rulesets". The reason: Spark has
+    no URL that runs an action. "Set up rulesets" is a query action that needs a selected row, and it is enabled only on
+    the `Account_Repositories` and `GetRepositories` lists (`RepositoryActions.cs:121-124`). Making the link run the action
+    takes a new ng-spark feature, a route that selects rows and starts an action. That is left for the owner to decide.
+  - **"Every repository with a `mergeQueue` section" (Dec11's post-deploy pass) is read as "the last dependency run
+    found the merge queue enabled"** (`DependencyUpdateRun.FileMergeQueue == Enabled`, recorded at every `coverage.yml`
+    read). The migration `M_202611271200_OfferSummaryJob` reads no file and calls no forge at startup. It queues one
+    `OfferSummaryJobMessage` per such repository through `BroadcastOnceAsync`. The recipient reads the default branch's
+    rules with the App's own token and raises the offer when they require one check per job. A disconnected or archived
+    repository, or a forge that refuses, is skipped. This follows `M_202610151200_BackfillRepositoryKnownChecks`.
+    Evidence: `SummaryJobOfferTests`.
+  - **The bell's text is translated** in the viewer's language (`rulesets.bell.*` in `translations.json`, golden
+    regenerated in the same commit).

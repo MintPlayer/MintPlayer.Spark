@@ -783,6 +783,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 => new ForgeCheck
                 {
                     Name = name, Kind = EForgeCheckKind.CheckRun, AppSlug = Child(check, "app") is { } app ? Text(app, "slug") : null,
+                    // The App's id is what a ruleset pins the check to (#714 Dec4).
+                    AppId = Child(check, "app") is { } pinned && pinned.TryGetProperty("id", out var id)
+                        && id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out var appId) ? appId : null,
                     // GitHub lists the pull requests whose head the run is on; a fork's are not listed, and a status
                     // names none, so those count only once the queue or the backfill sees them on a pull request (#554).
                     OnPullRequest = check.TryGetProperty("pull_requests", out var pulls)
@@ -797,7 +800,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // A point load the session already holds: LoadKnownRepositoryIdAsync read the same document.
         var repository = await session.LoadAsync<Repository>(repositoryId, ct);
         foreach (var due in ForgeCheck.Due(repository?.KnownChecks, [reported], DateTimeOffset.UtcNow.UtcDateTime))
-            await RaiseAsync(new CheckReported(repositoryId, due.Name, due.Kind, due.AppSlug, due.OnPullRequest), ct);
+            await RaiseAsync(new CheckReported(repositoryId, due.Name, due.Kind, due.AppSlug, due.OnPullRequest, due.AppId), ct);
     }
 
     /// <summary>

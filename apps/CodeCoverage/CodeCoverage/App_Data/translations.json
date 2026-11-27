@@ -4009,6 +4009,18 @@
             "fr": "Checks requis",
             "nl": "Vereiste checks"
           }
+        },
+        "SummaryJob": {
+          "description": {
+            "en": "The one CI job that waits for every other job and fails when any of them fails (Spark's is pull-request). With it, the rulesets require this job and the App's own checks only, so renaming, joining or splitting another job never touches them. The App never edits workflows: add the job yourself, on every branch the rulesets cover. Leave it empty to require each picked check.",
+            "fr": "Le seul job CI qui attend tous les autres et échoue dès que l'un d'eux échoue (celui de Spark est pull-request). Avec lui, les rulesets n'exigent que ce job et les checks de l'App elle-même : renommer, fusionner ou scinder un autre job ne les touche jamais. L'App ne modifie jamais les workflows : ajoutez le job vous-même, sur chaque branche couverte par les rulesets. Laissez vide pour exiger chaque check choisi.",
+            "nl": "De ene CI-job die op alle andere jobs wacht en faalt zodra er één faalt (die van Spark heet pull-request). Daarmee vereisen de rulesets alleen deze job en de eigen checks van de App, zodat het hernoemen, samenvoegen of splitsen van een andere job ze nooit raakt. De App bewerkt nooit workflows: voeg de job zelf toe, op elke branch die de rulesets dekken. Laat leeg om elke gekozen check te vereisen."
+          },
+          "label": {
+            "en": "Summary job",
+            "fr": "Job récapitulatif",
+            "nl": "Samenvattende job"
+          }
         }
       }
     },
@@ -4444,6 +4456,49 @@
       "fr": "Appliquer",
       "nl": "Toepassen"
     },
+    "bell": {
+      "howTo": {
+        "en": "Open the account's repositories, select {0} and run \"Set up rulesets\". Nothing changes until you confirm.",
+        "fr": "Ouvrez les dépôts du compte, sélectionnez {0} et lancez « Configurer les rulesets ». Rien ne change avant votre confirmation.",
+        "nl": "Open de repositories van het account, selecteer {0} en voer \"Rulesets instellen\" uit. Er verandert niets tot je bevestigt."
+      },
+      "missingCheck": {
+        "body": {
+          "en": "Pull request #{1} waited for {0}, which the rulesets require and which never reported, although every other check finished. The setup takes it out of the rulesets.",
+          "fr": "La pull request #{1} a attendu {0}, que les rulesets exigent et qui n'a jamais été signalé, alors que tous les autres checks étaient terminés. La configuration le retire des rulesets.",
+          "nl": "Pull request #{1} wachtte op {0}, dat de rulesets vereisen en dat nooit rapporteerde, terwijl alle andere checks klaar waren. De setup haalt het uit de rulesets."
+        },
+        "title": {
+          "en": "{0}: a required check never reports",
+          "fr": "{0} : un check requis n'est jamais signalé",
+          "nl": "{0}: een vereiste check rapporteert nooit"
+        }
+      },
+      "pinMismatch": {
+        "body": {
+          "en": "GitHub refused to merge pull request #{1}: the rulesets expect {0} from an App other than the one that reports it now. The setup pins it to the App that reports it.",
+          "fr": "GitHub a refusé de fusionner la pull request #{1} : les rulesets attendent {0} d'une autre App que celle qui le signale désormais. La configuration le lie à l'App qui le signale.",
+          "nl": "GitHub weigerde pull request #{1} te mergen: de rulesets verwachten {0} van een andere App dan degene die het nu rapporteert. De setup zet het vast op de App die het rapporteert."
+        },
+        "title": {
+          "en": "{0}: a required check is pinned to the wrong App",
+          "fr": "{0} : un check requis est lié à la mauvaise App",
+          "nl": "{0}: een vereiste check staat vast op de verkeerde App"
+        }
+      },
+      "summaryJob": {
+        "body": {
+          "en": "The rulesets require one check per CI job ({0}), so renaming, joining or splitting a job leaves pull requests waiting. Require one summary job instead, which needs every other job.",
+          "fr": "Les rulesets exigent un check par job CI ({0}) : renommer, fusionner ou scinder un job laisse les pull requests en attente. Exigez plutôt un seul job récapitulatif, qui dépend de tous les autres.",
+          "nl": "De rulesets vereisen één check per CI-job ({0}), dus het hernoemen, samenvoegen of splitsen van een job laat pull requests wachten. Vereis in de plaats één samenvattende job, die alle andere jobs nodig heeft."
+        },
+        "title": {
+          "en": "{0}: your rulesets can switch to one summary job",
+          "fr": "{0} : vos rulesets peuvent passer à un seul job récapitulatif",
+          "nl": "{0}: je rulesets kunnen overschakelen op één samenvattende job"
+        }
+      }
+    },
     "chooseMessage": {
       "en": "These apply to this repository only; each selected repository gets its own prompt.",
       "fr": "Ces réglages ne s'appliquent qu'à ce dépôt ; chaque dépôt sélectionné a sa propre invite.",
@@ -4496,6 +4551,23 @@
       "fr": "Rien à appliquer.",
       "nl": "Niets om toe te passen."
     },
+    "prefill": {
+      "removed": {
+        "en": "These required checks never reported on pull request #{1}, so they are taken out: {0}. Once applied, the queue picks up the fixed rulesets by itself.",
+        "fr": "Ces checks requis n'ont jamais été signalés sur la pull request #{1} ; ils sont donc retirés : {0}. Une fois appliqués, la file reprend d'elle-même les rulesets corrigés.",
+        "nl": "Deze vereiste checks hebben nooit gerapporteerd op pull request #{1} en worden dus weggehaald: {0}. Na het toepassen pikt de wachtrij de herstelde rulesets zelf op."
+      },
+      "repinned": {
+        "en": "Pinned to the App that reports them now: {0}.",
+        "fr": "Liés à l'App qui les signale désormais : {0}.",
+        "nl": "Vastgezet op de App die ze nu rapporteert: {0}."
+      },
+      "summaryJobLost": {
+        "en": "The summary job {0} never reported on pull request #{1}. Pick the job that now waits for every other job. Reported there: {2}.",
+        "fr": "Le job récapitulatif {0} n'a jamais été signalé sur la pull request #{1}. Choisissez le job qui attend désormais tous les autres. Signalés là : {2}.",
+        "nl": "De samenvattende job {0} heeft nooit gerapporteerd op pull request #{1}. Kies de job die nu op alle andere wacht. Daar gerapporteerd: {2}."
+      }
+    },
     "reason": {
       "noDefaultBranch": {
         "en": "its default branch is not known yet",
@@ -4522,6 +4594,28 @@
       "en": "Fix it in the repository's rules settings: {0}",
       "fr": "Corrigez-le dans les réglages des règles du dépôt : {0}",
       "nl": "Los het op in de regelinstellingen van de repository: {0}"
+    },
+    "stale": {
+      "heading": {
+        "en": "Required checks no pull request reported in the last 14 days (nothing is removed):",
+        "fr": "Checks requis qu'aucune pull request n'a signalés ces 14 derniers jours (rien n'est retiré) :",
+        "nl": "Vereiste checks die geen pull request de laatste 14 dagen rapporteerde (er wordt niets weggehaald):"
+      },
+      "neverSeen": {
+        "en": "{0}: never seen",
+        "fr": "{0} : jamais vu",
+        "nl": "{0}: nooit gezien"
+      },
+      "notSeenSince": {
+        "en": "{0}: not seen since {1}",
+        "fr": "{0} : pas vu depuis le {1}",
+        "nl": "{0}: niet gezien sinds {1}"
+      }
+    },
+    "summaryJobOffer": {
+      "en": "These rulesets require one check per CI job, so renaming, joining or splitting a job leaves pull requests waiting for a check that never reports. Switch to a summary job: one job that needs every other job and fails when any of them fails or is skipped. The App never edits your workflows, so add that job first, then pick it here.",
+      "fr": "Ces rulesets exigent un check par job CI : renommer, fusionner ou scinder un job laisse les pull requests attendre un check qui ne sera jamais signalé. Passez à un job récapitulatif : un job qui dépend de tous les autres et échoue dès que l'un d'eux échoue ou est ignoré. L'App ne modifie jamais vos workflows : ajoutez d'abord ce job, puis choisissez-le ici.",
+      "nl": "Deze rulesets vereisen één check per CI-job, dus het hernoemen, samenvoegen of splitsen van een job laat pull requests wachten op een check die nooit rapporteert. Schakel over naar een samenvattende job: één job die alle andere jobs nodig heeft en faalt zodra er één faalt of overgeslagen wordt. De App bewerkt nooit je workflows, dus voeg die job eerst toe en kies hem dan hier."
     }
   },
   "security": {

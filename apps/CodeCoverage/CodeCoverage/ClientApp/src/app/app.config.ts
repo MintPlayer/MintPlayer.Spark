@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
+import { ApplicationConfig, inject, provideAppInitializer, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
@@ -16,6 +16,7 @@ import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintpla
 import { routes } from './app.routes';
 import { HOME_URL } from './spark/home-route';
 import { codeCoverageRenderers } from './spark/renderers';
+import { RulesetNoticesService } from './services/ruleset-notices.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -46,6 +47,8 @@ export const appConfig: ApplicationConfig = {
       // #700 M11: the Image renderers (the account avatar, CustomAvatar's upload).
       withFileAttributes(),
     ),
+    // #714 Dec5, Dec11: the merge-queue ruleset notices reach the bell whenever the app becomes signed in.
+    provideAppInitializer(() => inject(RulesetNoticesService).start()),
     provideZonelessChangeDetection()
   ]
 };

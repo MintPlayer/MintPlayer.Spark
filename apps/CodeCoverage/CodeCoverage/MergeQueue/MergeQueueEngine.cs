@@ -77,6 +77,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly IWorkflowHook hook;
     /// <summary>#691 D41: queued, merged and removed go to the repository account's webhooks, saved with the transition.</summary>
     [Inject] private readonly Webhooks.CoverageWebhookPublisher webhooks;
+    /// <summary>#714 Dec5, Dec11: drift and the summary-job offer, written down for the managers' bell, saved with the step.</summary>
+    [Inject] private readonly IRulesetNotices notices;
 
     /// <summary>Retries of a step after a transient failure; the failure after the last retry evicts (§0 D58).</summary>
     public const int MaxTransientRetries = 6;
@@ -462,6 +464,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.DirectMerge = false;
         entry.RequiredChecks = [];
         entry.ExpectedChecks = [];
+        entry.ExpectedCheckApps = [];
+        entry.DroppedExpectedChecks = [];
+        entry.StuckSinceUtc = null;
+        entry.StuckChecks = [];
+        entry.StuckCommented = false;
         entry.CheckRetries = 0;
         entry.MergeRequestId = null;
         entry.MergeCommitSha = null;
@@ -557,9 +564,23 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             entry.Warnings.Add("The branch requires approval of the most recent push by someone else. The queue's commit is the most recent push, so the merge would be refused; turn that rule off for queue branches.");
         entry.RequiredChecks = [.. rules.RequiredChecks.Order(StringComparer.Ordinal)];
 
-        // O12's expected minimum (§0 D45): the checks the pull request's own CI reported on the pinned head.
-        entry.ExpectedChecks = [.. await context.Queue.GetCheckNamesOnCommitAsync(repository, pull.HeadSha, ct)];
-        await RecordReportedChecksAsync(context, entry.ExpectedChecks.Select(name => new ForgeCheck { Name = name }), ct);
+        // O12's expected minimum (§0 D45): the checks the pull request's own CI reported on the pinned head, each with its
+        // App, which decides whether it may be dropped as stale later (#714 Dec9).
+        var onHead = await context.Queue.GetChecksOnCommitAsync(repository, pull.HeadSha, ct);
+        entry.ExpectedChecks = [.. onHead.Select(check => check.Name)];
+        entry.ExpectedCheckApps = onHead
+            .Where(check => check is { Kind: EForgeCheckKind.CheckRun, AppSlug.Length: > 0 })
+            .ToDictionary(check => check.Name, check => check.AppSlug!, StringComparer.Ordinal);
+        await RecordReportedChecksAsync(context, onHead.Select(check => new ForgeCheck
+        {
+            Name = check.Name,
+            Kind = check.Kind,
+            AppSlug = check.AppSlug,
+            AppId = check.AppId,
+            OnPullRequest = check.OnPullRequest,
+        }), ct);
+        // #714 Dec11: a list with one entry per job is offered the switch to one summary job, once.
+        await notices.OfferSummaryJobAsync(repository, pull.BaseRef, rules, ct);
         return null;
     }
 
@@ -1743,9 +1764,21 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     {
         var state = await context.Queue.GetCheckStateAsync(context.Repository, entry.FinalSha!, ct);
         await RecordReportedChecksAsync(context,
-            state.CheckRuns.Select(run => new ForgeCheck { Name = run.Name, Kind = EForgeCheckKind.CheckRun, AppSlug = run.AppSlug })
-                .Concat(state.Statuses.Select(status => new ForgeCheck { Name = status.Context, Kind = EForgeCheckKind.Status })), ct);
+            state.CheckRuns
+                .Select(run => new ForgeCheck
+                {
+                    Name = run.Name,
+                    Kind = EForgeCheckKind.CheckRun,
+                    AppSlug = run.AppSlug,
+                    AppId = run.AppId,
+                })
+                .Concat(state.Statuses.Select(status => new ForgeCheck
+                {
+                    Name = status.Context,
+                    Kind = EForgeCheckKind.Status,
+                })), ct);
         var gate = CheckGate.Evaluate(state, entry.Config.CheckExclusions, entry.RequiredChecks, entry.ExpectedChecks);
+        gate = await StuckAsync(context, entry, state, gate, ct);
 
         switch (gate.Verdict)
         {
@@ -1804,7 +1837,229 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var generation = entry.Generation;
         await EvaluateChecksAsync(context, entry, fromPoll: false, ct);
         if (entry.State == EMergeQueueEntryState.AwaitingChecks && entry.Generation == generation)
-            await EvictAsync(context, entry, "checks-timeout", $"Checks on `{Short(entry.FinalSha)}` did not finish within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`).", ct: ct, holdable: true);
+            await EvictAsync(context, entry, "checks-timeout", entry.StuckChecks.Count > 0
+                // #714 Dec7: a check that never reported is named, with the rule that waits for it, not "did not finish".
+                ? $"Checks on `{Short(entry.FinalSha)}` never reported within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`), although every other check finished:\n\n"
+                    + MissingList(entry.StuckChecks) + "\n\n" + StuckAdvice(entry)
+                : $"Checks on `{Short(entry.FinalSha)}` did not finish within {entry.Config.ChecksTimeoutMinutes} minutes (`checks.timeout`).", ct: ct, holdable: true);
+    }
+
+    // ═══ Step 4b: a check that never reports (#714) ═════════════════════════════════════════════════
+
+    /// <summary>
+    /// #714: the gate waits for nothing but names that never reported (C1, <see cref="CheckGateResult.Stuck"/>). While it
+    /// does, at every look:
+    /// <list type="bullet">
+    /// <item>a required name sends the queue back to the branch's rules (C2, Dec7): a fixed ruleset frees the entry at
+    /// once, whoever fixed it, since GitHub tells an App without Administration nothing about ruleset edits;</item>
+    /// <item>once it held for a poll interval, an expected name a GitHub Actions run reported is dropped when the base changed
+    /// its workflows (C4, Dec9, S3's rule). A required name, a commit status or another App's run is never dropped;</item>
+    /// <item>the check run names what it waits for and why (C3), and once it held for a poll interval the pull request gets
+    /// one comment (Dec8) and a required name becomes a notice for the managers' bell (Dec5).</item>
+    /// </list>
+    /// The 60-minute timeout stays (Dec7: no early eviction): a workflow started by <c>workflow_run</c>, or an outside
+    /// status, may legitimately come late.
+    /// </summary>
+    /// <returns>The gate to act on: evaluated again when the rules or the expected names changed.</returns>
+    private async Task<CheckGateResult> StuckAsync(Context context, MergeQueueEntry entry, ForgeCheckState state, CheckGateResult gate, CancellationToken ct)
+    {
+        if (!gate.Stuck)
+        {
+            await UnstickAsync(context, entry, gate, ct);
+            return gate;
+        }
+
+        // Held: stuck at an earlier look a poll interval ago as well (S3's condition 4). A workflow that workflow_run starts
+        // shows its suite only once the run that triggers it has completed, so for a moment every suite can look done.
+        var held = entry.StuckSinceUtc is { } since && Now - since >= ChecksPollInterval;
+        entry.StuckSinceUtc ??= Now;
+
+        // C2: only a required name can be freed by the rules, so only then are they read again (about 3 calls).
+        ForgeBranchRules? rules = null;
+        if (gate.Missing.Any(name => entry.RequiredChecks.Contains(name, StringComparer.Ordinal)))
+        {
+            rules = await ReadRulesQuietlyAsync(context, entry, ct);
+            if (rules is not null)
+            {
+                List<string> required = [.. rules.RequiredChecks.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                if (!required.SequenceEqual(entry.RequiredChecks, StringComparer.Ordinal))
+                {
+                    entry.Note(Now, $"the branch's required checks changed: {Changes(entry.RequiredChecks, required)}");
+                    entry.RequiredChecks = required;
+                }
+            }
+        }
+
+        // C4 (Dec9): S3's four conditions. Condition 3 is gate.Stuck, 4 is held.
+        if (held && entry.BaseChangedWorkflows)
+        {
+            List<string> stale = [.. gate.Missing.Where(name => !entry.RequiredChecks.Contains(name, StringComparer.Ordinal)
+                && entry.ExpectedCheckApps.TryGetValue(name, out var app) && app == CheckGate.WorkflowRunsAppSlug)];
+            if (stale.Count > 0)
+            {
+                entry.ExpectedChecks.RemoveAll(name => stale.Contains(name, StringComparer.Ordinal));
+                entry.DroppedExpectedChecks.AddRange(stale.Where(name => !entry.DroppedExpectedChecks.Contains(name, StringComparer.Ordinal)));
+                entry.Note(Now, $"no longer waiting for {Names(stale)}: reported on the queued head, and gone since `{entry.BaseBranch}` changed its workflows");
+            }
+        }
+
+        var again = CheckGate.Evaluate(state, entry.Config.CheckExclusions, entry.RequiredChecks, entry.ExpectedChecks);
+        if (!again.Stuck)
+        {
+            if (rules is not null)
+                await notices.ResolveFixedAsync(context.Repository, entry.BaseBranch, rules, ct);
+            await UnstickAsync(context, entry, again, ct, changed: true);
+            return again;
+        }
+
+        var missing = MissingChecks(entry, again.Missing, rules);
+        var changed = !SameMissing(entry.StuckChecks, missing);
+        entry.StuckChecks = missing;
+
+        if (held && !entry.StuckCommented)
+        {
+            entry.StuckCommented = true;
+            changed = true;
+            List<string> required = [.. missing.Where(m => m.Required).Select(m => m.Name)];
+            if (required.Count > 0)
+                await notices.RaiseMissingCheckAsync(context.Repository, entry.BaseBranch, required,
+                    [.. state.CheckRuns.Select(run => run.Name).Concat(state.Statuses.Select(status => status.Context)).Where(name => name != CheckGate.QueueCheckName)],
+                    entry.Number, ct);
+            entry.Note(Now, $"stuck on {Names(missing.Select(m => m.Name))}, which never reported; commented on the pull request");
+            await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number, StuckComment(entry), ct), "stuck comment");
+        }
+        if (changed)
+            await PublishCheckAsync(context, entry, ct);
+        return again;
+    }
+
+    /// <summary>
+    /// The required checks pinned to one App (GitHub's <c>integration_id</c>) that only other Apps reported on the final
+    /// commit, each with the App that did (#714 Dec4, Dec5). Empty when there are none or the forge would not answer.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, long>> PinMismatchesAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.FinalSha is not { Length: > 0 } sha || await ReadRulesQuietlyAsync(context, entry, ct) is not { } rules)
+            return new Dictionary<string, long>();
+        var pinned = rules.RequiredCheckSources().Where(source => source.Check.IntegrationId is not null).ToList();
+        if (pinned.Count == 0) return new Dictionary<string, long>();
+
+        ForgeCheckState state;
+        try
+        {
+            state = await context.Queue.GetCheckStateAsync(context.Repository, sha, ct);
+        }
+        catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
+        {
+            logger.LogWarning(ex, "Merge queue: could not read the checks of {Sha} in {Repository} for their App pins", Short(sha), context.Repository.FullName);
+            return new Dictionary<string, long>();
+        }
+
+        var mismatches = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach (var source in pinned)
+        {
+            var runs = state.CheckRuns.Where(run => run.Name == source.Check.Context).ToList();
+            if (runs.Count > 0 && runs.All(run => run.AppId is { } app && app != source.Check.IntegrationId))
+                mismatches[source.Check.Context] = runs[0].AppId!.Value;
+        }
+        return mismatches;
+    }
+
+    /// <summary>The gate is no longer stuck: the check run's title goes back. A verdict publishes its own check, so only a wait republishes here.</summary>
+    private async Task UnstickAsync(Context context, MergeQueueEntry entry, CheckGateResult gate, CancellationToken ct, bool changed = false)
+    {
+        if (entry.StuckSinceUtc is null && entry.StuckChecks.Count == 0 && !changed) return;
+        var shown = entry.StuckChecks.Count > 0;
+        entry.StuckSinceUtc = null;
+        entry.StuckChecks = [];
+        if (gate.Verdict == ECheckVerdict.Pending && (shown || changed))
+            await PublishCheckAsync(context, entry, ct);
+    }
+
+    /// <summary>The branch's rules, or null when the forge would not answer now: the stuck entry keeps what it had and asks again at its next look.</summary>
+    private async Task<ForgeBranchRules?> ReadRulesQuietlyAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        try
+        {
+            return await context.Queue.GetBranchRulesAsync(context.Repository, entry.BaseBranch, ct);
+        }
+        catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
+        {
+            logger.LogWarning(ex, "Merge queue: could not read the rules of {Branch} in {Repository} again", entry.BaseBranch, context.Repository.FullName);
+            return null;
+        }
+    }
+
+    /// <summary>Each missing name with the rule that waits for it (C3): the rules just read when there are any, else what the entry knows.</summary>
+    private static List<MergeQueueMissingCheck> MissingChecks(MergeQueueEntry entry, IReadOnlyList<string> missing, ForgeBranchRules? rules)
+    {
+        var sources = rules?.RequiredCheckSources() ?? [];
+        var result = new List<MergeQueueMissingCheck>();
+        foreach (var name in missing)
+        {
+            var from = sources.Where(source => source.Check.Context == name).ToList();
+            if (from.Count > 0)
+                result.AddRange(from.Select(source => new MergeQueueMissingCheck
+                {
+                    Name = name,
+                    Required = true,
+                    RulesetId = source.RulesetId,
+                    RulesetName = source.RulesetName,
+                    BranchProtection = source.RulesetId is null,
+                }));
+            else
+                result.Add(new MergeQueueMissingCheck
+                {
+                    Name = name,
+                    Required = entry.RequiredChecks.Contains(name, StringComparer.Ordinal),
+                });
+        }
+        return result;
+    }
+
+    private static bool SameMissing(IReadOnlyList<MergeQueueMissingCheck> a, IReadOnlyList<MergeQueueMissingCheck> b)
+        => a.Count == b.Count && a.Zip(b).All(pair => pair.First.Name == pair.Second.Name && pair.First.Source() == pair.Second.Source());
+
+    /// <summary>One line per missing name: "- `name`: required by ruleset 'x' (id)".</summary>
+    internal static string MissingList(IEnumerable<MergeQueueMissingCheck> missing)
+        => string.Join("\n", missing.Select(m => $"- `{m.Name}`: {m.Source()}"));
+
+    /// <summary>
+    /// #714 Dec8: the one comment of a stuck entry. "Hasn't reported", never "doesn't exist": the queue never reads the
+    /// workflow files, so it cannot know a job is gone.
+    /// </summary>
+    private string StuckComment(MergeQueueEntry entry)
+        => $"The merge queue is waiting for checks that haven't reported on `{Short(entry.FinalSha)}`, although every other check has finished:\n\n"
+           + MissingList(entry.StuckChecks) + "\n\n"
+           + StuckAdvice(entry) + "\n\n"
+           + $"If nothing changes, the queue removes this pull request at {entry.StateChangedAtUtc.AddMinutes(entry.Config.ChecksTimeoutMinutes):yyyy-MM-dd HH:mm} UTC (`checks.timeout`, {entry.Config.ChecksTimeoutMinutes} minutes).";
+
+    /// <summary>What the people reading the comment, the check run or the eviction can do about a check that never reports.</summary>
+    private static string StuckAdvice(MergeQueueEntry entry)
+    {
+        var advice = new List<string>();
+        // D3: the likeliest cause, when this pull request is the one that touched the workflows.
+        if (entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile))
+            advice.Add("This pull request changes workflow files: a job it renamed, joined or split may still be required under its old name.");
+        if (entry.StuckChecks.Any(m => m.Required))
+            advice.Add("The repository's managers are notified in CodeCoverage. Running \"Set up rulesets\" there brings the rulesets in line, "
+                + "and the queue picks the fix up by itself at its next look, every two minutes.");
+        if (entry.StuckChecks.Any(m => !m.Required))
+            advice.Add("A check that reported on the pull request before it was queued is waited for until it reports on the queue's commit too.");
+        return string.Join("\n\n", advice);
+    }
+
+    private static string Names(IEnumerable<string> names) => string.Join(", ", names.Distinct(StringComparer.Ordinal).Select(name => $"`{name}`"));
+
+    private static string Changes(IReadOnlyCollection<string> before, IReadOnlyCollection<string> after)
+    {
+        var added = after.Where(name => !before.Contains(name, StringComparer.Ordinal)).ToList();
+        var dropped = before.Where(name => !after.Contains(name, StringComparer.Ordinal)).ToList();
+        return string.Join("; ", new[]
+        {
+            added.Count > 0 ? $"added {Names(added)}" : null,
+            dropped.Count > 0 ? $"dropped {Names(dropped)}" : null,
+        }.OfType<string>());
     }
 
     // ═══ Step 5: merge (O9, D13, D17, O18) ══════════════════════════════════════════════════════════
@@ -1898,6 +2153,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 break;
 
             default:
+                // #714 Dec4, Dec5: the gate ignores pins, so a pinned check another App reported passes here and GitHub
+                // refuses the merge. That is drift the managers can fix with the setup, so it is named and written down.
+                if (await PinMismatchesAsync(context, entry, ct) is { Count: > 0 } pins)
+                {
+                    await notices.RaisePinMismatchAsync(context.Repository, entry.BaseBranch, pins, entry.Number, ct);
+                    await EvictAsync(context, entry, "merge-refused",
+                        $"The forge refused the merge: {request.Message ?? "no reason given"}\n\n"
+                        + string.Join("\n", pins.Select(pin => $"- `{pin.Key}` is required from another App than the one that reported it (App {pin.Value.ToString(CultureInfo.InvariantCulture)})."))
+                        + "\n\nThe repository's managers are notified in CodeCoverage. Running \"Set up rulesets\" there pins each check to the App that reports it now; queue the pull request again after that.", ct: ct);
+                    break;
+                }
                 await EvictAsync(context, entry, "merge-refused",
                     $"The forge refused the merge: {request.Message ?? "no reason given"}\n\nIf this branch requires approval of the most recent push or dismisses stale approvals, turn those off for branches the queue manages: the queue's own commit is the most recent push, and it evicts any push it did not make.", ct: ct);
                 break;
@@ -2457,7 +2723,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var repository = context.Repository;
         foreach (var due in ForgeCheck.Due(repository.KnownChecks, reported, Now))
             await outbox.EnqueueAsync(
-                new ForgeWebhookMessage<CheckReported>(repository.Provider, new CheckReported(repository.Id.Value, due.Name, due.Kind, due.AppSlug)),
+                new ForgeWebhookMessage<CheckReported>(repository.Provider,
+                    new CheckReported(repository.Id.Value, due.Name, due.Kind, due.AppSlug, due.OnPullRequest, due.AppId)),
                 cancellationToken: ct);
     }
 

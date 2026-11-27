@@ -105,6 +105,13 @@ Until #649 such a refusal sat in the middle of an "Applied without a pull reques
   asks for a GitHub popup and sets them up on the default branch right after the pull request opens
   ([merge-queue.md §3](merge-queue.md)). Without the rulesets OAuth app, or when the read is refused, the confirmation
   says they are left to set by hand. Ruleset 1 covers the release lines too, so their updates go through the queue.
+- **A summary job in CI, for the merge queue** (#714). Add one job that `needs` every other job, runs `if: always()`
+  and fails when any of them failed, was cancelled or was skipped. Then pick it as the setup's **Summary job**. The
+  rulesets then require that job and the App's own checks only. Renaming, joining or splitting any other job never
+  touches them, and never leaves a queued pull request waiting for a name that will not report again. The bot never
+  edits a CI workflow, so this one is yours to add. Spark's is `pull-request` in `.github/workflows/pull-request.yml`.
+  Without one, a renamed required job leaves queued pull requests stuck until a manager follows the bell and runs "Set
+  up rulesets" again ([merge-queue.md §3.4](merge-queue.md)).
 - Anything under "To do by hand" in the pull request: a file the bot could not edit safely.
 
 ## Central package management

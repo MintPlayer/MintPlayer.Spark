@@ -123,21 +123,29 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
 
         var typesByRuleset = new Dictionary<long, List<string>>();
+        var checksByRuleset = new Dictionary<long, List<ForgeRequiredCheck>>();
         foreach (var rule in rules)
         {
             var type = Str(rule, "type") ?? string.Empty;
-            accumulator.AddRule(type, rule.TryGetProperty("parameters", out var parameters) ? parameters : default);
+            var parameters = rule.TryGetProperty("parameters", out var found) ? found : default;
+            accumulator.AddRule(type, parameters);
             if (Num(rule, "ruleset_id") is { } rulesetId)
             {
                 if (!typesByRuleset.TryGetValue(rulesetId, out var types))
                     typesByRuleset[rulesetId] = types = [];
                 if (!types.Contains(type)) types.Add(type);
+                if (type == "required_status_checks")
+                {
+                    if (!checksByRuleset.TryGetValue(rulesetId, out var checks))
+                        checksByRuleset[rulesetId] = checks = [];
+                    checks.AddRange(RulesetRequiredChecks(parameters).Where(check => !checks.Contains(check)));
+                }
             }
         }
 
         var rulesets = new List<ForgeRuleset>();
         foreach (var (rulesetId, types) in typesByRuleset.OrderBy(pair => pair.Key))
-            rulesets.Add(await ReadRulesetAsync(repository, rulesetId, types, cancellationToken));
+            rulesets.Add(await ReadRulesetAsync(repository, rulesetId, types, checksByRuleset.GetValueOrDefault(rulesetId), cancellationToken));
 
         var classic = await ReadClassicProtectionAsync(repository, branchPath, accumulator, cancellationToken);
 
@@ -189,7 +197,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     private static bool IsPlanWithoutRulesets(string message)
         => message.Contains("Upgrade to GitHub Pro", StringComparison.OrdinalIgnoreCase);
 
-    private async Task<ForgeRuleset> ReadRulesetAsync(Repository repository, long rulesetId, List<string> types, CancellationToken cancellationToken)
+    private async Task<ForgeRuleset> ReadRulesetAsync(
+        Repository repository, long rulesetId, List<string> types, List<ForgeRequiredCheck>? requiredChecks, CancellationToken cancellationToken)
     {
         using var reply = await SendAsync(repository, HttpMethod.Get,
             $"{RepoPath(repository)}/rulesets/{rulesetId.ToString(CultureInfo.InvariantCulture)}", null, DefaultApiVersion, cancellationToken);
@@ -197,13 +206,25 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         {
             // Unknown, not Never: the enable-time check (T7) must refuse what it could not read.
             logger.LogWarning("Could not read ruleset {RulesetId} on {FullName} ({Status}).", rulesetId, repository.FullName, (int)reply.Status);
-            return new ForgeRuleset(rulesetId, null, types, EForgeRulesetBypass.Unknown);
+            return new ForgeRuleset(rulesetId, null, types, EForgeRulesetBypass.Unknown, requiredChecks);
         }
         EnsureSuccess(reply);
 
         var root = reply.Json!.RootElement;
-        return new ForgeRuleset(rulesetId, Str(root, "name"), types, ParseBypass(Str(root, "current_user_can_bypass")));
+        return new ForgeRuleset(rulesetId, Str(root, "name"), types, ParseBypass(Str(root, "current_user_can_bypass")), requiredChecks);
     }
+
+    /// <summary>
+    /// A ruleset's <c>required_status_checks</c> rule: each <c>context</c> with its <c>integration_id</c>, the App the check
+    /// is pinned to (absent: any source may report it).
+    /// </summary>
+    private static IEnumerable<ForgeRequiredCheck> RulesetRequiredChecks(JsonElement parameters)
+        => Items(parameters, "required_status_checks")
+            .Where(check => Str(check, "context") is { Length: > 0 })
+            .Select(check => new ForgeRequiredCheck(Str(check, "context")!, AppPin(Num(check, "integration_id"))));
+
+    /// <summary>A pin as GitHub states it; classic protection's <c>-1</c> ("any App") and a missing value both mean none.</summary>
+    private static long? AppPin(long? id) => id is > 0 ? id : null;
 
     internal static EForgeRulesetBypass ParseBypass(string? word) => word switch
     {
@@ -259,6 +280,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     private sealed class RulesAccumulator
     {
         private readonly SortedSet<string> requiredChecks = new(StringComparer.Ordinal);
+        // Classic protection lists each check twice (`contexts`, then `checks` with its App); a pin wins over none.
+        private readonly SortedDictionary<string, long?> classicChecks = new(StringComparer.Ordinal);
         private int approvals;
         private bool dismissStale;
         private bool lastPush;
@@ -291,9 +314,15 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             if (checks.ValueKind != JsonValueKind.Object) return;
             upToDate |= Flag(checks, "strict");
             foreach (var context in Items(checks, "contexts"))
-                if (context.ValueKind == JsonValueKind.String && context.GetString() is { Length: > 0 } name) requiredChecks.Add(name);
+                if (context.ValueKind == JsonValueKind.String && context.GetString() is { Length: > 0 } name) AddClassic(name, null);
             foreach (var check in Items(checks, "checks"))
-                if (Str(check, "context") is { Length: > 0 } name) requiredChecks.Add(name);
+                if (Str(check, "context") is { Length: > 0 } name) AddClassic(name, AppPin(Num(check, "app_id")));
+        }
+
+        private void AddClassic(string name, long? appId)
+        {
+            requiredChecks.Add(name);
+            classicChecks[name] = appId ?? classicChecks.GetValueOrDefault(name);
         }
 
         public void AddClassicReviews(JsonElement reviews)
@@ -305,7 +334,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
 
         public ForgeBranchRules Build(bool rulesetsAvailable, IReadOnlyList<ForgeRuleset> rulesets, EForgeClassicProtection classic)
-            => new(rulesetsAvailable, [.. requiredChecks], approvals, dismissStale, lastPush, upToDate, nativeQueue, rulesets, classic);
+            => new(rulesetsAvailable, [.. requiredChecks], approvals, dismissStale, lastPush, upToDate, nativeQueue, rulesets, classic,
+                classicChecks.Count == 0 ? null : [.. classicChecks.Select(pair => new ForgeRequiredCheck(pair.Key, pair.Value))]);
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────────────────────────
@@ -327,8 +357,9 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 Str(run, "status") ?? "queued",
                 Str(run, "conclusion"),
                 run.TryGetProperty("check_suite", out var suite) ? Num(suite, "id") : null,
-                run.TryGetProperty("app", out var app) ? Str(app, "slug") : null,
-                Str(run, "details_url") ?? Str(run, "html_url")))],
+                Str(Child(run, "app"), "slug"),
+                Str(run, "details_url") ?? Str(run, "html_url"),
+                Num(Child(run, "app"), "id")))],
             [.. statuses.Select(status => new ForgeCommitStatus(
                 Str(status, "context") ?? string.Empty,
                 Str(status, "state") ?? "pending",
@@ -349,19 +380,26 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <summary>GitHub Actions' App: its suite belongs to a workflow run, so it always gets runs (#616).</summary>
     internal const string ActionsAppSlug = "github-actions";
 
-    public async Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ForgeReportedCheck>> GetChecksOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
     {
         RequireSha(sha);
         var commit = $"{RepoPath(repository)}/commits/{sha}";
         var runs = await GetPagedAsync(repository, $"{commit}/check-runs?filter=latest", "check_runs", cancellationToken);
         var statuses = await GetPagedAsync(repository, $"{commit}/status", "statuses", cancellationToken);
 
-        return [.. runs.Select(run => Str(run, "name"))
-            .Concat(statuses.Select(status => Str(status, "context")))
-            .OfType<string>()
-            .Where(name => name.Length > 0 && name != CheckGate.QueueCheckName)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)];
+        // The head of a pull request (D45), so every check on it reported on a pull request (#554).
+        return [.. runs
+            .Select(run => Str(run, "name") is { Length: > 0 } name
+                ? new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(run, "app"), "slug"), OnPullRequest: true,
+                    AppId: Num(Child(run, "app"), "id"))
+                : null)
+            .Concat(statuses.Select(status => Str(status, "context") is { Length: > 0 } name
+                ? new ForgeReportedCheck(name, EForgeCheckKind.Status, null, OnPullRequest: true)
+                : null))
+            .OfType<ForgeReportedCheck>()
+            .Where(check => check.Name != CheckGate.QueueCheckName)
+            .DistinctBy(check => check.Name, StringComparer.Ordinal)
+            .OrderBy(check => check.Name, StringComparer.Ordinal)];
     }
 
     // ── The checks a repository has seen (§11 D109) ──────────────────────────────────────────────
@@ -390,7 +428,7 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             contexts(first: $contexts) {
               nodes {
                 __typename
-                ... on CheckRun { name checkSuite { app { slug } } }
+                ... on CheckRun { name checkSuite { app { slug databaseId } } }
                 ... on StatusContext { context }
               }
             }
@@ -448,7 +486,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             var check = Str(context, "__typename") switch
             {
                 "CheckRun" when Str(context, "name") is { Length: > 0 } name
-                    => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(Child(context, "checkSuite"), "app"), "slug"), onPullRequest),
+                    => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(Child(context, "checkSuite"), "app"), "slug"), onPullRequest,
+                        Num(Child(Child(context, "checkSuite"), "app"), "databaseId")),
                 "StatusContext" when Str(context, "context") is { Length: > 0 } name
                     => new ForgeReportedCheck(name, EForgeCheckKind.Status, null, onPullRequest),
                 _ => null,

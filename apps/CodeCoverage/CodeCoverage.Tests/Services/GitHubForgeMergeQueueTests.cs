@@ -145,6 +145,41 @@ public class GitHubForgeMergeQueueTests
         rules.Rulesets[0].Bypass.Should().Be(EForgeRulesetBypass.Exempt);
         rules.Rulesets[1].Bypass.Should().Be(EForgeRulesetBypass.Never);
         rules.Rulesets[1].RuleTypes.Should().Equal(["pull_request", "required_status_checks"]);
+        rules.Rulesets[0].RequiredChecks.Should().BeNull();
+        rules.Rulesets[1].RequiredChecks.Should().Equal([new ForgeRequiredCheck("ci")]);
+        rules.RequiredCheckSources().Should().Equal([new ForgeRequiredCheckSource(new ForgeRequiredCheck("ci"), 25066861, "mq-2-reviews-checks")],
+            "#714 C3: the check run names the ruleset that waits for a name");
+    }
+
+    /// <summary>
+    /// #714 Dec4: a required check pinned to an App carries GitHub's <c>integration_id</c>; one rule pinned, one not, one
+    /// pinned to nothing (0, which GitHub answers for "any source"), and a name two rulesets require.
+    /// </summary>
+    [Fact]
+    public async Task A_rulesets_required_checks_carry_their_App_pins()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/main", HttpStatusCode.OK, """
+                [
+                  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"acme/widget","ruleset_id":2,
+                   "parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[
+                     {"context":"coverage/patch","integration_id":4574022},{"context":"ci"},{"context":"lint","integration_id":0},{"context":"ci"}]}},
+                  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"acme/widget","ruleset_id":3,
+                   "parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"ci","integration_id":15368}]}}
+                ]
+                """)
+            .On(HttpMethod.Get, $"{Repo}/rulesets/2", HttpStatusCode.OK, Ruleset(2, "mq-2-reviews-checks", "never"))
+            .On(HttpMethod.Get, $"{Repo}/rulesets/3", HttpStatusCode.OK, Ruleset(3, "mq-3-line-checks", "exempt"))
+            .On(HttpMethod.Get, $"{Repo}/branches/main", HttpStatusCode.OK, UnprotectedBranch);
+
+        var rules = await Queue(github).GetBranchRulesAsync(Target(), "main");
+
+        rules.Rulesets[0].RequiredChecks.Should().Equal(
+            [new ForgeRequiredCheck("coverage/patch", 4574022), new ForgeRequiredCheck("ci"), new ForgeRequiredCheck("lint")],
+            "a name once per ruleset, and integration_id 0 is no pin");
+        rules.Rulesets[1].RequiredChecks.Should().Equal([new ForgeRequiredCheck("ci", 15368)]);
+        rules.RequiredCheckSources().Where(source => source.Check.Context == "ci").Select(source => source.RulesetId)
+            .Should().Equal([2L, 3L], "a name two rulesets require is named twice");
     }
 
     /// <summary>
@@ -244,6 +279,8 @@ public class GitHubForgeMergeQueueTests
 
         rules.ClassicProtection.Should().Be(EForgeClassicProtection.ChecksOnly);
         rules.RequiredChecks.Should().Equal(["build"]);
+        rules.ClassicRequiredChecks.Should().Equal([new ForgeRequiredCheck("build", 15368)], "#714 Dec4: classic protection pins by app_id");
+        rules.RequiredCheckSources().Should().ContainSingle().Which.RulesetId.HasValue.Should().BeFalse("classic protection is no ruleset");
     }
 
     [Fact]
@@ -263,6 +300,7 @@ public class GitHubForgeMergeQueueTests
         rules.ClassicProtection.Should().Be(EForgeClassicProtection.Read);
         rules.RequiredApprovals.Should().Be(2);
         rules.RequiredChecks.Should().Equal(["test"]);
+        rules.ClassicRequiredChecks.Should().Equal([new ForgeRequiredCheck("test")], "app_id null is no pin");
         rules.RequireUpToDateBranch.Should().BeTrue();
         rules.HasNativeMergeQueue.Should().BeFalse("the GraphQL read was not answered");
     }
@@ -332,7 +370,8 @@ public class GitHubForgeMergeQueueTests
         var state = await Queue(github).GetCheckStateAsync(Target(), Head);
 
         state.CheckRuns.Should().HaveCount(2);
-        state.CheckRuns[0].Should().Be(new ForgeCheckRun(1, "ci", "completed", "success", 11, "github-actions", "https://github.com/acme/widget/actions/runs/1/job/1"));
+        state.CheckRuns[0].Should().Be(new ForgeCheckRun(1, "ci", "completed", "success", 11, "github-actions", "https://github.com/acme/widget/actions/runs/1/job/1",
+            AppId: 15368), "#714 Dec4: the App a pinned check must come from");
         state.CheckRuns[1].Conclusion.Should().BeNull();
         state.Statuses.Should().Equal([new ForgeCommitStatus("GitGuardian Security Checks", "failure", "https://dashboard.gitguardian.com/x")]);
         state.Suites.Should().Equal([new ForgeCheckSuite(11, "completed", "success", "github-actions", 1, RunsFollow: true)]);
@@ -378,8 +417,13 @@ public class GitHubForgeMergeQueueTests
             $"[{CheckRun(1, "ci", "completed", "success")},{CheckRun(2, CheckGate.QueueCheckName, status, conclusion)},{CheckRun(3, "build", "completed", "failure")}]",
             """[{"context":"ci","state":"success","target_url":null},{"context":"GitGuardian Security Checks","state":"success","target_url":null}]""");
 
-        (await Queue(github).GetCheckNamesOnCommitAsync(Target(), Head))
-            .Should().Equal(["GitGuardian Security Checks", "build", "ci"]);
+        var checks = await Queue(github).GetChecksOnCommitAsync(Target(), Head);
+
+        checks.Select(check => check.Name).Should().Equal(["GitGuardian Security Checks", "build", "ci"]);
+        checks.Should().AllSatisfy(check => check.OnPullRequest.Should().BeTrue("the head of a pull request"));
+        checks[0].Should().Be(new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.Status, null, OnPullRequest: true));
+        checks[2].Should().Be(new ForgeReportedCheck("ci", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
+            "a run and a status of one name are one name, and the run says which App reported it (#714 Dec4)");
     }
 
     [Fact]
@@ -1116,13 +1160,13 @@ public class GitHubForgeMergeQueueTests
     private const string ReportedChecks = """
         {"data":{"repository":{
           "defaultBranchRef":{"target":{"statusCheckRollup":{"contexts":{"nodes":[
-            {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions"}}},
+            {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
             {"__typename":"StatusContext","context":"ci/legacy"}]}}}},
           "pullRequests":{"nodes":[
             {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[
-              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions"}}},
-              {"__typename":"CheckRun","name":"Merge queue","checkSuite":{"app":{"slug":"coveragedevelopment"}}},
-              {"__typename":"CheckRun","name":"GitGuardian Security Checks","checkSuite":{"app":{"slug":"gitguardian"}}}]}}}}]}},
+              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
+              {"__typename":"CheckRun","name":"Merge queue","checkSuite":{"app":{"slug":"coveragedevelopment","databaseId":4574022}}},
+              {"__typename":"CheckRun","name":"GitGuardian Security Checks","checkSuite":{"app":{"slug":"gitguardian","databaseId":46505}}}]}}}}]}},
             {"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}]}}}}
         """;
 
@@ -1141,8 +1185,8 @@ public class GitHubForgeMergeQueueTests
         // #554: build, seen on the default branch first, is marked by the pull request that repeats it; ci/legacy reported
         // on the default branch alone, so it is not offered as a required check.
         checks.Should().Equal([
-            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian", OnPullRequest: true),
-            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true),
+            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian", OnPullRequest: true, AppId: 46505),
+            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
             new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null, OnPullRequest: false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();

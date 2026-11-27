@@ -62,8 +62,14 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     /// <summary>Rules of one branch, ahead of <see cref="Rules"/> (a <c>backport/*</c> head's own ruleset).</summary>
     public Dictionary<string, ForgeBranchRules> BranchRules { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>How often the rules were read (#714 C2 reads them again only for a required name).</summary>
+    public int RuleReads { get; private set; }
+
     public Task<ForgeBranchRules> GetBranchRulesAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
-        => Task.FromResult(BranchRules.TryGetValue(branch, out var rules) ? rules : Rules);
+    {
+        RuleReads++;
+        return Task.FromResult(BranchRules.TryGetValue(branch, out var rules) ? rules : Rules);
+    }
 
     public Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
         => Task.FromResult(BranchHeads.TryGetValue(branch, out var sha) ? sha : null);
@@ -98,8 +104,18 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult(RerunResult ? checkRuns.Count : 0);
     }
 
-    public Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
-        => Task.FromResult(CheckNames.TryGetValue(sha, out var names) ? names : (IReadOnlyList<string>)[]);
+    /// <summary>What <see cref="GetChecksOnCommitAsync"/> answers for a commit, ahead of <see cref="CheckNames"/> (#714: a status, another App).</summary>
+    public Dictionary<string, IReadOnlyList<ForgeReportedCheck>> ChecksOnCommit { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The checks on a commit: <see cref="ChecksOnCommit"/>' when it has the commit, else each of <see cref="CheckNames"/>' names
+    /// as a GitHub Actions run, which is what the harness's <see cref="MergeQueueHarness.Green"/> reports.
+    /// </summary>
+    public Task<IReadOnlyList<ForgeReportedCheck>> GetChecksOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
+        => Task.FromResult(ChecksOnCommit.TryGetValue(sha, out var checks) ? checks
+            : CheckNames.TryGetValue(sha, out var names)
+                ? [.. names.Select(name => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, CheckGate.WorkflowRunsAppSlug, OnPullRequest: true, AppId: 15368))]
+                : (IReadOnlyList<ForgeReportedCheck>)[]);
 
     /// <summary>What <see cref="GetReportedCheckNamesAsync"/> answers (§11 D109): the backfill's view of the repository.</summary>
     public List<ForgeReportedCheck> ReportedChecks { get; } = [];

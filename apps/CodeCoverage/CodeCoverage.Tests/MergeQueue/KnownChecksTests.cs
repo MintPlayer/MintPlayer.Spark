@@ -25,8 +25,17 @@ public class KnownChecksTests : CoverageRavenTest
 {
     private static readonly DateTime Now = new(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
 
-    private static ForgeCheck Known(string name, DateTime lastSeen, EForgeCheckKind? kind = EForgeCheckKind.CheckRun, string? app = "github-actions")
-        => new() { Id = name, Name = name, Kind = kind, AppSlug = app, LastSeenUtc = lastSeen };
+    private static ForgeCheck Known(string name, DateTime lastSeen, EForgeCheckKind? kind = EForgeCheckKind.CheckRun, string? app = "github-actions",
+        long? appId = null, bool onPullRequest = false) => new()
+    {
+        Id = name,
+        Name = name,
+        Kind = kind,
+        AppSlug = app,
+        AppId = appId,
+        OnPullRequest = onPullRequest,
+        LastSeenUtc = lastSeen,
+    };
 
     private static ForgeCheck Seen(string name, EForgeCheckKind? kind = EForgeCheckKind.CheckRun, string? app = "github-actions")
         => new() { Name = name, Kind = kind, AppSlug = app };
@@ -235,7 +244,8 @@ public class KnownChecksTests : CoverageRavenTest
 
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
         var reported = h.Raised.OfType<ForgeWebhookMessage<CheckReported>>().Select(m => m.Event).ToList();
-        reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "build", null, null), "the expected-minimum read gives the name alone");
+        reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
+            "the expected-minimum read says what reported each name on the pull request's head, and which App (#714 Dec4)");
         reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "build", EForgeCheckKind.CheckRun, "github-actions"));
         reported.Should().Contain(new CheckReported(RepositoryId.ToLowerInvariant(), "ci/legacy", EForgeCheckKind.Status, null));
     }
@@ -248,7 +258,9 @@ public class KnownChecksTests : CoverageRavenTest
         using (var session = h.Store.OpenAsyncSession())
         {
             var repository = await session.LoadAsync<Entities.Repository>(RepositoryId);
-            repository!.KnownChecks = [Known("build", DateTime.UtcNow)];
+            // Known as fully as the queue's read reports it: on a pull request, and down to the App's id (#714 Dec4). A known
+            // check missing either is raised once more to fill it in.
+            repository!.KnownChecks = [Known("build", DateTime.UtcNow, appId: 15368, onPullRequest: true)];
             await session.SaveChangesAsync();
         }
 

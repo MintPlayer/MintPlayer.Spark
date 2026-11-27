@@ -275,7 +275,7 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         var status = await DeliverAsync(store, "status", $$$"""{"sha":"{{{Sha}}}","state":"error","context":"ci/legacy","repository":{{{Repo}}}}""");
 
         run.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event
-            .Should().Be(new CheckReported(RepositoryId, "GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian"));
+            .Should().Be(new CheckReported(RepositoryId, "GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian", AppId: 15368));
         status.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event
             .Should().Be(new CheckReported(RepositoryId, "ci/legacy", EForgeCheckKind.Status, null));
     }
@@ -296,7 +296,8 @@ public class MergeQueueWebhookTests : CoverageRavenTest
             """);
 
         run.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event
-            .Should().Be(new CheckReported(RepositoryId, "tests", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true));
+            .Should().Be(new CheckReported(RepositoryId, "tests", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
+                "the App's id is what a ruleset pins the check to (#714 Dec4)");
     }
 
     [Fact]
@@ -323,10 +324,27 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var repository = await session.LoadAsync<Entities.Repository>(RepositoryId);
+            // Known down to the App's id (#714 Dec4): a known check without it is raised once more to fill it in.
             repository.KnownChecks =
             [
-                new ForgeCheck { Id = "fresh", Name = "fresh", Kind = EForgeCheckKind.CheckRun, AppSlug = "gitguardian", LastSeenUtc = DateTime.UtcNow.AddHours(-1) },
-                new ForgeCheck { Id = "stale", Name = "stale", Kind = EForgeCheckKind.CheckRun, AppSlug = "gitguardian", LastSeenUtc = DateTime.UtcNow.AddDays(-2) },
+                new ForgeCheck
+                {
+                    Id = "fresh",
+                    Name = "fresh",
+                    Kind = EForgeCheckKind.CheckRun,
+                    AppSlug = "gitguardian",
+                    AppId = 15368,
+                    LastSeenUtc = DateTime.UtcNow.AddHours(-1),
+                },
+                new ForgeCheck
+                {
+                    Id = "stale",
+                    Name = "stale",
+                    Kind = EForgeCheckKind.CheckRun,
+                    AppSlug = "gitguardian",
+                    AppId = 15368,
+                    LastSeenUtc = DateTime.UtcNow.AddDays(-2),
+                },
             ];
             await session.SaveChangesAsync();
         }

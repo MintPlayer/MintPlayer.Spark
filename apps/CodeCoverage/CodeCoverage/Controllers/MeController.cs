@@ -1,5 +1,6 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using CodeCoverage.MergeQueue;
 using CodeCoverage.Services;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
@@ -26,6 +27,7 @@ public partial class MeController : ControllerBase
 {
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IMyAccountsService myAccounts;
+    [Inject] private readonly IRulesetNoticeBell rulesetNotices;
 
     /// <summary>
     /// The accounts (user + organizations) the signed-in user may see, joined
@@ -69,6 +71,20 @@ public partial class MeController : ControllerBase
         await forges.InvalidateAllAsync(cancellationToken);
         return await GetAccounts(cancellationToken);
     }
+
+    /// <summary>
+    /// #714 Dec5, Dec11: the shell posts this whenever it becomes signed in, at a sign-in or when the app is opened. The
+    /// merge-queue ruleset notices of the repositories the viewer manages, and was not told about yet, each become one bell
+    /// notification (<see cref="IRulesetNoticeBell"/>).
+    /// </summary>
+    // RequireAntiforgeryToken, like Resync: it writes the viewer's notifications, so another site must not trigger it.
+    [HttpPost("ruleset-notices")]
+    [RequireAntiforgeryToken]
+    public async Task<ActionResult<RulesetNoticesDelivered>> DeliverRulesetNotices(CancellationToken cancellationToken)
+        => Ok(new RulesetNoticesDelivered(await rulesetNotices.DeliverAsync(cancellationToken)));
+
+    /// <param name="Delivered">How many notifications were sent; they reach the bell over the live socket.</param>
+    public sealed record RulesetNoticesDelivered(int Delivered);
 
     /// <param name="ConnectUrl">Where to send someone to connect this forge to an account — the
     /// GitHub App's public page today. Per-environment, so it cannot live in the model.</param>
