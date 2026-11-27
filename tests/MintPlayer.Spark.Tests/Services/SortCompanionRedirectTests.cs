@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </summary>
 public class SortCompanionRedirectTests(SortCompanionRedirectTests.SeededCars cars)
-    : SparkSharedTestDriver(cars), IClassFixture<SortCompanionRedirectTests.SeededCars>
+    : RavenSparkSharedTestDriver(cars), IClassFixture<SortCompanionRedirectTests.SeededCars>
 {
     public class Car
     {
@@ -85,7 +85,7 @@ public class SortCompanionRedirectTests(SortCompanionRedirectTests.SeededCars ca
     ];
 
     /// <summary>The class's database: <see cref="Models"/> stored and <see cref="Cars_Overview"/> caught up.</summary>
-    public sealed class SeededCars : SparkSharedDatabase
+    public sealed class SeededCars : RavenSparkSharedDatabase
     {
         public override async Task InitializeAsync()
         {

@@ -1,8 +1,6 @@
 using Microsoft.Extensions.Logging;
 
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -40,7 +38,7 @@ public sealed class OidcCorsOrigins
     /// </remarks>
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(2);
 
-    private IDocumentStore? _store;
+    private ISparkStore? _store;
     private ILogger? _logger;
 
     private volatile HashSet<string>? _origins;
@@ -52,11 +50,11 @@ public sealed class OidcCorsOrigins
     /// </summary>
     /// <remarks>
     /// ⚠️ Two-phase on purpose. The CORS policy is declared during service registration, where
-    /// there is no <see cref="IDocumentStore"/> to resolve yet, and a policy's
+    /// there is no <see cref="ISparkStore"/> to resolve yet, and a policy's
     /// <c>SetIsOriginAllowed</c> predicate has no service provider of its own — so the instance has
     /// to exist before the thing it reads does. Until this is called, nothing is allowed.
     /// </remarks>
-    public void Initialize(IDocumentStore store, ILogger? logger)
+    public void Initialize(ISparkStore store, ILogger? logger)
     {
         _store = store;
         _logger = logger;
@@ -89,20 +87,16 @@ public sealed class OidcCorsOrigins
     {
         if (_store is null) return;
 
-        using var session = _store.OpenAsyncSession();
+        using var session = _store.OpenSession();
 
-        // ⚠️ A collection query, materialising whole documents — deliberately NOT
-        // OidcApplications_ByClientId + ProjectInto. That index maps ClientId and Enabled only, and
-        // a projection off it would hand back applications whose AllowedCorsOrigins is empty, with
-        // no error: CORS would simply refuse every origin. Projecting needs the index to store the
-        // field being read, and this one has no reason to.
-        var applications = await session
-            .Query<OidcApplication>()
-            .Where(a => a.Enabled)
-            .ToListAsync(cancellationToken);
-
+        // A stream of the whole collection, filtered here (#536 D47): an unfiltered collection read builds no index on
+        // RavenDB (D42), and the applications are few. Whole documents, because the origins are what is read.
         var origins = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var application in applications)
+        await foreach (var row in session.StreamAsync(session.Query<OidcApplication>(), cancellationToken))
+        {
+            var application = row.Document;
+            if (!application.Enabled)
+                continue;
             foreach (var raw in application.AllowedCorsOrigins)
             {
                 var normalized = Normalize(raw);
@@ -118,6 +112,7 @@ public sealed class OidcCorsOrigins
                 }
                 origins.Add(normalized);
             }
+        }
 
         _origins = origins;
         Interlocked.Exchange(ref _loadedAtTicks, DateTime.UtcNow.Ticks);

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<SpaRoot>ClientApp\</SpaRoot>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.1.2">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SqlDemo.Library\SqlDemo.Library.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.PostgreSql\MintPlayer.Spark.PostgreSql.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<!--
+	  #536 O17: the migration scaffolding that model synchronize loads by name (EF Design, Roslyn: about 17 MB). An app
+	  on the package references it as a development dependency, which keeps it out of every publish. A ProjectReference
+	  never sees the package's .targets file, so here the Debug-only condition keeps it out of the Release build the
+	  production images publish (PRD §10, O17).
+	-->
+	<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Relational.Design\MintPlayer.Spark.Relational.Design.csproj" />
+	</ItemGroup>
+
+</Project>

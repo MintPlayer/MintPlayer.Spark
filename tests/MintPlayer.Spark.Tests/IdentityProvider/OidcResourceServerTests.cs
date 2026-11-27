@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 

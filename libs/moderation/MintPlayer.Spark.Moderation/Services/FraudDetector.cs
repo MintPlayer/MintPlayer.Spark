@@ -2,11 +2,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Moderation.Indexes;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -36,7 +34,7 @@ public sealed class FraudDetectionReport
 /// </remarks>
 internal sealed partial class FraudDetector
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ReputationLedger ledger;
     [Inject] private readonly IModerationAccounts accounts;
     [Inject] private readonly ModerationAudit audit;
@@ -161,11 +159,14 @@ internal sealed partial class FraudDetector
     internal async Task<Dictionary<string, HashSet<string>>> NetworksOfAsync(IReadOnlyCollection<string> userIds, CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         foreach (var chunk in userIds.Chunk(256))
         {
-            var rows = await ModerationQueries.StreamAllAsync(session, () => session.Query<ModerationIpObservation>().Where(o => o.UserId.In(chunk)), cancellationToken);
-            foreach (var (_, o) in rows)
+            // A List's Contains: an array's binds to the span overload in an expression tree (C# 14), which no provider reads.
+            List<string> ids = [.. chunk];
+            var rows = await ModerationQueries.StreamAllAsync<Moderation_IpObservations.Result, Moderation_IpObservations>(session,
+                q => q.Where(o => ids.Contains(o.UserId)), cancellationToken);
+            foreach (var o in rows)
             {
                 if (!result.TryGetValue(o.UserId, out var set))
                     result[o.UserId] = set = new HashSet<string>(StringComparer.Ordinal);
@@ -178,7 +179,7 @@ internal sealed partial class FraudDetector
     private async Task ReverseAsync(string rule, string voterId, string authorId, IReadOnlyList<string> voteIds, string summary, FraudDetectionReport report, DateTime now, CancellationToken cancellationToken)
     {
         var caseId = ModerationIds.FraudCase(rule, voterId, authorId);
-        using (var session = documentStore.OpenAsyncSession())
+        using (var session = store.OpenSession())
         {
             var existing = await session.LoadAsync<ReviewCase>(caseId.Value, cancellationToken);
             var reviewCase = existing ?? new ReviewCase { Kind = rule, AccountIds = [voterId, authorId], OpenedAtUtc = now };
@@ -205,7 +206,7 @@ internal sealed partial class FraudDetector
     private async Task OpenCaseAsync(string rule, string a, string b, IReadOnlyList<string> voteIds, string summary, FraudDetectionReport report, DateTime now, CancellationToken cancellationToken)
     {
         var caseId = ModerationIds.FraudCase(rule, a, b);
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         var reviewCase = await session.LoadAsync<ReviewCase>(caseId.Value, cancellationToken);
         if (reviewCase is not null && reviewCase.Status != ModerationCaseStatus.Open)
             return; // Decided by a human: the detector does not reopen it.
@@ -219,23 +220,32 @@ internal sealed partial class FraudDetector
             report.OpenedCases.Add(caseId.Value);
     }
 
+    /// <summary>The window's active votes, as the detector's rules read them (from <see cref="Moderation_Votes"/>; never loaded).</summary>
     private async Task<IReadOnlyList<ModerationVote>> ActiveVotesSinceAsync(DateTime since, CancellationToken cancellationToken)
     {
-        using var session = documentStore.OpenAsyncSession();
-        var rows = await ModerationQueries.StreamAllAsync(session, () => session.Query<ModerationVote>().Where(v => v.CastAtUtc >= since && v.Direction != 0), cancellationToken);
-        foreach (var (id, vote) in rows)
-            vote.Id = Id<ModerationVote>.FromTrusted(id);
-        return rows.Select(r => r.Document).ToList();
+        using var session = store.OpenSession();
+        var rows = await ModerationQueries.StreamAllAsync<Moderation_Votes.Result, Moderation_Votes>(session,
+            q => q.Where(v => v.CastAtUtc >= since && v.Direction != 0), cancellationToken);
+        return rows.Select(r => new ModerationVote
+        {
+            Id = Id<ModerationVote>.FromTrusted(r.Id!),
+            VoterId = r.VoterId,
+            TargetId = r.TargetId,
+            AuthorId = r.AuthorId,
+            Direction = r.Direction,
+            CastAtUtc = r.CastAtUtc,
+            TargetPostedAtUtc = r.TargetPostedAtUtc,
+        }).ToList();
     }
 
     /// <summary>The voter→recipient matrix from <see cref="Moderation_VotePairs"/>, summed over the window's days.</summary>
     internal async Task<Dictionary<(string VoterId, string AuthorId), int>> PairCountsSinceAsync(int sinceDayNumber, CancellationToken cancellationToken)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         var result = new Dictionary<(string, string), int>();
-        var rows = await ModerationQueries.StreamAllAsync(session,
-            () => session.Query<Moderation_VotePairs.Result, Moderation_VotePairs>().Where(r => r.DayNumber >= sinceDayNumber), cancellationToken);
-        foreach (var (_, row) in rows)
+        var rows = await ModerationQueries.StreamAllAsync<Moderation_VotePairs.Result, Moderation_VotePairs>(session,
+            q => q.Where(r => r.DayNumber >= sinceDayNumber), cancellationToken);
+        foreach (var row in rows)
         {
             var key = (row.VoterId, row.AuthorId);
             result[key] = result.GetValueOrDefault(key) + row.Count;

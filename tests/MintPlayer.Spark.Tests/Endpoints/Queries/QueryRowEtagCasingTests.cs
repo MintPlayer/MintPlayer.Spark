@@ -11,8 +11,9 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// A grid row's etag for a document stored before typed ids (#536 D7). Spark used to name a new document after its
 /// collection's casing (<c>LcItems/…</c>); a typed id loads lower case, while RavenDB hands the version back under the
 /// stored casing. A row without its etag can't be deleted from the grid (#467 D14: a missing etag is a 400).
+/// RavenDB only: the relational providers write lower-case ids from the first row.
 /// </summary>
-public class QueryRowEtagCasingTests : SparkTestDriver
+public class QueryRowEtagCasingTests : RavenSparkTestDriver
 {
     private static readonly Guid ItemTypeId = Guid.Parse("536e0000-0000-4000-8000-0000000000e1");
 
@@ -49,7 +50,7 @@ public class QueryRowEtagCasingTests : SparkTestDriver
             await session.StoreAsync(new LcItem { Name = "legacy" }, "LcItems/LEGACY");
             await session.SaveChangesAsync();
         }
-        await using var factory = new SparkEndpointFactory<LcContext>(Store, [Model()]);
+        await using var factory = new SparkEndpointFactory<LcContext>(Store.AsSparkTestDatabase(), [Model()]);
 
         using var scope = factory.CreateScope();
         var result = await scope.ServiceProvider.GetRequiredService<IQueryExecutor>().ExecuteQueryAsync(new SparkQuery

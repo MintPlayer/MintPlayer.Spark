@@ -59,6 +59,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     private const string SparkPlainRootAttributeFullName = "MintPlayer.Spark.Abstractions.SparkPlainRootAttribute";
     private const string RootQueryableMetadataName = "System.Linq.IQueryable`1";
+    private const string SparkViewMetadataName = "MintPlayer.Spark.Abstractions.Views.SparkView`1";
 
     /// <summary>Marks a <see cref="SparkContextInfo.QueryableTypeFullNames"/> entry that names an unresolved (not yet generated) type.</summary>
     private const string UnresolvedTypePrefix = "?";
@@ -175,22 +176,38 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 .ToImmutableArray())
             ;
 
+        // The neutral view (#536 D32) beside each index needs SparkView<TRow>, which lives in Spark's Abstractions, not
+        // in the attributes package the index gate looks for.
+        var knowsViewsProvider = context.CompilationProvider
+            .Select(static (compilation, ct) => compilation.GetTypeByMetadataName(SparkViewMetadataName) != null);
+
+        // The gate split (#536 M4d): an application without RavenDB (a relational or in-memory store) still gets the
+        // index entity and the view, which then claims the default; the native index and [FromIndex] need RavenDB.
+        var emitsGeneratedProvider = context.CompilationProvider
+            .Select(static (compilation, ct) =>
+                compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null
+                && compilation.Options.OutputKind is OutputKind.ConsoleApplication or OutputKind.WindowsApplication);
+
         var sourceProvider = allEntitiesProvider
-            .Combine(emitsIndexesProvider)
+            .Combine(emitsGeneratedProvider.Combine(emitsIndexesProvider))
             .Combine(languagesProvider)
             .Combine(claimsProvider)
             .Combine(settingsProvider)
+            .Combine(knowsViewsProvider)
             .Select(static Producer (providers, ct) =>
             {
-                var entities = providers.Left.Left.Left.Left;
-                var knowsSpark = providers.Left.Left.Left.Right;
-                var languages = providers.Left.Left.Right;
-                var claims = providers.Left.Right;
-                var settings = providers.Right;
+                var entities = providers.Left.Left.Left.Left.Left;
+                var (emitsGenerated, knowsRaven) = providers.Left.Left.Left.Left.Right;
+                var languages = providers.Left.Left.Left.Right;
+                var claims = providers.Left.Left.Right;
+                var settings = providers.Left.Right;
+                var knowsViews = providers.Right;
 
                 return new GenerateIndexProducer(
                     entities.ToList(),
-                    knowsSpark,
+                    emitsGenerated && (knowsRaven || knowsViews),
+                    knowsRaven,
+                    knowsViews,
                     languages,
                     ClaimedEntities(claims, entities),
                     settings.RootNamespace ?? "GeneratedCode");

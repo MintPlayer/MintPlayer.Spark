@@ -20,8 +20,8 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// Fleet and HR each grant anonymous exactly one right, so both would have flipped to 404 and
 /// lost the sign-in redirect, which the client's interceptor drives off 401 alone.
 /// </remarks>
-public class SparkDenialPredicateTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class SparkDenialPredicateTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid DocTypeId = Guid.Parse("5b5b0000-1111-2222-3333-444455556666");
 
@@ -33,7 +33,7 @@ public class SparkDenialPredicateTests(SparkSharedDatabase database)
     public async Task A_host_with_no_way_to_sign_in_answers_404_to_everyone()
     {
         await using var factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [GuardedDocModel.For(DocTypeId)], security: SparkTestSecurity.Empty);
+            Store.AsSparkTestDatabase(), [GuardedDocModel.For(DocTypeId)], security: SparkTestSecurity.Empty);
 
         using var client = factory.CreateClient();
         using var response = await client.PostAsJsonAsync("/spark/po/load", Wire.Typed(DocTypeId, id: "docs/1"));
@@ -49,7 +49,7 @@ public class SparkDenialPredicateTests(SparkSharedDatabase database)
     public async Task A_host_that_can_authenticate_answers_401_to_an_anonymous_caller()
     {
         await using var factory = new SparkEndpointFactory<GuardedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [GuardedDocModel.For(DocTypeId)],
             configureServices: services => services
                 .AddAuthentication("Test")

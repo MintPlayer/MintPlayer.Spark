@@ -11,7 +11,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Database migrations for MintPlayer.Spark. Define migrations by implementing ISparkMigration with a static abstract Version; they run once, in version order, at startup. Multi-node safe via RavenDB compare-exchange locking, idempotent via per-version marker documents.</Description>
+		<Description>Database migrations for MintPlayer.Spark. Define migrations by implementing ISparkMigration with a static abstract Version; they run once, in version order, at startup. Runs on any Spark store: multi-node safe via a lease on the store (ISparkStoreLock; compare-exchange on RavenDB), idempotent via per-version marker documents.</Description>
 		<PackageTags>migrations;seeding;ravendb;startup</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
@@ -30,7 +30,6 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 	<ItemGroup>

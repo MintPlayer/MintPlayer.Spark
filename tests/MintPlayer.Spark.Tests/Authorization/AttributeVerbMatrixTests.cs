@@ -78,7 +78,7 @@ public class VmContext : SparkContext
 /// important. Each case observes the four verbs on <c>VmItem.Code</c>: the query column, the GET
 /// attribute, whether an update writes it, whether a create writes it.
 /// </remarks>
-public class AttributeVerbMatrixTests : SparkTestDriver
+public class AttributeVerbMatrixTests : RavenSparkTestDriver
 {
     private static readonly Guid ItemTypeId = Guid.Parse("a77c0000-0000-4000-8000-00000000c001");
     private static readonly Guid SongTypeId = Guid.Parse("a77c0000-0000-4000-8000-00000000c002");
@@ -103,7 +103,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
     private async Task<SparkClient> StartAsync(params string[] rules)
     {
         factory = new SparkEndpointFactory<VmContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ItemModel(), SongModel(), LyricModel()],
             configureServices: services =>
             {

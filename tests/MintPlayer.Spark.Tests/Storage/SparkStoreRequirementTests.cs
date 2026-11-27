@@ -15,9 +15,9 @@ public class SparkStoreRequirementTests
     public void A_missing_capability_names_the_feature_and_the_capability()
     {
         var unmet = SparkStoreRequirementExtensions.Unmet(
-            [new SparkStoreRequirement("Spark.History", SparkStoreCapabilities.Revisions)], InMemory);
+            [new SparkStoreRequirement("Spark.Example", SparkStoreCapabilities.FullTextSearch)], InMemory);
 
-        unmet.Should().Equal("Spark.History needs Revisions; the InMemory provider doesn't offer it.");
+        unmet.Should().Equal("Spark.Example needs FullTextSearch; the InMemory provider doesn't offer it.");
     }
 
     [Fact]
@@ -32,7 +32,8 @@ public class SparkStoreRequirementTests
     [Fact]
     public void An_offered_capability_and_a_duplicate_declaration_are_met_or_reported_once()
     {
-        var requirement = new SparkStoreRequirement("Spark.Messaging", SparkStoreCapabilities.Subscriptions);
+        // FullTextSearch: a capability the InMemory store lacks (it offers Subscriptions since #536 D39, Revisions since S8).
+        var requirement = new SparkStoreRequirement("Spark.Example", SparkStoreCapabilities.FullTextSearch);
 
         SparkStoreRequirementExtensions.Unmet(
             [new SparkStoreRequirement("Spark.Live", SparkStoreCapabilities.ChangeNotifications)], InMemory).Should().BeEmpty();
@@ -40,11 +41,19 @@ public class SparkStoreRequirementTests
     }
 
     [Fact]
-    public void No_store_says_which_provider_to_register()
+    public void No_store_and_no_provider_named_asks_for_any_store_provider()
     {
         var unmet = SparkStoreRequirementExtensions.Unmet([new SparkStoreRequirement("Spark.Messaging", SparkStoreCapabilities.Subscriptions)], null);
 
-        unmet.Should().Equal("Spark.Messaging needs a store, and none is registered: call spark.UseRavenDb() in AddSpark.");
+        unmet.Should().Equal("Spark.Messaging needs a store, and none is registered: call a store provider's Use method in AddSpark, such as spark.UseRavenDb() or spark.UseSqlServer().");
+    }
+
+    [Fact]
+    public void No_store_with_a_provider_named_says_which_one_to_register()
+    {
+        var unmet = SparkStoreRequirementExtensions.Unmet([new SparkStoreRequirement("Spark.Apps", SparkStoreCapabilities.None, SparkStoreProviders.RavenDb)], null);
+
+        unmet.Should().Equal("Spark.Apps needs a store, and none is registered: call spark.UseRavenDb() in AddSpark.");
     }
 
     // ---- D20: index bindings in the model -------------------------------------------------------------------

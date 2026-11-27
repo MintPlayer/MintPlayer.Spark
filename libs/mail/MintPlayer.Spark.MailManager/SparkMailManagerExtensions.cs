@@ -37,11 +37,11 @@ public static class SparkMailManagerExtensions
     /// 32-character secret, <c>Development:RedirectTo</c> in Production, and — in Development — a
     /// transport that delivers to real recipients without <c>Development:RedirectTo</c>. The Authorization package's account mail goes through this automatically.
     /// </remarks>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.MailManager", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddMailManager(this ISparkBuilder builder, Action<SparkMailOptions>? configure = null)
     {
-        // #551 D13: deliveries are kept in RavenDB, through its own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.MailManager", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536: deliveries and suppressions live in any store (ISparkStore); D36 registers their tables.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Deliveries.SparkMailDelivery>(builder.Services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Deliveries.SparkMailSuppression>(builder.Services);
 
         var section = builder.Configuration?.GetSection(ConfigurationSection);
         builder.Services.AddOptions<SparkMailOptions>().Configure(options =>
@@ -94,7 +94,7 @@ public static class SparkMailManagerExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRecipient<SparkMailCampaignMessage>, SparkMailCampaignHandler>());
 
         builder.Registry.AddMiddleware(app => SparkMailStartup.Validate(app.ApplicationServices));
-        // SparkMailDeliveries/{id} records carry @expires (DeliveryRetentionDays). Declared here rather than
+        // SparkMailDeliveries/{id} records expire (IExpiring, DeliveryRetentionDays). Declared here rather than
         // left to Messaging, which happened to enable expiration too: nothing said this library relied on it.
         builder.Registry.RequireDocumentExpiration("MailManager");
         // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs):

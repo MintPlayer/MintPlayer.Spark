@@ -1,0 +1,18 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  #536 O16: the provider package a test project references decides its database. This writes
+	  [assembly: MintPlayer.Spark.Testing.SparkTestDatabase(typeof(MintPlayer.Spark.Testing.RavenSparkTestDatabaseProvider))]
+	  into the test assembly. A project with several provider packages gets several attributes and picks one with
+	  SPARK_TEST_DATABASE; SparkTestDatabases fails, naming the candidates, otherwise.
+
+	  build/, not buildTransitive/: a test project references the testing package directly.
+	-->
+	<ItemGroup Condition=" '$(SparkTestDatabaseAttributes)' != 'false' ">
+		<AssemblyAttribute Include="MintPlayer.Spark.Testing.SparkTestDatabaseAttribute">
+			<_Parameter1>typeof(MintPlayer.Spark.Testing.RavenSparkTestDatabaseProvider)</_Parameter1>
+			<_Parameter1_IsLiteral>true</_Parameter1_IsLiteral>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+</Project>

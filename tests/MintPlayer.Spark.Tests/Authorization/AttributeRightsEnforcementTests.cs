@@ -54,7 +54,7 @@ public class AttrVault
 /// </para>
 /// </remarks>
 public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<AttributeRightsEnforcementTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<AttributeRightsEnforcementTests.Host>, IDisposable
 {
     private static readonly Guid VaultTypeId = Guid.Parse("a77a0000-0000-4000-8000-00000000a001");
     private static readonly Guid KeeperTypeId = Guid.Parse("a77a0000-0000-4000-8000-00000000a002");
@@ -112,7 +112,7 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
         }
 
         protected override SparkEndpointFactory<AttrContext> CreateFactory() => new(
-            Store,
+            Store.AsSparkTestDatabase(),
             [VaultModel(), KeeperModel()],
             configureServices: services =>
             {

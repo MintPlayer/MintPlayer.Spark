@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <!-- Test utilities, not a test project: see MintPlayer.Spark.Testing.csproj. -->
+    <IsTestProject>false</IsTestProject>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>MintPlayer.Spark.Testing.SqlServer</PackageId>
+    <Version>0.0.0-PLACEHOLDER</Version>
+    <Authors>MintPlayer</Authors>
+    <Company>MintPlayer</Company>
+    <Description>SQL Server for MintPlayer.Spark's test harness: a database per test or class on SPARK_TEST_SQLSERVER's server, LocalDB, or a Testcontainers container, its schema built from the model.</Description>
+    <PackageTags>spark;testing;integration-tests;sqlserver;xunit;testhost</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- O16: the build writes [assembly: SparkTestDatabase(typeof(SqlServerSparkTestDatabaseProvider))] into the test project. -->
+    <None Include="Targets\spark-testing-sqlserver.targets" Pack="true" PackagePath="build\MintPlayer.Spark.Testing.SqlServer.targets" />
+    <!-- The relational test database, shared with the other relational provider package. -->
+    <Compile Include="..\Shared\RelationalSparkTestDatabase.cs" Link="RelationalSparkTestDatabase.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.MsSql" Version="4.17.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\spark\MintPlayer.Spark.SqlServer\MintPlayer.Spark.SqlServer.csproj" />
+  </ItemGroup>
+
+</Project>

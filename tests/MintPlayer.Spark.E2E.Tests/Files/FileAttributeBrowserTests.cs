@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.E2E.Tests.Files;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The ng-spark specs prove the renderers against a mocked service, and the SparkTestDriver tests prove the endpoints.
+/// The ng-spark specs prove the renderers against a mocked service, and the RavenSparkTestDriver tests prove the endpoints.
 /// Only this proves the loop a user sees: a file set on the real file input is prepared, uploaded and committed by the
 /// browser, the save claims it, and the detail page serves it back with the safe headers.
 /// </para>

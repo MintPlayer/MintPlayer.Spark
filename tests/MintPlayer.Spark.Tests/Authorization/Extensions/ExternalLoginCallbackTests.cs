@@ -32,7 +32,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 ///   - First-time login, CreateAsync fails → redirect to returnUrl
 ///   - AuthenticationTokens are persisted via SetAuthenticationTokenAsync
 /// </summary>
-public class ExternalLoginCallbackTests : SparkTestDriver
+public class ExternalLoginCallbackTests : RavenSparkTestDriver
 {
     private SignInManager<SparkUser> _signInManager = null!;
     private UserManager<SparkUser> _userManager = null!;
@@ -51,6 +51,8 @@ public class ExternalLoginCallbackTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     if (logs is not null)
                         services.AddLogging(b => b.AddProvider(logs));
                     services.AddSparkAuthentication<SparkUser>();

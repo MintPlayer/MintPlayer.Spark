@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// consuming only the filter sees every row while believing it applied the rule.
 /// </para>
 /// </summary>
-public class SparkRowRuleTests : SparkTestDriver
+public class SparkRowRuleTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("7b0a11aa-11aa-11aa-11aa-7b0a11aa11aa");
 
@@ -30,7 +30,7 @@ public class SparkRowRuleTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<RowRuleContext>(Store, [GuardedDocModel.For(DocTypeId)]);
+        _factory = new SparkEndpointFactory<RowRuleContext>(Store.AsSparkTestDatabase(), [GuardedDocModel.For(DocTypeId)]);
     }
 
     public override async Task DisposeAsync()

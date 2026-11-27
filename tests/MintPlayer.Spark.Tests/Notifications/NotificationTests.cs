@@ -5,7 +5,9 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Notifications;
 using MintPlayer.Spark.Notifications.Models;
@@ -54,7 +56,14 @@ public class NotificationTests : OrganizationsTestHost
         };
     }
 
-    private ISparkNotifier Notifier() => Factory.CreateScope().ServiceProvider.GetRequiredService<ISparkNotifier>();
+    /// <summary>Notifies in a scope of its own and saves it, as a caller's unit of work does: the notifier never saves (#536 D50).</summary>
+    private async Task<SparkNotifyReceipt> NotifyAsync(SparkNotification notification)
+    {
+        using var scope = Factory.CreateScope();
+        var receipt = await scope.ServiceProvider.GetRequiredService<ISparkNotifier>().NotifyAsync(notification);
+        await scope.ServiceProvider.GetRequiredService<ISparkSession>().SaveChangesAsync();
+        return receipt;
+    }
 
     [Fact]
     public async Task A_notification_is_stored_per_user_and_only_its_user_reads_it()
@@ -62,7 +71,7 @@ public class NotificationTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var bob = await SeedUserAsync("bob");
 
-        var receipt = await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!, bob.Id!, "SparkUsers/nobody"], Title = "Score dropped", Body = "From 91 to 74.", Url = "/runs/42" });
+        var receipt = await NotifyAsync(new SparkNotification { UserIds = [ann.Id!, bob.Id!, "SparkUsers/nobody"], Title = "Score dropped", Body = "From 91 to 74.", Url = "/runs/42" });
 
         receipt.NotificationIds.Count.Should().Be(2, "one per known user; an unknown id is skipped");
         var annsId = (await NotificationsOfAsync(ann.Id!)).Single();
@@ -85,17 +94,18 @@ public class NotificationTests : OrganizationsTestHost
         await StoreAsync(new NotificationPreference { Id = NotificationPreference.IdFor(ann.Id!, "Organizations/acme"), UserId = ann.Id, OrganizationId = "Organizations/acme", InApp = false, Email = true, Push = false });
         await StoreAsync(new NotificationPreference { Id = NotificationPreference.IdFor(ann.Id!, null), UserId = ann.Id, InApp = true, Email = false, Push = false });
 
-        var acme = await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "acme", OrganizationId = "Organizations/acme" });
-        var other = await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "other", OrganizationId = "Organizations/other" });
+        var acme = await NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "acme", OrganizationId = "Organizations/acme" });
+        var other = await NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "other", OrganizationId = "Organizations/other" });
 
         (acme.NotificationIds.Count, acme.Mails, acme.Pushes).Should().Be((0, 1, 0));
         (other.NotificationIds.Count, other.Mails, other.Pushes).Should().Be((1, 0, 0), "no row for 'other': the default row applies");
 
         var bob = await SeedUserAsync("bob");
         await SubscribeAsync(bob.Id!, "https://updates.push.services.mozilla.com/wpush/v2/bob");
-        var none = await Notifier().NotifyAsync(new SparkNotification { UserIds = [bob.Id!], Title = "defaults", OrganizationId = "Organizations/acme" });
+        var none = await NotifyAsync(new SparkNotification { UserIds = [bob.Id!], Title = "defaults", OrganizationId = "Organizations/acme" });
         (none.NotificationIds.Count, none.Mails, none.Pushes).Should().Be((1, 1, 1), "no rows at all: Spark:Notifications:Defaults, all on");
-        Mailer.Sent.Where(m => m.To == bob.Email).Should().ContainSingle().Which.Template.Should().Be(SparkNotificationMailTemplates.Notification);
+        await AsyncWait.UntilAsync(() => MailsTo(bob.Email!).Count >= 1, "bob's mail, queued by the fan-out", TimeSpan.FromSeconds(30));
+        MailsTo(bob.Email!).Should().ContainSingle().Which.Template.Should().Be(SparkNotificationMailTemplates.Notification);
     }
 
     [Fact]
@@ -104,11 +114,12 @@ public class NotificationTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
         var unconfirmed = await SeedUserAsync("uma", emailConfirmed: false);
 
-        var receipt = await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!, unconfirmed.Id!], Title = "Hello", Url = "/runs/7" });
+        var receipt = await NotifyAsync(new SparkNotification { UserIds = [ann.Id!, unconfirmed.Id!], Title = "Hello", Url = "/runs/7" });
 
         receipt.Mails.Should().Be(1);
-        var mail = Mailer.Sent.Should().ContainSingle().Which;
-        mail.To.Should().Be(ann.Email);
+        await AsyncWait.UntilAsync(() => MailsTo(ann.Email!).Count >= 1, "ann's mail, queued by the fan-out", TimeSpan.FromSeconds(30));
+        var mail = MailsTo(ann.Email!).Should().ContainSingle().Which;
+        MailsTo(unconfirmed.Email!).Should().BeEmpty("the address is not confirmed");
         JsonSerializer.SerializeToNode(mail.Data)!["link"]!.GetValue<string>().Should().Be(PublicBaseUrl + "/runs/7");
     }
 
@@ -123,7 +134,7 @@ public class NotificationTests : OrganizationsTestHost
     [InlineData("https://github.com@evil.example/")]
     public async Task A_url_a_browser_would_read_as_another_host_or_scheme_is_refused(string url)
     {
-        var act = () => Notifier().NotifyAsync(new SparkNotification { UserIds = ["SparkUsers/ann"], Title = "Score dropped", Url = url });
+        var act = () => NotifyAsync(new SparkNotification { UserIds = ["SparkUsers/ann"], Title = "Score dropped", Url = url });
 
         (await act.Should().ThrowAsync<ArgumentException>()).Which.Message.Should().Contain("an app path ('/runs/42') or an absolute http(s) URL");
     }
@@ -136,8 +147,8 @@ public class NotificationTests : OrganizationsTestHost
         var laptop = await SubscribeAsync(ann.Id!, "https://web.push.apple.com/laptop");
         pushService.StatusFor["https://web.push.apple.com/laptop"] = HttpStatusCode.Gone;
 
-        var receipt = await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Certificate expires", Body = "in 9 days", Url = "/sites/1", Category = "cert-expiry", Urgent = true });
-        receipt.Pushes.Should().Be(2);
+        var receipt = await NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Certificate expires", Body = "in 9 days", Url = "/sites/1", Category = "cert-expiry", Urgent = true });
+        receipt.Pushes.Should().Be(1, "users pushed: the fan-out reads ann's two devices after the commit");
 
         await AsyncWait.UntilAsync(() => pushService.Received.Count >= 2, "both pushes to reach the push service", TimeSpan.FromSeconds(30));
         // ForAsync treats a null result as "not yet", so the deletion is polled as an existence flag.
@@ -169,7 +180,7 @@ public class NotificationTests : OrganizationsTestHost
         var first = await socket.NextAsync("result", "unread");
         first.GetProperty("result").GetProperty("totalItems").GetInt32().Should().Be(0);
 
-        await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Run finished" });
+        await NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Run finished" });
 
         var count = await TotalAfterAsync(socket, "unread", TimeSpan.FromSeconds(15));
         count.Should().Be(1);
@@ -184,7 +195,7 @@ public class NotificationTests : OrganizationsTestHost
     {
         var ann = await SeedUserAsync("ann");
         var bob = await SeedUserAsync("bob");
-        await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!, bob.Id!], Title = "x" });
+        await NotifyAsync(new SparkNotification { UserIds = [ann.Id!, bob.Id!], Title = "x" });
         var annsId = (await NotificationsOfAsync(ann.Id!)).Single();
         var bobsId = (await NotificationsOfAsync(bob.Id!)).Single();
 
@@ -235,7 +246,7 @@ public class NotificationTests : OrganizationsTestHost
         var bob = await SeedUserAsync("bob");
         await SubscribeAsync(ann.Id!, "https://fcm.googleapis.com/fcm/send/ann");
         await StoreAsync(new NotificationPreference { Id = NotificationPreference.IdFor(ann.Id!, null), UserId = ann.Id, Push = false });
-        await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!, bob.Id!], Title = "x" });
+        await NotifyAsync(new SparkNotification { UserIds = [ann.Id!, bob.Id!], Title = "x" });
 
         using (var scope = Factory.CreateScope())
         {
@@ -256,7 +267,82 @@ public class NotificationTests : OrganizationsTestHost
         (await NotificationsOfAsync(bob.Id!)).Count.Should().Be(1, "another user's notifications stay");
     }
 
+    /// <summary>
+    /// #536 D50: the notifier writes in the scope's session and never saves. Until the caller commits, nothing is stored
+    /// and nothing is sent: the mail waits for the commit like the in-app notification does.
+    /// </summary>
+    [Fact]
+    public async Task A_notification_commits_with_the_callers_save_and_not_before()
+    {
+        var ann = await SeedUserAsync("ann");
+        using var scope = Factory.CreateScope();
+
+        var receipt = await scope.ServiceProvider.GetRequiredService<ISparkNotifier>().NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Run finished", Url = "/runs/7" });
+
+        receipt.Mails.Should().Be(1);
+        (await LoadAsync<Notification>(receipt.NotificationIds.Single())).Should().BeNull("nothing is committed before the caller saves");
+        MailsTo(ann.Email!).Should().BeEmpty("the mail waits for the commit too");
+
+        await scope.ServiceProvider.GetRequiredService<ISparkSession>().SaveChangesAsync();
+
+        (await LoadAsync<Notification>(receipt.NotificationIds.Single())).Should().NotBeNull();
+        await AsyncWait.UntilAsync(() => MailsTo(ann.Email!).Count == 1, "the mail to be queued once the caller committed", TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>A caller that retries on its own session (<c>Clear()</c>, #536 D50) leaves one notification and one mail, not one per attempt.</summary>
+    [Fact]
+    public async Task A_caller_that_clears_its_session_and_retries_notifies_once()
+    {
+        var ann = await SeedUserAsync("ann");
+        using var scope = Factory.CreateScope();
+        var notifier = scope.ServiceProvider.GetRequiredService<ISparkNotifier>();
+        var session = scope.ServiceProvider.GetRequiredService<ISparkSession>();
+
+        await notifier.NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Attempt" });
+        session.Clear(); // the attempt lost a conflict
+        await notifier.NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "Attempt" });
+        await session.SaveChangesAsync();
+
+        (await NotificationsOfAsync(ann.Id!)).Should().ContainSingle();
+        await AsyncWait.UntilAsync(() => MailsTo(ann.Email!).Count >= 1, "the retried attempt's mail", TimeSpan.FromSeconds(30));
+        MailsTo(ann.Email!).Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// The notifier shares the caller's session, and with it the session's request budget (30 on RavenDB): it reads every
+    /// user's preferences at once, and the devices and the accounts on the fan-out message's own session afterwards.
+    /// </summary>
+    [Fact]
+    public async Task Notifying_many_users_with_devices_costs_the_callers_session_one_request()
+    {
+        var users = new List<SparkUser>();
+        for (var i = 0; i < 35; i++)
+        {
+            var user = await SeedUserAsync($"user{i}");
+            (await SubscribeAsync(user.Id!, $"https://fcm.googleapis.com/fcm/send/user{i}")).Key.Dispose();
+            users.Add(user);
+        }
+        using var scope = Factory.CreateScope();
+        var session = scope.ServiceProvider.GetRequiredService<ISparkSession>();
+        var before = session.NumberOfRequests;
+
+        var receipt = await scope.ServiceProvider.GetRequiredService<ISparkNotifier>().NotifyAsync(new SparkNotification { UserIds = [.. users.Select(u => u.Id!)], Title = "Everyone" });
+
+        (session.NumberOfRequests - before).Should().Be(1, "the preferences of all 35 users in one load");
+        (receipt.NotificationIds.Count, receipt.Mails, receipt.Pushes).Should().Be((35, 35, 35));
+        await session.SaveChangesAsync();
+        await AsyncWait.UntilAsync(() => pushService.Received.Count >= 35, "a push to every user's device", TimeSpan.FromSeconds(60));
+        await AsyncWait.UntilAsync(() => users.All(u => MailsTo(u.Email!).Count == 1), "a mail to every user", TimeSpan.FromSeconds(60));
+    }
+
     // ---- helpers ------------------------------------------------------------------------------------
+
+    /// <summary>The mails queued to <paramref name="to"/> so far; the fan-out queues them on a worker thread.</summary>
+    private List<SparkMailRequest> MailsTo(string to)
+    {
+        lock (Mailer.Sent)
+            return Mailer.Sent.Where(m => string.Equals(m.To, to, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
 
     private static object Body(string endpoint, string p256dh, string auth) => new { endpoint, keys = new { p256dh, auth } };
 

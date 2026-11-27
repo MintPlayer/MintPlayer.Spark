@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Cron;
 /// throws or has an invalid expression, the concurrent-run path, and the compare-exchange claim
 /// used for cluster-wide exactly-once execution.
 /// </summary>
-public class SparkCronSchedulerTests : SparkTestDriver
+public class SparkCronSchedulerTests : RavenSparkTestDriver
 {
     private sealed class TestBuilder : ISparkBuilder
     {
@@ -136,6 +136,7 @@ public class SparkCronSchedulerTests : SparkTestDriver
         });
         builder.Services.AddSingleton(recorder);
         builder.Services.AddSingleton<IDocumentStore>(store ?? Store);
+        builder.Services.AddRavenDbSessions();
         builder.AddCron(configure);
 
         var provider = builder.Services.BuildServiceProvider();
@@ -280,7 +281,7 @@ public class SparkCronSchedulerTests : SparkTestDriver
             $"cron/{job}", DateTimeOffset.Now.AddDays(3).ToString(format, System.Globalization.CultureInfo.InvariantCulture), 0));
 
         var occurrence = DateTime.UtcNow;
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, job, occurrence, CancellationToken.None)).Should().BeTrue();
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), job, occurrence, CancellationToken.None)).Should().BeTrue();
 
         var stored = await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<string>($"cron/{job}"));
         stored.Value.Should().Be(occurrence.ToString("O"));
@@ -377,6 +378,7 @@ public class SparkCronSchedulerTests : SparkTestDriver
         builder.Services.AddLogging(logging => logging.AddProvider(log));
         builder.Services.AddSingleton(tracker);
         builder.Services.AddSingleton<IDocumentStore>(Store);
+        builder.Services.AddRavenDbSessions();
         builder.AddCron(cron => cron.AddJob<BlockingConcurrentJob>());
         var scheduler = builder.Services.BuildServiceProvider()
             .GetServices<IHostedService>().OfType<SparkCronScheduler>().Single();
@@ -428,7 +430,7 @@ public class SparkCronSchedulerTests : SparkTestDriver
             key, new DateTime(9999, 1, 1, 0, 0, 0, DateTimeKind.Utc).ToString("O"), 0), token: ct);
 
         var occurrence = DateTime.UtcNow;
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, "poison-test", occurrence, ct))
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), "poison-test", occurrence, ct))
             .Should().BeTrue("a far-future poison value must be reclaimed, not honored as a prior claim");
 
         var stored = await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: ct);
@@ -444,7 +446,7 @@ public class SparkCronSchedulerTests : SparkTestDriver
         await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<string>(
             key, "not-a-timestamp", 0), token: ct);
 
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, "garbage-test", DateTime.UtcNow, ct))
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), "garbage-test", DateTime.UtcNow, ct))
             .Should().BeTrue("an unparseable claim value must be treated as unclaimed and reclaimed");
     }
 
@@ -476,19 +478,19 @@ public class SparkCronSchedulerTests : SparkTestDriver
         var occ2 = occ1.AddMinutes(1);
 
         // First claim of an occurrence wins.
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, "claim-test", occ1, ct))
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), "claim-test", occ1, ct))
             .Should().BeTrue();
 
         // Re-claiming the same occurrence is rejected (already claimed by "this/another node").
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, "claim-test", occ1, ct))
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), "claim-test", occ1, ct))
             .Should().BeFalse();
 
         // A later occurrence advances the claim.
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, "claim-test", occ2, ct))
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), "claim-test", occ2, ct))
             .Should().BeTrue();
 
         // An earlier (stale) occurrence is rejected once a later one is recorded.
-        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, "claim-test", occ1, ct))
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store.AtomicValues(), "claim-test", occ1, ct))
             .Should().BeFalse();
     }
 }

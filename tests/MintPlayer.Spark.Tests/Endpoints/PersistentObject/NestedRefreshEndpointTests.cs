@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// </para>
 /// </summary>
 public class NestedRefreshEndpointTests(NestedRefreshEndpointTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<NestedRefreshEndpointTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<NestedRefreshEndpointTests.Host>, IDisposable
 {
     private static readonly Guid PolicyTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000101");
     private static readonly Guid GateTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000102");
@@ -40,7 +40,7 @@ public class NestedRefreshEndpointTests(NestedRefreshEndpointTests.Host host)
     /// </summary>
     public sealed class Host : SharedSparkHost<NestedRefreshContext>
     {
-        protected override SparkEndpointFactory<NestedRefreshContext> CreateFactory() => new(Store, [
+        protected override SparkEndpointFactory<NestedRefreshContext> CreateFactory() => new(Store.AsSparkTestDatabase(), [
             NestedRefreshModels.Policy(PolicyTypeId),
             NestedRefreshModels.Gate(GateTypeId),
             NestedRefreshModels.Row(RowTypeId),

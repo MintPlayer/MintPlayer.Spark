@@ -13,7 +13,7 @@ application does not — and decides **where the key ring is kept** from `Spark:
 
 | Key | Meaning | Default |
 |---|---|---|
-| `Spark:DataProtection:Storage` | `RavenDb` — keys stored as documents under `DataProtectionKeys/` in the application's database | unset |
+| `Spark:DataProtection:Storage` | `Store`: keys kept in the application's database by the store provider (RavenDB: documents under `DataProtectionKeys/`) | unset |
 | `Spark:DataProtection:KeysPath` | keys stored as XML files in this folder (relative paths are relative to the content root) | unset |
 | `Spark:DataProtection:ApplicationName` | the application discriminator; payloads protected under one name cannot be read under another | the entry assembly's name |
 
@@ -40,24 +40,24 @@ environment that runs the app:
 | Where | Set | How |
 |---|---|---|
 | Production | `KeysPath` → a folder on a **mounted volume** | environment variable `Spark__DataProtection__KeysPath=/var/lib/myapp/dataprotection-keys` in the deployment (e.g. `docker-compose.yml`) |
-| Test hosts (E2E, `WebApplicationFactory`, spawned processes) | `Storage=RavenDb` | the test host's own configuration: `UseSetting("Spark:DataProtection:Storage", "RavenDb")`, an `appsettings.{TestEnvironment}.json` override, or `Spark__DataProtection__Storage=RavenDb` on the child process |
+| Test hosts (E2E, `WebApplicationFactory`, spawned processes) | `Storage=Store` | the test host's own configuration: `UseSetting("Spark:DataProtection:Storage", "Store")`, an `appsettings.{TestEnvironment}.json` override, or `Spark__DataProtection__Storage=Store` on the child process |
 | Development | nothing | the per-user folder above |
 
 **Never put `Storage` or `KeysPath` in the base `appsettings.json`.** Configuration layers merge
-rather than replace, so a base `Storage=RavenDb` plus a production `KeysPath` environment variable
+rather than replace, so a base `Storage=Store` plus a production `KeysPath` environment variable
 is "both set" and refuses to start. Keeping the base file free of either lets each environment
 choose one without having to unset the other.
 
 This is what the apps in this repository do: CodeCoverage's `docker-compose.yml` mounts a
 `dataprotection-keys` volume and sets `KeysPath`; `FleetTestHost` (E2E) and CodeCoverage's
-`CoverageWebAppFactory` / `ActionDogfoodHarness` set `Storage=RavenDb`.
+`CoverageWebAppFactory` / `ActionDogfoodHarness` set `Storage=Store`.
 
 ## Which one to choose
 
 **`KeysPath`** (production default in this repository) keeps the keys in a folder that must be a
 durable volume — see the warning below.
 
-**`Storage=RavenDb`** keeps the keys next to the rest of the application's state, so they are backed
+**`Storage=Store`** keeps the keys next to the rest of the application's state, so they are backed
 up, restored and persisted exactly as the data they protect. It suits test hosts, whose database is
 created per run anyway. The keys are not additionally encrypted at rest — whoever can read the
 database can read them, the same posture as the file-system repository.
@@ -93,7 +93,7 @@ What happens then is deliberate:
 - Existing plaintext values keep working and are rewritten protected once after start
   (`SparkUserBackfill`, marker document `SparkAuth/Backfills/Users.v1`).
 
-So `KeysPath` on a mounted volume (or `Storage=RavenDb`) is not optional hygiene: it is what keeps
+So `KeysPath` on a mounted volume (or `Storage=Store`) is not optional hygiene: it is what keeps
 second factors and stored provider tokens usable across redeploys.
 
 ## Migrating from a hand-written setup
@@ -104,7 +104,7 @@ the startup check does not know about them, so you still have to set one of the 
 Development.
 
 CodeCoverage (coverage.mintplayer.com) migrated in #460. Its old key ring was written by the
-repository Spark's `RavenDb` storage is lifted from (the same `DataProtectionKeys/` prefix, the same
+repository Spark's RavenDB `Store` storage is lifted from (the same `DataProtectionKeys/` prefix, the same
 `{ "Xml": "…" }` shape, the same `KeyDocuments` collection), and `SparkDataProtectionTests` pins that
 such a document still decrypts under Spark with `ApplicationName=CodeCoverage`. Production
 nevertheless moved to `KeysPath` on a volume (owner decision): users are signed out once on the

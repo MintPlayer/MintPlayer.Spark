@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Dashboards;
 /// under two concurrent samplers, single-valued series, and a collection configuration that merges instead of
 /// replacing another collection's policies or revisions.
 /// </summary>
-public class DashboardHistoryTests : SparkTestDriver
+public class DashboardHistoryTests : RavenSparkTestDriver
 {
     /// <summary>One sampler host: its own lease identity, the shared database.</summary>
     private DashboardSampler Sampler(DashboardCatalog catalog, IDocumentStore? store = null)
@@ -32,6 +32,8 @@ public class DashboardHistoryTests : SparkTestDriver
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         services.AddSingleton(Options.Create(new SparkDashboardsOptions()));
         services.AddSingleton<DashboardStorage>();
+        services.AddSingleton<IDashboardHistory>(sp => sp.GetRequiredService<DashboardStorage>());
+        services.AddSingleton<MintPlayer.Spark.Abstractions.Storage.ISparkAtomicValues>(sp => new MintPlayer.Spark.Storage.Raven.RavenAtomicValues(sp.GetRequiredService<IDocumentStore>()));
         services.AddSingleton<DashboardReader>();
         services.AddSingleton<DashboardSamplerLease>();
         services.AddSingleton<IHostApplicationLifetime, NoLifetime>();

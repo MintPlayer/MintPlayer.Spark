@@ -11,8 +11,8 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// <summary>
 /// Public-surface entry point for the messaging package — the only thing host apps call.
 /// Pins that AddMessaging delegates to <see cref="SparkMessagingExtensions.AddSparkMessaging"/>
-/// (covered by <see cref="SparkMessagingExtensionsTests"/>) and queues the index-creation
-/// middleware so <c>UseSpark()</c> wires the SparkMessages_ByQueue index at startup.
+/// (covered by <see cref="SparkMessagingExtensionsTests"/>), and that it deploys no index at startup: since #536 D40
+/// the feeder and the sweeper read with plain queries, which every store answers.
 /// </summary>
 public class SparkBuilderMessagingExtensionsTests
 {
@@ -52,18 +52,17 @@ public class SparkBuilderMessagingExtensionsTests
     }
 
     [Fact]
-    public void AddMessaging_queues_one_middleware_action_for_index_creation()
+    public void AddMessaging_queues_no_startup_middleware()
     {
         var builder = NewBuilder();
 
         builder.AddMessaging();
 
-        // We can't trigger the actual index deploy here (it needs a real IDocumentStore on
-        // the app's services), but we can verify the registry has *something* queued and
-        // that ApplyMiddleware reaches it.
+        // The index-creation middleware is gone (#536 D40). An action queued here would read the app's services and
+        // throw on the null below.
         var app = Substitute.For<IApplicationBuilder>();
-        app.ApplicationServices.Returns(_ => null!); // force a NullReferenceException inside the action so it bubbles back
+        app.ApplicationServices.Returns(_ => null!);
         var act = () => builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
-        act.Should().Throw<Exception>(); // any throw confirms the action ran
+        act.Should().NotThrow();
     }
 }

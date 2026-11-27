@@ -2,7 +2,6 @@ using MintPlayer.Spark.Testing;
 using System.Net;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -140,13 +139,13 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
         // On a fresh database per case the index had almost nothing to catch up on; on the class's
         // shared database it carries every earlier case's tokens, and the race showed (1 failure in
         // a full run, M8 item 11).
-        await Store.WaitForIndexingAsync();
+        await WaitForIndexesAsync();
         var replay = await RedeemAsync(app, code);
 
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
+        await WaitForIndexesAsync();
+        using var session = Store.OpenSession();
         var issued = (await CaseTokensAsync(session)).Where(t => t.Type != "authorization_code").ToList();
         issued.Should().NotBeEmpty();
         issued.Should().OnlyContain(t => t.Status == "revoked",
@@ -233,7 +232,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var doc = await session.LoadAsync<OidcToken>(
                 MintPlayer.Spark.IdentityProvider.Services.OidcTokenReference.DocumentId(code));
@@ -338,7 +337,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
             allowedScopes: ["openid", "offline_access"], grantTypes: ["authorization_code", "refresh_token"]);
         var refresh = await ObtainRefreshTokenAsync(issuing);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var app = await session.LoadAsync<OidcApplication>(issuing.Id.Value);
             app.AllowedGrantTypes = ["authorization_code"];
@@ -443,7 +442,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
         var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"]);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.Secrets[0].ExpiresAt = DateTime.UtcNow.AddDays(-1);
@@ -468,7 +467,7 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
         var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"]);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = await session.LoadAsync<OidcApplication>(app.Id.Value);
             stored.Secrets.Add(new ClientSecret

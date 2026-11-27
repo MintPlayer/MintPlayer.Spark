@@ -25,8 +25,8 @@ namespace MintPlayer.Spark.Tests.Endpoints.ProgramUnits;
 /// hand-write programUnits.json into each test's content root, and stub
 /// <see cref="IPermissionService"/> so we can drive the allow/deny matrix directly.
 /// </summary>
-public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class GetProgramUnitsEndpointTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaaaaaa-1111-1111-1111-111111111111");
     private static readonly Guid CompanyTypeId = Guid.Parse("bbbbbbbb-2222-2222-2222-222222222222");
@@ -46,7 +46,7 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
         var queries = queryLoader ?? Substitute.For<IQueryLoader>();
 
         return new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [TestModels.Person(PersonTypeId), CompanyModel(CompanyTypeId)],
             services =>
             {
@@ -275,7 +275,7 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
     public async Task The_menu_is_loaded_at_startup_before_any_request()
     {
         var loader = new StubProgramUnitsLoader(new ProgramUnitsConfiguration());
-        await using var factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)], services =>
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)], services =>
         {
             services.RemoveAll<IProgramUnitsLoader>();
             services.AddSingleton<IProgramUnitsLoader>(loader);

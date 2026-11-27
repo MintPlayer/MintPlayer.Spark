@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// need an ETL to exist and runs under either.
 /// </para>
 /// </summary>
-public class EtlTaskManagerDeploymentTests : SparkTestDriver
+public class EtlTaskManagerDeploymentTests : RavenSparkTestDriver
 {
     private const string Module = "HR";
     private readonly string _targetDatabase = $"EtlTarget-{Guid.NewGuid():N}";

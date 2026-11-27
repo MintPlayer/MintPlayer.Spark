@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// These paths can only be exercised with a real document store — the cached MethodInfos
 /// only fire when the actions pipeline runs end-to-end.
 /// </summary>
-public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
+public class QueryExecutorAdvancedIntegrationTests : RavenSparkTestDriver
 {
     private static readonly Guid CompanyTypeId = Guid.Parse("aaaa1111-aaaa-aaaa-aaaa-aaaa11111111");
     private static readonly Guid EmployeeTypeId = Guid.Parse("bbbb2222-bbbb-bbbb-bbbb-bbbb22222222");
@@ -84,7 +84,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<TestContext>(Store, [CompanyModel(), EmployeeModel()],
+        _factory = new SparkEndpointFactory<TestContext>(Store.AsSparkTestDatabase(), [CompanyModel(), EmployeeModel()],
             configureIndexCatalog: catalog =>
             {
                 catalog.RegisterIndex(typeof(Employees_ByLastName));
@@ -486,7 +486,7 @@ public class QueryExecutorAdvancedIntegrationTests : SparkTestDriver
         employeeModel.PersistentObject.QueryType = typeof(VEmployee).FullName;
         employeeModel.PersistentObject.IndexName = "Employees_ByLastName";
 
-        await using var factory = new SparkEndpointFactory<TestContext>(Store, [CompanyModel(), employeeModel],
+        await using var factory = new SparkEndpointFactory<TestContext>(Store.AsSparkTestDatabase(), [CompanyModel(), employeeModel],
             configureIndexCatalog: catalog =>
             {
                 catalog.RegisterIndex(typeof(Employees_ByLastName));

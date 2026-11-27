@@ -1,9 +1,8 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Notifications.Models;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Notifications.Identity;
 
@@ -30,7 +29,7 @@ internal sealed partial class NotificationVisitorClaim : ISparkSignedInHandler
 {
     internal const int PageSize = 512;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ISparkCurrentPrincipal principal;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly IModelLoader? modelLoader;
@@ -46,12 +45,8 @@ internal sealed partial class NotificationVisitorClaim : ISparkSignedInHandler
         // Pages, waiting for the index so none is missed. Each page's documents leave the query once saved.
         for (var page = 0; page < 100; page++)
         {
-            using var session = store.OpenAsyncSession();
-            var batch = await session.Query<Notification>()
-                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-                .Where(n => n.VisitorId == visitorId)
-                .Take(PageSize)
-                .ToListAsync(cancellationToken);
+            using var session = store.OpenSession();
+            var batch = await session.ToListAsync(session.Query<Notification>(TimeSpan.FromSeconds(30)).Where(n => n.VisitorId == visitorId).Take(PageSize), cancellationToken);
             if (batch.Count == 0)
                 break;
             foreach (var notification in batch)

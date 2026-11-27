@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// <c>Auto/OidcApplications/ByAllowedScopes</c> on every fresh database (the CodeCoverage app's startup, 2026-10-17).
 /// Indexes belong to the application, so the migration scans the collection instead.
 /// </remarks>
-public class OidcDataModelMigrationTests : SparkTestDriver
+public class OidcDataModelMigrationTests : RavenSparkTestDriver
 {
     private sealed class LegacyView
     {
@@ -34,7 +34,7 @@ public class OidcDataModelMigrationTests : SparkTestDriver
         await Store.Operations.SendAsync(new PatchOperation("OidcApplications/legacy", null,
             new PatchRequest { Script = "this.AllowedScopes = ['openid', 'profile'];" }));
 
-        await new M_202610090900_OidcDataModel(Store).UpAsync(CancellationToken.None);
+        await new M_202610090900_OidcDataModel(raven: Store, sparkStore: Store.AsSparkStore()).UpAsync(CancellationToken.None);
 
         using (var check = Store.OpenAsyncSession())
         {

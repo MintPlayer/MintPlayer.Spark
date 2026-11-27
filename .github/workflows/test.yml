@@ -42,22 +42,29 @@ jobs:
           - { name: Spark.Tests 2/4, artifact: spark-2, projects: MintPlayer.Spark.Tests, shard: 2/4 }
           - { name: Spark.Tests 3/4, artifact: spark-3, projects: MintPlayer.Spark.Tests, shard: 3/4 }
           - { name: Spark.Tests 4/4, artifact: spark-4, projects: MintPlayer.Spark.Tests, shard: 4/4 }
-          - { name: E2E 1/2, artifact: e2e-1, projects: MintPlayer.Spark.E2E.Tests, shard: 1/2, playwright: true }
-          - { name: E2E 2/2, artifact: e2e-2, projects: MintPlayer.Spark.E2E.Tests, shard: 2/2, playwright: true }
+          # postgres: SqlDemo's host runs the app on PostgreSQL (#536 M9); the shard packing decides which shard holds it.
+          - { name: E2E 1/2, artifact: e2e-1, projects: MintPlayer.Spark.E2E.Tests, shard: 1/2, playwright: true, postgres: true }
+          - { name: E2E 2/2, artifact: e2e-2, projects: MintPlayer.Spark.E2E.Tests, shard: 2/2, playwright: true, postgres: true }
           - { name: CodeCoverage.Tests, artifact: codecoverage, projects: CodeCoverage.Tests }
           - { name: SeoTester.Tests 1/2, artifact: seotester-1, projects: SeoTester.Tests, shard: 1/2, playwright: true }
           - { name: SeoTester.Tests 2/2, artifact: seotester-2, projects: SeoTester.Tests, shard: 2/2, playwright: true }
+          # #536 M9: the provider-neutral classes of MintPlayer.Spark.Tests (trait SparkDatabase=Any, SparkTestTraits)
+          # and the relational suite, on a real server each. The "Databases" steps start it. The RavenDB shards above run
+          # the same neutral classes on RavenDB.
+          - { name: SQL Server, artifact: sqlserver, projects: 'MintPlayer.Spark.Tests,MintPlayer.Spark.Relational.Tests', database: SqlServer }
+          - { name: PostgreSQL, artifact: postgresql, projects: 'MintPlayer.Spark.Tests,MintPlayer.Spark.Relational.Tests', database: PostgreSql }
           # The smaller suites in groups of a few minutes each. One "Other suites" job used to run them all and
           # set the pace of the whole run (9.3 min, 16-22 min once the commerce suites joined it).
-          - { name: Library suites, artifact: libs, projects: 'MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests' }
-          - { name: CodeCoverage git suites, artifact: codecoverage-git, projects: 'CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests' }
+          # The library and CodeCoverage git suites share a job since the database legs joined (M9): 3.4 and 2.4 min
+          # apart, ~1.5 min of each being setup, against the E2E shard's 7.
+          - { name: Library + git suites, artifact: libs, projects: 'MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests' }
           - { name: App suites, artifact: apps, projects: 'DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,MintPlayer.Tests' }
           # The Angular and action suites (vitest), among them the dependency-update action's `test` target
           # (unit + committed-bundle smoke test).
           - { name: Angular suites, artifact: angular, projects: '@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action,@mintplayer/webhooks-receiver' }
           # Everything not named above, so a new test project runs without being added here. Keep this list
           # in step with the entries above.
-          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests,MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests,DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,MintPlayer.Tests,@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action,@mintplayer/webhooks-receiver' }
+          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.Relational.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests,MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests,DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,MintPlayer.Tests,@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action,@mintplayer/webhooks-receiver' }
           # The dependency-update action against real package managers and LOCAL registries
           # (docs/code-coverage/dependency-updates-PRD.md §13.11.2): its own `test-integration` target, so
           # "Other suites" (target `test`) never runs it. Two ecosystem groups per slice, 15 minutes each;
@@ -71,6 +78,38 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v7
+
+    # #536 M9: the database legs' servers, started before Setup so they boot while it runs; "Run tests" waits for them,
+    # bounded. Detached containers, not job `services:`, like OpenSearch below. The password is made per run and masked:
+    # nothing outside the runner reaches these servers. The image is pinned (O8: SQL Server 2025, PostgreSQL 18) and
+    # named in SPARK_TEST_*_IMAGE, which tools/test-servers.mjs puts in the Nx cache key. PostgreSQL 17, the floor, runs
+    # the D31 behaviour tests only ("PostgreSQL 17" below). fsync and friends are off: a throwaway server, and the
+    # suites create a database per class or case.
+    # The E2E shards (matrix.postgres) get PostgreSQL 18 alone, for SqlDemo's host.
+    - name: Databases
+      if: matrix.database || matrix.postgres
+      run: |
+        password="Sp1-$(openssl rand -hex 16)"
+        echo "::add-mask::$password"
+        if [ "${{ matrix.database }}" = SqlServer ]; then
+          image=2025-CU11-ubuntu-24.04
+          docker run -d --name mssql -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD="$password" "mcr.microsoft.com/mssql/server:$image"
+          echo "SPARK_TEST_SQLSERVER=Server=localhost,1433;User Id=sa;Password=$password;TrustServerCertificate=true;Encrypt=false" >> "$GITHUB_ENV"
+          echo "SPARK_TEST_SQLSERVER_IMAGE=$image" >> "$GITHUB_ENV"
+        else
+          image=18.7
+          postgres() {
+            docker run -d --name "$1" -p "$2:5432" -e POSTGRES_PASSWORD="$password" "postgres:$3" \
+              -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+          }
+          postgres postgres 5432 "$image"
+          echo "SPARK_TEST_POSTGRESQL=Host=localhost;Port=5432;Username=postgres;Password=$password" >> "$GITHUB_ENV"
+          echo "SPARK_TEST_POSTGRESQL_IMAGE=$image" >> "$GITHUB_ENV"
+          if [ "${{ matrix.database }}" = PostgreSql ]; then
+            postgres postgres17 5433 17.12
+            echo "SPARK_TEST_POSTGRESQL17=Host=localhost;Port=5433;Username=postgres;Password=$password" >> "$GITHUB_ENV"
+          fi
+        fi
 
     - name: Setup
       uses: ./.github/actions/setup
@@ -160,6 +199,22 @@ jobs:
           for i in $(seq 1 90); do docker logs clamav 2>&1 | grep -q "socket found, clamd started" && break; sleep 2; done
           docker logs clamav 2>&1 | grep -q "socket found, clamd started" || { docker logs clamav 2>&1 | tail -50; exit 1; }
         fi
+        # Ready means what the suites do first works: creating a database, which fails while model is still recovering
+        # even though logins already succeed. sqlcmd ships in the image and reads the container's own password.
+        if [ "${{ matrix.database }}" = SqlServer ]; then
+          probe() { docker exec mssql bash -c 'SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -l 5 -Q "CREATE DATABASE spark_ready; DROP DATABASE spark_ready"'; }
+          for i in $(seq 1 60); do probe > /dev/null 2>&1 && break; sleep 2; done
+          probe || { docker logs mssql 2>&1 | tail -50; exit 1; }
+        fi
+        # Over TCP: the image's first-start initialisation runs a server on the Unix socket only.
+        if [ "${{ matrix.database }}" = PostgreSql ] || [ "${{ matrix.postgres }}" = true ]; then
+          servers=postgres
+          if [ "${{ matrix.database }}" = PostgreSql ]; then servers="postgres postgres17"; fi
+          for server in $servers; do
+            for i in $(seq 1 60); do docker exec "$server" pg_isready -h 127.0.0.1 -U postgres > /dev/null && break; sleep 1; done
+            docker exec "$server" pg_isready -h 127.0.0.1 -U postgres || { docker logs "$server" 2>&1 | tail -50; exit 1; }
+          done
+        fi
         if [ -n "${{ matrix.projects }}" ]; then
           npx nx run-many --target=${{ matrix.target || 'test' }} --projects='${{ matrix.projects }}' --output-style=stream
         else
@@ -174,6 +229,22 @@ jobs:
         # Read by tools/test-shard.mjs; an input of the MintPlayer.Spark.Tests task, so each shard is
         # cached on its own.
         SPARK_TEST_SHARD: ${{ matrix.shard }}
+        # #536 D35: MintPlayer.Spark.Tests references four test databases (RavenDB, InMemory, SqlServer,
+        # PostgreSql), so its provider-neutral classes need this to pick one. Assemblies with one provider
+        # ignore it. A database leg names its own, and runs only the neutral classes (SPARK_TEST_FILTER, read by
+        # tools/test-shard.mjs, so MintPlayer.Spark.Tests only).
+        SPARK_TEST_DATABASE: ${{ matrix.database || 'RavenDB' }}
+        SPARK_TEST_FILTER: ${{ matrix.database && 'SparkDatabase=Any' || '' }}
+
+    # O8: PostgreSQL 17 is the floor, so the D31 behaviour tests, which pin what the provider relies on, run on it too.
+    # Not through Nx: its cache key has no PostgreSQL version in it, and the class takes seconds.
+    - name: PostgreSQL 17
+      if: matrix.database == 'PostgreSql' && !cancelled()
+      timeout-minutes: 5
+      working-directory: tests/MintPlayer.Spark.Relational.Tests
+      run: dotnet test --no-build --no-restore --filter "FullyQualifiedName~PostgreSqlBehaviourTests"
+      env:
+        SPARK_TEST_POSTGRESQL: ${{ env.SPARK_TEST_POSTGRESQL17 }}
 
     # upload-artifact roots the artifact at the deepest folder ALL matched files share, so a job that only
     # produced tests/MintPlayer.Spark.Tests/coverage/** would lose that prefix, and the coverage job would

@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Settings;
 /// declaration; the saving instance sees the change at once; and an application that does not bind the
 /// slot does not start.
 /// </summary>
-public class SettingsEndpointTests : SparkTestDriver
+public class SettingsEndpointTests : RavenSparkTestDriver
 {
     private const string SettingTypeId = "36751d1c-f4e0-578d-a589-9b32db4edc40";
     private const string SettingsQueryId = "9ea40039-d316-5012-8065-eac1f52b21ec";
@@ -66,7 +66,7 @@ public class SettingsEndpointTests : SparkTestDriver
     private SparkEndpointFactory<StContext> Factory(bool bindSlot = true)
     {
         var factory = new SparkEndpointFactory<StContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [],
             configureServices: services => services.AddSingleton<IStartupFilter, StPrincipalStartupFilter>(),
             configureSpark: spark => spark.AddSettings(typeof(SparkSettingsTests.StSettings)),

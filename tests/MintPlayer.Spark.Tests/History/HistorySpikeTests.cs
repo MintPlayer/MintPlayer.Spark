@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.History;
 /// the measured values (§4.1).
 /// </summary>
 /// <remarks>Fixture names start with <c>HSpike</c>: kept apart from every other fixture's types.</remarks>
-public class HistorySpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class HistorySpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private const string Docs = "HSpikeDocs";
     private const string Others = "HSpikeOthers";
@@ -217,7 +217,7 @@ public class HistorySpikeTests(ITestOutputHelper output) : SparkTestDriver
     [Fact]
     public async Task The_configurators_licence_read_is_the_status_Type()
     {
-        var type = await Store.Maintenance.Server.SendAsync(new MintPlayer.Spark.History.RevisionsConfigurator.GetLicenceTypeOperation());
+        var type = await Store.Maintenance.Server.SendAsync(new MintPlayer.Spark.Storage.Raven.RavenSparkRevisions.GetLicenceTypeOperation());
         output.WriteLine($"licence type read by the configurator: {type}");
 
         type.Should().NotBeNullOrEmpty();

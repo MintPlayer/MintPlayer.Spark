@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Encodings.Web;
@@ -100,6 +101,7 @@ internal sealed class AccountTestHost : IAsyncDisposable
                 .ConfigureServices(s =>
                 {
                     s.AddSingleton(store);
+                    s.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(store.AsSparkStore());
                     s.AddSparkAuthentication<SparkUser>();
                     s.Configure<SparkAuthenticationOptions>(o =>
                     {

@@ -1,27 +1,26 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Security.Claims;
 
 namespace MintPlayer.Spark.Authorization.Identity;
 
 /// <summary>
-/// RavenDB-backed role store for Spark authentication.
+/// The role store for Spark authentication, on any Spark store (#536).
 /// Uses deterministic document IDs based on the role name.
 /// </summary>
 public partial class RoleStore : IRoleStore<SparkRole>, IRoleClaimStore<SparkRole>, IQueryableRoleStore<SparkRole>
 {
-    [Inject] private readonly IDocumentStore documentStore;
-    private IAsyncDocumentSession? session;
+    [Inject] private readonly ISparkStore store;
+    private ISparkSession? session;
     private bool disposed;
 
-    private IAsyncDocumentSession Session
+    private ISparkSession Session
     {
         get
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            return session ??= documentStore.OpenAsyncSession();
+            return session ??= store.OpenSession();
         }
     }
 
@@ -56,7 +55,7 @@ public partial class RoleStore : IRoleStore<SparkRole>, IRoleClaimStore<SparkRol
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        Session.Delete(role);
+        Session.Delete(typeof(SparkRole), role.Id!);
         await Session.SaveChangesAsync(cancellationToken);
         return IdentityResult.Success;
     }
@@ -146,10 +145,8 @@ public partial class RoleStore : IRoleStore<SparkRole>, IRoleClaimStore<SparkRol
 
     private string GetRoleDocumentId(string roleName)
     {
-        var collectionName = documentStore.Conventions.GetCollectionName(typeof(SparkRole));
-        var prefix = documentStore.Conventions.TransformTypeCollectionNameToDocumentIdPrefix(collectionName);
-        var separator = documentStore.Conventions.IdentityPartsSeparator;
-        return $"{prefix}{separator}{roleName.ToLowerInvariant()}";
+        // {collection}/{name}, lower case (#536 D7): the id RavenDB gave a role before, and one a table accepts.
+        return $"{store.GetCollectionName(typeof(SparkRole)).ToLowerInvariant()}/{roleName.ToLowerInvariant()}";
     }
 
     #endregion

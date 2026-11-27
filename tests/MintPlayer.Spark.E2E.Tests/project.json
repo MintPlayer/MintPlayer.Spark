@@ -1,11 +1,23 @@
 {
   "name": "MintPlayer.Spark.E2E.Tests",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "implicitDependencies": ["Fleet", "QnA", "HR", "SparkId", "MintPlayer", "SqlDemo"],
   "targets": {
     "test": {
       "inputs": [
         "default",
         "^production",
+        {
+          "input": "production",
+          "projects": [
+            "@spark-demo/fleet-demo",
+            "@spark-demo/qna-demo",
+            "@spark-demo/hr-demo",
+            "@spark-demo/sparkid-demo",
+            "@spark-apps/mint-player",
+            "@spark-demo/sql-demo"
+          ]
+        },
         { "env": "SPARK_E2E_HOST_COVERAGE" },
         "{workspaceRoot}/tools/test-shard.mjs",
         "{workspaceRoot}/tools/test-shard-weights.json",

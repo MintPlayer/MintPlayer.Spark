@@ -71,13 +71,14 @@ public abstract class ContributionDescriptor
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(valueName);
-        // {targetId}/{Property}Contributions/{slot}/…/User/{userId} — slots are [A-Za-z0-9-], never '/'.
+        // [{collection}/]{targetId}/{Property}Contributions/{slot}/…/User/{userId} — slots are [A-Za-z0-9-], never '/'.
+        // Ids written since #536 start with the contribution's collection (D23 rule 12); older ones do not.
         var slots = descriptor.IsCollection && descriptor.SlotNames.Count > 0
             ? "(" + string.Join("/", Enumerable.Repeat("[^/]+", descriptor.SlotNames.Count)) + ")/"
             : "";
         // The literal segments match either case: ids written since #536 are lower case (D7), older ones are not. The
         // pattern runs as a JavaScript RegExp with no flags, which has no portable inline (?i), so each letter is a class.
-        var pattern = "^(.+?)/" + AnyCase(descriptor.PropertyName + "Contributions") + "/" + slots + AnyCase("User") + "/.+$";
+        var pattern = "^(?:" + AnyCase(descriptor.ContributionCollectionPrefix) + ")?(.+?)/" +AnyCase(descriptor.PropertyName + "Contributions") + "/" + slots + AnyCase("User") + "/.+$";
         var options = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["compareType"] = descriptor.TargetType.Name,
@@ -156,8 +157,14 @@ public abstract class ContributionDescriptor
     public abstract string ShapeHash { get; }
 
     /// <summary>
+    /// The lower-case collection of the contribution type with a trailing <c>/</c> (<c>songlyricscontributions/</c>):
+    /// every contribution id starts with it (#536, PRD D23 rule 12), so a relational table accepts the id.
+    /// </summary>
+    public abstract string ContributionCollectionPrefix { get; }
+
+    /// <summary>
     /// The prefix of every contribution of <paramref name="targetId"/>:
-    /// <c>{targetId}/{Property}Contributions/</c>. Always ends in <c>/</c>, so <c>Songs/1</c> never
+    /// <c>{collection}/{targetId}/{Property}Contributions/</c>. Always ends in <c>/</c>, so <c>Songs/1</c> never
     /// matches <c>Songs/12</c>.
     /// </summary>
     public abstract string ContributionPrefix(string targetId);

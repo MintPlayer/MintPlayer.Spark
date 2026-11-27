@@ -19,12 +19,9 @@ public static class SparkCronExtensions
     /// });
     /// </code>
     /// </example>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Cron", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddCron(this ISparkBuilder builder, Action<ISparkCronBuilder>? configure = null)
     {
-        // #551 D13: the schedule is kept in RavenDB, through its own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Cron", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
-
+        // #536: the claims are the store's atomic values (ISparkAtomicValues), on every provider.
         var registry = GetOrAddInfrastructure(builder.Services);
         configure?.Invoke(new SparkCronBuilder(builder.Services, registry));
         return builder;
@@ -46,6 +43,8 @@ public static class SparkCronExtensions
 
             if (existing is not null)
                 return existing;
+
+            global::MintPlayer.Spark.Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
 
             var registry = new SparkCronJobRegistry();
             services.AddSingleton(registry);

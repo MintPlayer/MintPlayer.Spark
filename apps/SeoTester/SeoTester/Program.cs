@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -192,16 +193,12 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
-// The --spark-* commands are build steps, not run modes: they need no database or credentials and return before Build().
-if (builder.SynchronizeSparkModelsIfRequested(args))
-    return;
-if (builder.InitializeSparkSecurityIfRequested(args))
-    return;
-// --spark-verify-security fails the build when the rights reachable WITHOUT signing in change (App_Data/securityPosture.txt).
-if (builder.VerifySparkSecurityIfRequested(args))
-    return;
-
 var app = builder.Build();
+
+// Spark's commands (--spark-help lists them): model synchronization, security, and every package's own. Building the
+// host constructs no service and opens no connection, so the ones that need no database run in CI.
+if (await app.RunSparkCommandIfRequestedAsync(args))
+    return;
 
 if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
     app.UseHttpsRedirection();

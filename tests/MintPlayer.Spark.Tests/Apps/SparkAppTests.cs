@@ -199,9 +199,25 @@ public class SparkAppTests : AppsTestHost
         act.Should().Throw<InvalidOperationException>().WithMessage("*AddIdentityProvider*");
     }
 
+    /// <summary>
+    /// AddMessaging registers the outbox scoped, over the scope's session (#536 D50). The check runs on the root provider: it
+    /// asks whether the outbox is registered and builds none, so Development (ValidateScopes) starts and no root session opens.
+    /// </summary>
+    [Fact]
+    public void The_startup_check_finds_the_scoped_outbox_without_resolving_it_from_the_root()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<MintPlayer.Spark.Messaging.IMessageOutbox, NoOutbox>();
+        services.AddOptions<SparkAppsOptions>();
+
+        var act = () => SparkAppsExtensions.ValidateStartup(services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true }));
+
+        act.Should().NotThrow();
+    }
+
     private sealed class NoOutbox : MintPlayer.Spark.Messaging.IMessageOutbox
     {
-        public Task EnqueueAsync<TMessage>(Raven.Client.Documents.Session.IAsyncDocumentSession session, TMessage message, MintPlayer.Spark.Messaging.Abstractions.BroadcastOptions? options = null, CancellationToken cancellationToken = default)
+        public Task EnqueueAsync<TMessage>(TMessage message, MintPlayer.Spark.Messaging.Abstractions.BroadcastOptions? options = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
     }
 }

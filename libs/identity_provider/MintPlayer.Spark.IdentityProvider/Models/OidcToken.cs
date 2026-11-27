@@ -13,6 +13,9 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// <see cref="ExpiresAt"/> itself.
 /// </para>
 /// </summary>
+// Every token's id is a hash of its handle (OidcTokenReference, OidcRequestReference, OidcDeviceCodes), set before it
+// is stored: a natural key, text on a relational store rather than a Guid (#536 D47).
+[IdKind(SparkIdKind.Natural)]
 public partial class OidcToken
 {
     public Id<OidcToken> Id { get; set; }

@@ -19,8 +19,8 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// is no document to police). Entity-backed types keep the same signature with the pipeline in
 /// the base — pinned down by the ordinary Get tests.
 /// </summary>
-public class VirtualObjectEndpointTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class VirtualObjectEndpointTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid PageTypeId = Guid.Parse("44444444-dddd-dddd-dddd-444444444444");
 
@@ -54,7 +54,7 @@ public class VirtualObjectEndpointTests(SparkSharedDatabase database)
     [Fact]
     public async Task Virtual_type_is_served_by_its_name_resolved_OnLoadAsync_with_the_requested_id()
     {
-        await using var factory = new SparkEndpointFactory(Store, [PageModel()]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [PageModel()]);
 
         var po = await GetPoAsync(factory, PageTypeId, "the-page");
 
@@ -70,7 +70,7 @@ public class VirtualObjectEndpointTests(SparkSharedDatabase database)
     [Fact]
     public async Task Virtual_object_is_forced_read_only_unless_the_hook_says_otherwise()
     {
-        await using var factory = new SparkEndpointFactory(Store, [PageModel()]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [PageModel()]);
 
         var po = await GetPoAsync(factory, PageTypeId, "whatever");
 
@@ -87,7 +87,7 @@ public class VirtualObjectEndpointTests(SparkSharedDatabase database)
             .Returns(Task.FromResult(false));
         perms.EnsureAuthorizedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(x => Task.FromException(new SparkAccessDeniedException($"{x.ArgAt<string>(0)}/{x.ArgAt<string>(1)}")));
-        await using var factory = new SparkEndpointFactory(Store, [PageModel()], services =>
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [PageModel()], services =>
         {
             services.RemoveAll<IPermissionService>();
             services.AddSingleton(perms);
@@ -104,7 +104,7 @@ public class VirtualObjectEndpointTests(SparkSharedDatabase database)
         // Same model shape, different name: nothing named OrphanPageActions exists, so the type
         // has no behavior at all — 404, not a blank page.
         var orphanId = Guid.Parse("55555555-eeee-eeee-eeee-555555555555");
-        await using var factory = new SparkEndpointFactory(Store, [PageModel(orphanId, "OrphanPage")]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [PageModel(orphanId, "OrphanPage")]);
 
         var po = await GetPoAsync(factory, orphanId, "anything");
 

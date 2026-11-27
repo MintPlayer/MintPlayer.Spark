@@ -5,22 +5,22 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using NCrontab;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.CompareExchange;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Cron;
 
 /// <summary>
 /// Hosted service that runs one loop per registered cron job. Each loop computes the next
 /// occurrence (in UTC) via NCrontab, waits for it, and runs the job — but only after winning
-/// a cluster-wide RavenDB compare-exchange claim for that occurrence, so a job fires exactly
+/// a cluster-wide atomic claim for that occurrence (the store's compare-exchange), so a job fires exactly
 /// once across all nodes.
 /// </summary>
 internal sealed partial class SparkCronScheduler : BackgroundService
 {
     [Inject] private readonly SparkCronJobRegistry registry;
     [Inject] private readonly IServiceProvider serviceProvider;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkAtomicValues atomicValues;
+    [Inject] private readonly ISparkStoreReadiness readiness;
     [Inject] private readonly ILoggerFactory loggerFactory;
 
     private ILogger logger = null!;
@@ -56,6 +56,9 @@ internal sealed partial class SparkCronScheduler : BackgroundService
             logger.LogInformation("No cron jobs registered; SparkCronScheduler will not run any loops.");
             return;
         }
+
+        // #536 D41: on a relational store the atomic values table exists once UseSpark has applied the schema.
+        await readiness.WaitAsync(stoppingToken);
 
         logger.LogInformation("SparkCronScheduler starting {Count} cron job loop(s): {Jobs}",
             jobs.Count, string.Join(", ", jobs.Select(j => j.Name)));
@@ -133,7 +136,7 @@ internal sealed partial class SparkCronScheduler : BackgroundService
         bool claimed;
         try
         {
-            claimed = await TryClaimOccurrenceAsync(documentStore, descriptor.Name, occurrenceUtc, stoppingToken, logger);
+            claimed = await TryClaimOccurrenceAsync(atomicValues, descriptor.Name, occurrenceUtc, stoppingToken, logger);
         }
         catch (Exception ex)
         {
@@ -226,21 +229,20 @@ internal sealed partial class SparkCronScheduler : BackgroundService
     }
 
     /// <summary>
-    /// Claims a single occurrence cluster-wide using one compare-exchange key per job. The key's
+    /// Claims a single occurrence cluster-wide using one atomic value per job (<see cref="ISparkAtomicValues"/>). The key's
     /// value is the latest claimed occurrence (ISO-8601 UTC, which sorts lexically), so this both
     /// dedups the current occurrence and rejects stale ones. The stored value is treated as
     /// untrusted: an unparseable or implausibly-far-future value (e.g. a poisoned <c>cron/{job}</c>
     /// key that would otherwise suppress the job forever) is logged and reclaimed instead of being
     /// honored. Returns <see langword="true"/> only for the node that wins the atomic compare-and-swap.
     /// </summary>
-    internal static async Task<bool> TryClaimOccurrenceAsync(IDocumentStore documentStore, string jobName,
+    internal static async Task<bool> TryClaimOccurrenceAsync(ISparkAtomicValues atomicValues, string jobName,
         DateTime occurrenceUtc, CancellationToken stoppingToken, ILogger? logger = null)
     {
         var key = $"cron/{jobName}";
         var occurrence = occurrenceUtc.ToString("O");
 
-        var current = await documentStore.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: stoppingToken);
+        var current = await atomicValues.GetAsync(key, stoppingToken);
 
         if (current?.Value is { Length: > 0 } existing)
         {
@@ -266,11 +268,9 @@ internal sealed partial class SparkCronScheduler : BackgroundService
             }
         }
 
-        var result = await documentStore.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<string>(key, occurrence, current?.Index ?? 0),
-            token: stoppingToken);
+        var result = await atomicValues.TryPutAsync(key, occurrence, current?.Version ?? 0, stoppingToken);
 
-        return result.Successful; // false if another node won the race
+        return result is not null; // null if another node won the race
     }
 
     private static bool TryParseClaimValue(string value, out DateTime utc)

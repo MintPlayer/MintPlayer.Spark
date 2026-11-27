@@ -88,7 +88,6 @@ public class CoverageWebhooksTests : CoverageRavenTest
         await FinalizeAsync(store, queue);
 
         await outbox.Received(1).EnqueueAsync(
-            Arg.Any<IAsyncDocumentSession>(),
             Arg.Is<CoverageBuildCompletedWebhookMessage>(m => string.Equals(m.BuildId, BuildId, StringComparison.OrdinalIgnoreCase)),
             Arg.Any<BroadcastOptions?>(),
             Arg.Any<CancellationToken>());
@@ -121,7 +120,7 @@ public class CoverageWebhooksTests : CoverageRavenTest
         await SeedAsync(store, "Finalized");
         var publisher = Substitute.For<IWebhookPublisher>();
         CoverageBuildCompleted? sent = null;
-        publisher.PublishAsync(Arg.Do<CoverageBuildCompleted>(e => sent = e), Arg.Any<WebhookOwner>(), Arg.Any<string>(), Arg.Any<IAsyncDocumentSession>(), Arg.Any<CancellationToken>())
+        publisher.PublishAsync(Arg.Do<CoverageBuildCompleted>(e => sent = e), Arg.Any<WebhookOwner>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("msg_x");
 
         using (var session = store.OpenAsyncSession())
@@ -132,7 +131,6 @@ public class CoverageWebhooksTests : CoverageRavenTest
             CoverageWebhooks.Account(AcmeKey),
             // The delivery key is the loaded build's id, lower case (#536 D7).
             BuildId.ToLowerInvariant(),
-            Arg.Any<IAsyncDocumentSession>(),
             Arg.Any<CancellationToken>());
         sent.Should().Be(new CoverageBuildCompleted(
             "acme/widgets", "github", Sha, "feature", 12, Build.ComposeRun(7, 2), "CI", "Complete", "Debounce", false,

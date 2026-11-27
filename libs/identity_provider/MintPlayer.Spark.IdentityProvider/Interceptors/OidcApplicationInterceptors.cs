@@ -4,8 +4,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 
@@ -36,6 +34,9 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IAccessControl accessControl;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly ISparkStore store;
+    /// <summary>The scope's session, which the save and the delete commit through.</summary>
+    [Inject] private readonly ISparkSession session;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
@@ -55,17 +56,12 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
         ValidateDefinition(entity, options);
 
-        // Not a session only when the interceptor is called by hand (unit tests of the rules above).
-        if (context.Session is IAsyncDocumentSession session)
-        {
-            await ApplyScopeApprovalsAsync(session, entity, context);
-            // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused
-            // with a 400 while staying stored.
-            await EnsureClientIdUniqueAsync(session, entity);
-            // The query above races two concurrent saves: both find nothing and both proceed. The
-            // compare-exchange reservation is the atomic half (O17).
-            await OidcClientIdReservation.ReserveAsync(session, entity);
-        }
+        await ApplyScopeApprovalsAsync(session, entity, context);
+        // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with a 400 while
+        // staying stored. The reservation is both the check (its holder, read now, gives the validation error) and
+        // the atomic half (O17): two concurrent saves of one client id cannot both claim it (#536 D47; the
+        // collection query that checked before built an auto index on RavenDB, D42).
+        await OidcClientIdReservation.ReserveAsync(session, entity);
     }
 
     /// <summary>
@@ -167,7 +163,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// application already had keeps its status: editing the application never re-opens a decision.
     /// An administrator adding a scope is the approval.
     /// </summary>
-    private async Task ApplyScopeApprovalsAsync(IAsyncDocumentSession session, OidcApplication entity, SaveContext context)
+    private async Task ApplyScopeApprovalsAsync(ISparkSession session, OidcApplication entity, SaveContext context)
     {
         var before = (context.Before as OidcApplication)?.Scopes ?? [];
         var added = entity.Scopes
@@ -187,7 +183,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     }
 
     /// <summary>D4: marks the <paramref name="added"/> API scopes whose API the team does not own as Pending.</summary>
-    internal static async Task MarkCrossOwnerScopesAsync(IAsyncDocumentSession session, OidcApplication entity, IEnumerable<OidcApplicationScope> added, string? requestedBy)
+    internal static async Task MarkCrossOwnerScopesAsync(ISparkSession session, OidcApplication entity, IEnumerable<OidcApplicationScope> added, string? requestedBy)
     {
         var team = entity.Members.Where(m => m.Status == OidcMemberStatuses.Active && m.UserId is not null)
             .Select(m => m.UserId!).ToHashSet(StringComparer.Ordinal);
@@ -213,21 +209,6 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
         if (entity.Mode is not (OidcApplicationModes.Development or OidcApplicationModes.Live))
             throw new SparkValidationException(
                 $"Mode must be '{OidcApplicationModes.Development}' or '{OidcApplicationModes.Live}'.", nameof(entity.Mode));
-    }
-
-    private static async Task EnsureClientIdUniqueAsync(IAsyncDocumentSession session, OidcApplication entity)
-    {
-        var clash = await session.Query<OidcApplication>()
-            .Where(a => a.ClientId == entity.ClientId, exact: true)
-            .ToListAsync();
-
-        if (clash.Any(a => !string.Equals(a.Id.Value, entity.Id.Value, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new SparkValidationException(
-                $"Client id '{entity.ClientId}' is already registered. Client ids must be unique — "
-              + "the lookup that resolves them returns whichever document is found first.",
-                nameof(entity.ClientId));
-        }
     }
 
     /// <summary>
@@ -393,12 +374,11 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
         // G26 (PRD D9): disabling takes the application's tokens and grants down with it. Only on the
         // transition, so saving an application that is already disabled patches nothing.
-        if (context.Before is OidcApplication { Enabled: true } && !entity.Enabled
-            && context.Session is IAsyncDocumentSession session && entity.Id is { } applicationId)
+        if (context.Before is OidcApplication { Enabled: true } && !entity.Enabled && !entity.Id.IsEmpty)
         {
-            var store = session.Advanced.DocumentStore;
+            var applicationId = entity.Id;
             await OidcDisableCascade.RevokeApplicationAsync(store, applicationId.Value);
-            using var auditSession = store.OpenAsyncSession();
+            using var auditSession = store.OpenSession();
             await audit.RecordAsync(auditSession, OidcAuditKinds.ApplicationDisabled,
                 context.User?.FindFirstValue(ClaimTypes.NameIdentifier), applicationId.Value);
             await auditSession.SaveChangesAsync();
@@ -411,19 +391,23 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// </summary>
     public async ValueTask OnBeforeDeleteAsync(OidcApplication entity, DeleteContext context)
     {
-        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
-            return;
+        if (!context.IsSystemContext && !await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+        {
+            var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (entity.ActiveMember(userId) is not { Role: OidcMemberRoles.Admin })
+                throw new SparkValidationException("Only an Admin of this application can delete it.", nameof(entity.Members));
+        }
 
-        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (entity.ActiveMember(userId) is not { Role: OidcMemberRoles.Admin })
-            throw new SparkValidationException("Only an Admin of this application can delete it.", nameof(entity.Members));
+        // Frees the client id in the delete's own save (#536 D47): free exactly when the application is gone, and kept
+        // when the delete is refused.
+        if (!string.IsNullOrEmpty(entity.ClientId) && !entity.Id.IsEmpty)
+            OidcClientIdReservation.Release(session, entity);
     }
 
-    /// <summary>Frees the client id of a deleted application, and its CORS origins.</summary>
-    public async ValueTask OnAfterDeleteAsync(OidcApplication entity, DeleteContext context)
+    /// <summary>Drops a deleted application's CORS origins.</summary>
+    public ValueTask OnAfterDeleteAsync(OidcApplication entity, DeleteContext context)
     {
         corsOrigins.Invalidate();
-        if (context.Session is IAsyncDocumentSession session && !string.IsNullOrEmpty(entity.ClientId))
-            await OidcClientIdReservation.ReleaseAsync(session, entity);
+        return ValueTask.CompletedTask;
     }
 }

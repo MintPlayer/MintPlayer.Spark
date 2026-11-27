@@ -38,7 +38,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// <c>docs/leftovers.md</c>.
 /// </para>
 /// </remarks>
-public class OidcCorsScopeTests : SparkTestDriver
+public class OidcCorsScopeTests : RavenSparkTestDriver
 {
     /// <summary>An origin no <c>OidcApplication</c> registers.</summary>
     private const string HostileOrigin = "https://evil.test";
@@ -67,7 +67,7 @@ public class OidcCorsScopeTests : SparkTestDriver
 
     private SparkEndpointFactory<OidcTestContext> CreateFactory(bool enableCors) =>
         new(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: spark =>
             {
@@ -210,7 +210,7 @@ public class OidcCorsScopeTests : SparkTestDriver
     public async Task Sparks_own_policy_beats_an_applications_default_on_spark_paths()
     {
         await using var factory = new SparkEndpointFactory<OidcTestContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureServices: services => services.AddCors(
                 cors => cors.AddDefaultPolicy(policy => policy.WithOrigins(HostileOrigin))),
@@ -232,7 +232,7 @@ public class OidcCorsScopeTests : SparkTestDriver
     public async Task An_applications_default_still_governs_its_own_endpoints()
     {
         await using var factory = new SparkEndpointFactory<OidcTestContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureServices: services => services.AddCors(
                 cors => cors.AddDefaultPolicy(policy => policy.WithOrigins(HostileOrigin))),

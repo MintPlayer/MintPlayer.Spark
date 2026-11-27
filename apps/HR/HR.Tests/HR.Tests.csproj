@@ -46,7 +46,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
     <ProjectReference Include="..\HR\HR.csproj" />
   </ItemGroup>
 

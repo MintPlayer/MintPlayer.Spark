@@ -40,14 +40,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- JSON fixtures (users, organizations, memberships), imported with SparkTestDriver.SeedFromJsonAsync. -->
+    <!-- JSON fixtures (users, organizations, memberships), imported with RavenSparkTestDriver.SeedFromJsonAsync. -->
     <Content Include="Data\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- Recorded non-JSON answers (PageSpeed Insights' HTML 429, spike S5). -->
     <Content Include="Data\**\*.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
     <ProjectReference Include="..\SeoTester\SeoTester.csproj" />
     <!-- D54: the fetcher container's host, booted in-process for the remote-fetcher tests. -->
     <ProjectReference Include="..\SeoTester.Fetcher\SeoTester.Fetcher.csproj" />

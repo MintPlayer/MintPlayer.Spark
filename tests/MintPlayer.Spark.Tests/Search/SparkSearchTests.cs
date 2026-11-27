@@ -57,7 +57,7 @@ internal sealed class SrchEveryoneProvider : ISparkSearchProvider
 /// the real read path against RavenDB: the provider proposes hidden rows too, and they must disappear without a trace,
 /// including from the namesake count that numbers the labels (no existence oracle).
 /// </summary>
-public class SparkSearchTests : SparkTestDriver
+public class SparkSearchTests : RavenSparkTestDriver
 {
     private static readonly Guid SongTypeId = Guid.Parse("5ea7c400-0000-4000-8000-000000000238");
 
@@ -86,7 +86,7 @@ public class SparkSearchTests : SparkTestDriver
     {
         await base.InitializeAsync();
         await SeedFromJsonAsync("Search/Data/srch-songs.json");
-        _factory = new SparkEndpointFactory<SrchContext>(Store, [SongModel()],
+        _factory = new SparkEndpointFactory<SrchContext>(Store.AsSparkTestDatabase(), [SongModel()],
             configureSpark: spark =>
             {
                 spark.AddSearch();

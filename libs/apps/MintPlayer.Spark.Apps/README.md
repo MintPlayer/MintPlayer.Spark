@@ -16,15 +16,15 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 [WebhookEvent("report.completed", Permission = "reports:read", Description = "A report finished processing.")]
 public sealed record ReportCompleted(string ReportId, decimal LineRate);
 
-// In the session of the business write: the event leaves exactly when SaveChanges commits.
-await webhooks.PublishAsync(new ReportCompleted(report.Id, report.LineRate), WebhookOwner.Organization(orgId), session);
+// In the scope's session, the one the business write saves (#536 D50): the event leaves exactly when SaveChanges commits.
+await webhooks.PublishAsync(new ReportCompleted(report.Id, report.LineRate), WebhookOwner.Organization(orgId));
 await session.SaveChangesAsync();
 ```
 
 Guide: [docs/guide-apps-webhooks.md](../../../docs/guide-apps-webhooks.md). Receiving them:
 [docs/guide-webhook-receivers.md](../../../docs/guide-webhook-receivers.md).
 
-- **Run twice, send once:** `PublishAsync(data, owner, idempotencyKey, session)` derives the `webhook-id` from the key,
+- **Run twice, send once:** `PublishAsync(data, owner, idempotencyKey)` derives the `webhook-id` from the key,
   for message handlers and cron jobs.
 - **Entity events:** `apps.AddEntityEvents<Car>(EntityEvents.All, "cars:read", car => WebhookOwner.Organization(car.OrganizationId))`
   raises `car.created/updated/deleted` after each Spark write commits, with the id only.

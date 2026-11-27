@@ -14,7 +14,7 @@ internal sealed record DashboardSnapshot(IReadOnlyDictionary<string, object?> Va
 /// </summary>
 internal sealed class DashboardReader(
     IServiceScopeFactory scopes,
-    DashboardStorage storage,
+    IDashboardHistory storage,
     IOptions<SparkDashboardsOptions> options,
     TimeProvider time,
     ILogger<DashboardReader> logger)

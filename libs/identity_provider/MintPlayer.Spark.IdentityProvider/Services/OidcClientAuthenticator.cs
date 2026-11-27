@@ -8,8 +8,6 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -71,7 +69,7 @@ public static class OidcClientAuthMethods
 /// </list>
 /// </remarks>
 internal sealed class OidcClientAuthenticator(
-    IDocumentStore store, OidcClientKeys clientKeys, OidcIssuer issuer, IMemoryCache cache, SparkIdentityProviderOptions options)
+    ISparkStore store, OidcClientKeys clientKeys, OidcIssuer issuer, IMemoryCache cache, SparkIdentityProviderOptions options)
 {
     public const string JwtBearerAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
@@ -79,7 +77,7 @@ internal sealed class OidcClientAuthenticator(
     private static readonly string DummyHash = ClientSecretHasher.Hash(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
 
     public async Task<OidcClientAuthentication> AuthenticateAsync(
-        HttpContext http, IFormCollection form, IAsyncDocumentSession session, CancellationToken ct)
+        HttpContext http, IFormCollection form, ISparkSession session, CancellationToken ct)
     {
         // --- What did the client present? -----------------------------------------------------
         var (basicId, basicSecret) = ReadBasic(http.Request);
@@ -231,7 +229,7 @@ internal sealed class OidcClientAuthenticator(
     /// <summary>D5: when a secret was last used, at most once an hour, in a session of its own so a failing grant does not lose it.</summary>
     private async Task StampLastUsedAsync(string applicationId, string secretId, DateTime now, CancellationToken ct)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var app = await session.LoadAsync<OidcApplication>(applicationId, ct);
         if (app?.Secrets.FirstOrDefault(s => s.SecretId == secretId) is { } secret)
         {

@@ -1,6 +1,6 @@
 # Reference Attributes
 
-Spark supports two kinds of references between entities: **Reference** attributes (links to another entity stored in RavenDB) and **LookupReference** attributes (links to a predefined set of values). Both are defined with C# attributes on entity properties and auto-detected during model synchronization.
+Spark supports two kinds of references between entities: **Reference** attributes (links to another entity in the store) and **LookupReference** attributes (links to a predefined set of values). Both are defined with C# attributes on entity properties and auto-detected during model synchronization.
 
 ## Overview
 
@@ -8,7 +8,7 @@ Spark supports two kinds of references between entities: **Reference** attribute
 |---|---|---|---|---|
 | Reference | `[Reference]` | The target row's `Id` — a document id (e.g. `"Companies/abc-123"`) for a document type | Modal picker with search, or an inline dropdown on an AsDetail row | Link to another entity (Car -> Company) |
 | Transient LookupReference | `[LookupReference]` | Enum key | Dropdown or modal | Fixed set of values defined in code |
-| Dynamic LookupReference | `[LookupReference]` | String key | Modal picker | User-managed values stored in RavenDB, **one global set per lookup name** |
+| Dynamic LookupReference | `[LookupReference]` | String key | Modal picker | User-managed values stored in the database, **one global set per lookup name** |
 
 Two properties of that table are worth reading before you pick one, because both are easy to
 discover the hard way:
@@ -403,7 +403,7 @@ LookupReferences are used for attributes that should be selected from a predefin
 
 ### Transient Lookup References (Code-Defined)
 
-A transient lookup reference defines its values in C# code. Values are not stored in RavenDB -- they are compiled into the application.
+A transient lookup reference defines its values in C# code. Values are not stored in the database -- they are compiled into the application.
 
 #### Step 1: Define the Enum and Lookup Class
 

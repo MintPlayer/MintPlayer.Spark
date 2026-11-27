@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 /// RED by design: these assert the behaviour the PRD decided, not what master does today. They turn
 /// green with milestone M6.
 /// </remarks>
-public class Issue467UpdateDeletedRowTests : SparkTestDriver
+public class Issue467UpdateDeletedRowTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("46700000-0000-4000-8000-000000000101");
     private const string Id = "people/467";
@@ -35,7 +35,7 @@ public class Issue467UpdateDeletedRowTests : SparkTestDriver
         await base.InitializeAsync();
         _race = new DeleteRace(Store);
         _factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
             configureSpark: spark => spark.AddInterceptor<DeleteAfterPreReadInterceptor>());

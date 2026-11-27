@@ -5,7 +5,6 @@ using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.IdentityProvider.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 
@@ -18,7 +17,7 @@ namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 internal sealed partial class GenerateSecretAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
 
@@ -61,7 +60,7 @@ internal sealed partial class GenerateSecretAction : ICustomAction
 internal sealed partial class RevokeSecretAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
 

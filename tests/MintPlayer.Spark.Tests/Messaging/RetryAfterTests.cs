@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// (<c>AttemptCount + RateLimitParks / RateLimitParksPerAttempt &gt;= MaxAttempts</c>), and the dead-letter
 /// reason says whether the parks made up most of it. Also: a shutdown cancellation is not a failure.
 /// </summary>
-public class RetryAfterTests : SparkTestDriver
+public class RetryAfterTests : MessagingRavenTestDriver
 {
     private const string Owner = "this-node/0001";
     private const string Queue = "retry-after-tests";
@@ -54,7 +55,7 @@ public class RetryAfterTests : SparkTestDriver
     }
 
     private MessageProcessor NewProcessor(IServiceProvider services, SparkMessagingOptions? options = null)
-        => new(services, Store, Options.Create(options ?? new SparkMessagingOptions()), NullLogger<MessageProcessor>.Instance);
+        => new(services, Store.SparkStore(), Options.Create(options ?? new SparkMessagingOptions()), NullLogger<MessageProcessor>.Instance);
 
     private async Task<string> SeedAsync(int errors = 0, int parks = 0, int maxAttempts = 5, Action<SparkMessage>? shape = null)
     {

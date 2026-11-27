@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging;
@@ -93,7 +94,7 @@ public partial class SiteProbeRecipient : IRecipient<SiteProbeMessage>
         await session.StoreAsync(home.Result, cancellationToken);
         await session.StoreAsync(frontier, string.Empty, frontier.Id.Value, cancellationToken); // "must not exist": one probe wins
         RunPipeline.PatchProgress(session, run.Id.Value, "crawl", 1, frontier.Seen.Count, home.Result.Url);
-        await outbox.EnqueueAsync(session, new PageBatchMessage(run.Id.Value, 0), cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(new PageBatchMessage(run.Id.Value, 0), cancellationToken: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 }

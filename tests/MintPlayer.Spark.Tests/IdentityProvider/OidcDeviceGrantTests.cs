@@ -237,7 +237,7 @@ public class OidcDeviceGrantTests(OidcSharedHost host) : OidcTestHost(host), ICl
     public async Task Allowing_a_development_application_one_is_not_a_member_of_is_recorded_as_denied()
     {
         var app = await SeedDeviceClientAsync("tv");
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = (await session.LoadAsync<OidcApplication>(app.Id.Value))!;
             stored.Mode = OidcApplicationModes.Development;
@@ -280,7 +280,7 @@ public class OidcDeviceGrantTests(OidcSharedHost host) : OidcTestHost(host), ICl
         var app = await SeedDeviceClientAsync("tv");
         var (deviceCode, _) = await DeviceCodeAsync(app);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             // Only the document's own ExpiresAt moves; its @expires metadata stays in the future, so
             // RavenDB's expiration cannot remove it mid-test and turn this into invalid_grant.

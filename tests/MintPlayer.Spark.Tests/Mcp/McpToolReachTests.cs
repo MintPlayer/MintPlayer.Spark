@@ -20,8 +20,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// types. Neither widens a write, another action, another tool, or the generic tools; <c>security.json</c> and row security
 /// still decide. <c>GuardedDoc</c> is exposed <c>Read</c>; <c>FilteredDoc</c> is <c>None</c> (McpTestHost).
 /// </summary>
-public class McpToolReachTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpToolReachTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string FilteredId = "FilteredDocs/reach-alice";
     private const string GuardedId = "GuardedDocs/reach-visible";

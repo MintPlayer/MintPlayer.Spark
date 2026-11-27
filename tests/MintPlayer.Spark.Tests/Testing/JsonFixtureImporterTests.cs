@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Testing;
 /// Only a <c>Z</c> value survived. The assertion is on the raw stored JSON rather than on a typed
 /// load, because a typed load re-reads the damage as a plausible-looking local value.
 /// </remarks>
-public class JsonFixtureImporterTests : SparkTestDriver
+public class JsonFixtureImporterTests : RavenSparkTestDriver
 {
     [Theory]
     [InlineData("2027-03-01T09:00:00.0000000-05:00")]

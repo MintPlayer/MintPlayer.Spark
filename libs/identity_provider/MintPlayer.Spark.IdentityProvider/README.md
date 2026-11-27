@@ -2,7 +2,8 @@
 
 Turns a Spark application into an OpenID Connect provider with a developer portal: the discovery and
 JWKS documents, the `/connect/*` protocol endpoints and pages, and `/spark/identity-provider/*` for the
-SPA. Applications, resources, grants, tokens, keys and audit events are RavenDB documents. The package is
+SPA. Applications, resources, grants, tokens, keys and audit events are stored in the application's Spark store
+(RavenDB, SQL Server, PostgreSQL or memory). The package is
 a **Spark library layer** (`identity-provider`) that ships its own model, rights, menu and translations.
 
 Design and decisions: [docs/identity_provider_platform_PRD.md](../../../docs/identity_provider_platform_PRD.md).
@@ -275,7 +276,7 @@ startup refuses the combination.
 | `Branding:ProductName` / `LogoUrl` / `ExtraCss` | | The `/connect` pages' header and styles |
 | `RegistrationPath` | `/register` | The application's registration page, linked from `/connect/login` when `LocalCredentials` is `Full` ([Login page and federation](#login-page-and-federation)); empty hides the link |
 | `Keys:RotationDays` / `PrePublishDays` / `RetainRetiredDays` | `90` / `2` / `14` | Signing-key rotation |
-| `Audit:RetentionDays` | `180` | RavenDB deletes older audit events |
+| `Audit:RetentionDays` | `180` | The store deletes older audit events (document expiration) |
 | `RateLimits:PermitLimit` / `Window` | `120` / 1 min | Per IP on token, PAR, device authorization, revocation and userinfo, when the app runs `spark.AddRateLimiter()` |
 | `RateLimits:ClientAuthenticationFailures` / `ClientAuthenticationFailureWindow` | `10` / 5 min | Failed client authentications per client and IP before that pair is refused |
 | `EnableDynamicCors` | `false` | CORS for the registered origins on the browser-facing endpoints |

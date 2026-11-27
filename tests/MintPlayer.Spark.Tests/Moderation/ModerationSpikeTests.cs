@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Moderation.Indexes;
 using MintPlayer.Spark.Testing;
@@ -18,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// #460 M12 spikes S-MOD-A (map-reduce indexes from an add-on assembly) and S-MOD-E (vote + ledger
 /// entry atomic on the shared request session). Kept as tests so the answers stay pinned.
 /// </summary>
-public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class ModerationSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private readonly List<IAsyncDisposable> factories = [];
 
@@ -32,7 +33,7 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
     private SparkEndpointFactory<MsSpikeContext> Start()
     {
         var factory = new SparkEndpointFactory<MsSpikeContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [],
             // Exactly what AddModeration does: declare the add-on assembly; core's UseSpark deploys it.
             configureSpark: spark => spark.AddIndexesFrom(typeof(Moderation_VotePairs).Assembly));
@@ -43,7 +44,7 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
     [Fact]
     public async Task S_MOD_A_map_reduce_indexes_deploy_from_the_add_on_assembly_and_reduce_correctly()
     {
-        Start();
+        var factory = Start();
 
         // 1. Deployed by core's startup, from the add-on assembly, with no error state.
         var names = await Store.Maintenance.SendAsync(new GetIndexNamesOperation(0, 256));
@@ -103,32 +104,31 @@ public class ModerationSpikeTests(ITestOutputHelper output) : SparkTestDriver
         catchUp.Stop();
         output.WriteLine($"S-MOD-A: {written} documents bulk-inserted in {seed.ElapsedMilliseconds} ms; all four indexes non-stale after {catchUp.ElapsedMilliseconds} ms.");
 
-        using var session = Store.OpenAsyncSession();
+        // Read the way Moderation does: through ISparkStore and the SparkViews (#536 D43).
+        using var session = factory.GetService<ISparkStore>().OpenSession();
 
         // voter→target counts: u1→a3 has 2 votes (n = 0, 1), spread over the days the hours fall on.
-        var pair = await session.Query<Moderation_VotePairs.Result, Moderation_VotePairs>()
-            .Where(r => r.VoterId == "u1" && r.AuthorId == "a3").ToListAsync();
+        var pair = await session.ToListAsync(session.Query<Moderation_VotePairs.Result, Moderation_VotePairs>()
+            .Where(r => r.VoterId == "u1" && r.AuthorId == "a3"));
         pair.Sum(r => r.Count).Should().Be(votesPerPair);
 
         // Reciprocal pair: u0→a0 exists (from the grid) and a0→u0 exists (seeded), the withdrawn one does not count.
-        var reverse = await session.Query<Moderation_VotePairs.Result, Moderation_VotePairs>()
-            .Where(r => r.VoterId == "a0" && r.AuthorId == "u0").ToListAsync();
+        var reverse = await session.ToListAsync(session.Query<Moderation_VotePairs.Result, Moderation_VotePairs>()
+            .Where(r => r.VoterId == "a0" && r.AuthorId == "u0"));
         reverse.Sum(r => r.Count).Should().Be(1, "a withdrawn vote (Direction 0) is not mapped");
 
         // Rep sums: a7 received 40 voters × 2 entries, of which n == 0 is credited → 40 × 10.
-        var cells = await session.Query<Moderation_ReputationCells.Result, Moderation_ReputationCells>()
-            .Where(r => r.UserId == "a7").ToListAsync();
+        var cells = await session.ToListAsync(session.Query<Moderation_ReputationCells.Result, Moderation_ReputationCells>()
+            .Where(r => r.UserId == "a7"));
         cells.Sum(c => c.Points).Should().Be(voters * 10);
         cells.Select(c => c.VoterId).Distinct().Count().Should().Be(voters);
 
-        var pending = await session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
-            .Where(r => r.UserId == "a7").SingleAsync();
-        pending.Points.Should().Be(voters * 10, "the n == 1 entries are not credited yet");
+        var pending = await session.ToListAsync(session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
+            .Where(r => r.UserId == "a7"));
+        pending.Should().ContainSingle().Which.Points.Should().Be(voters * 10, "the n == 1 entries are not credited yet");
 
-        var due = await session.Query<Moderation_EntriesToCredit.Result, Moderation_EntriesToCredit>()
-            .Where(r => r.CreditableAfterUtc <= start.AddHours(48 + 3))
-            .OfType<ReputationEvent>()
-            .CountAsync();
+        var due = await session.CountAsync(session.Query<Moderation_Ledger.Result, Moderation_Ledger>()
+            .Where(r => r.Credited != true && r.CreditableAfterUtc <= start.AddHours(48 + 3)));
         due.Should().BeGreaterThan(0);
     }
 

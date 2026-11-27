@@ -37,10 +37,14 @@
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- How a document is serialized, shared with the relational providers' revisions (#536 S8). -->
+		<Compile Include="..\Shared\Documents\*.cs" Link="Shared\%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- InMemorySparkTestDatabase shares one InMemoryDatabase between the hosts of a test (#536 D35). -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.Testing" />
 	</ItemGroup>
 
 </Project>

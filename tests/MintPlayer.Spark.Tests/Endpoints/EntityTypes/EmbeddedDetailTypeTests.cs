@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.EntityTypes;
 /// </para>
 /// </remarks>
 public class EmbeddedDetailTypeTests(EmbeddedDetailTypeTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<EmbeddedDetailTypeTests.Host>
+    : RavenSparkSharedTestDriver(host), IClassFixture<EmbeddedDetailTypeTests.Host>
 {
     /// <summary>
     /// One host for the class (M8 item 5): every case reads the entity-type catalogue, nothing
@@ -34,7 +34,7 @@ public class EmbeddedDetailTypeTests(EmbeddedDetailTypeTests.Host host)
     public sealed class Host : SharedSparkHost<TestSparkContext>
     {
         protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
-            => new SparkEndpointFactory(Store, [ProbeModel(), LineModel()], security: ParentOnly());
+            => new SparkEndpointFactory(Store.AsSparkTestDatabase(), [ProbeModel(), LineModel()], security: ParentOnly());
     }
 
     private static readonly Guid ProbeTypeId = Guid.Parse("aa11bb22-cc33-4d44-9e55-ff6677889900");
@@ -154,7 +154,7 @@ public class EmbeddedDetailTypeTests(EmbeddedDetailTypeTests.Host host)
     {
         // The gate is the parent's right. Without it there is no parent to hang the row type on.
         await using var factory = new SparkEndpointFactory(
-            Store, [ProbeModel(), LineModel()], security: SparkTestSecurity.Empty.Granting("QueryRead/Unrelated"));
+            Store.AsSparkTestDatabase(), [ProbeModel(), LineModel()], security: SparkTestSecurity.Empty.Granting("QueryRead/Unrelated"));
 
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
         var types = await client.ListEntityTypesAsync();

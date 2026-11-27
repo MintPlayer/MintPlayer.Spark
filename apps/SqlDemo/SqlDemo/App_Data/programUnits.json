@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "programUnitGroups": [
+    {
+      "id": "5a1db000-0000-4000-8000-000000000000",
+      "name": "programUnits.groups.catalogue",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "5a1db000-0000-4000-8000-000000000001",
+          "name": "programUnits.books",
+          "type": "query",
+          "queryId": "0a9cbe71-912e-466c-a994-d48b11e933b9",
+          "alias": "books",
+          "order": 1
+        },
+        {
+          "id": "5a1db000-0000-4000-8000-000000000002",
+          "name": "programUnits.authors",
+          "type": "query",
+          "queryId": "3c39ca26-23e6-4c96-bd87-cf70d8f1fed8",
+          "alias": "authors",
+          "order": 2
+        }
+      ]
+    }
+  ]
+}

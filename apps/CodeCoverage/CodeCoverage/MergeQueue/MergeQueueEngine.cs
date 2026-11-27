@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -393,7 +394,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         afterSave.Add(token => commands.StartedAsync(invocation, $"Queued as run {runId}.", mergeQueueRun: runId, cancellationToken: token));
         Transition(entry, EMergeQueueEntryState.Queued, $"queued by @{actor} ({source.ToString().ToLowerInvariant()})");
         await webhooks.PublishAsync(new MergeQueueEntryQueued(MergeQueuePullRequest.Of(entry, context.Repository), Utc(Now)),
-            context.Repository, $"{entry.Id}/{entry.Run}/queued", session, ct);
+            context.Repository, $"{entry.Id}/{entry.Run}/queued", ct);
         var waiting = context.Document.LaneFor(entry.BaseBranch).Waiting;
         if (await SourceOrderPositionAsync(context, entry, waiting, ct) is { } before)
             waiting.Insert(before, entry.Id.Value);
@@ -1925,7 +1926,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         // §0 D106: the linked issues, through the outbox, so the step is queued exactly when the merge is recorded. A crash
         // before the save leaves the entry merging, and whichever of the poll or the merged event completes it queues it.
-        await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        await outbox.EnqueueAsync(new MergeQueueStepMessage
         {
             EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CloseIssues,
         }, new BroadcastOptions { Delay = CloseIssuesDelay }, ct);
@@ -2029,7 +2030,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         object ended = state == EMergeQueueEntryState.Merged
             ? new MergeQueueEntryMerged(pull, entry.MergeCommitSha, Utc(Now))
             : new MergeQueueEntryRemoved(pull, state.ToString().ToLowerInvariant(), state == EMergeQueueEntryState.Evicted ? entry.EvictionReason : null, entry.EvictionMessage, Utc(Now));
-        await webhooks.PublishAsync(ended, context.Repository, $"{entry.Id}/{entry.Run}/ended", session, ct);
+        await webhooks.PublishAsync(ended, context.Repository, $"{entry.Id}/{entry.Run}/ended", ct);
 
         var lane = context.Document.LaneFor(entry.BaseBranch);
         if (string.Equals(lane.Current, entry.Id.Value, StringComparison.OrdinalIgnoreCase)) lane.Current = null;
@@ -2038,7 +2039,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // D5: the queue branch goes once the run is over, under a lease on the commit we left there. Only a run that
         // dispatched ever pushed one (§0 D65), so a run that did not has nothing to delete.
         if (entry.QueueBranchSha is { } pushed)
-            await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+            await outbox.EnqueueAsync(new MergeQueueStepMessage
             {
                 EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.Cleanup,
                 QueueBranch = entry.QueueBranch, ExpectedSha = pushed,
@@ -2247,7 +2248,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             EWorkflowHookStep.PollRun => engine.ScheduleAsync(entry, EMergeQueueStep.PollRun, delay, cancellationToken),
             EWorkflowHookStep.Timeout => engine.ScheduleAsync(entry, EMergeQueueStep.Timeout, delay, cancellationToken),
             // §0 D53: not gated on the entry (CancelRunAsync), so it carries the run.
-            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session, new MergeQueueStepMessage
+            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(new MergeQueueStepMessage
             {
                 EntryId = entry.Id.Value, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
             }, null, cancellationToken),
@@ -2455,13 +2456,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     {
         var repository = context.Repository;
         foreach (var due in ForgeCheck.Due(repository.KnownChecks, reported, Now))
-            await outbox.EnqueueAsync(session,
+            await outbox.EnqueueAsync(
                 new ForgeWebhookMessage<CheckReported>(repository.Provider, new CheckReported(repository.Id.Value, due.Name, due.Kind, due.AppSlug)),
                 cancellationToken: ct);
     }
 
     private Task ScheduleAsync(MergeQueueEntry entry, EMergeQueueStep step, TimeSpan? delay, CancellationToken ct)
-        => outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        => outbox.EnqueueAsync(new MergeQueueStepMessage
         {
             EntryId = entry.Id.Value,
             Run = entry.Run,

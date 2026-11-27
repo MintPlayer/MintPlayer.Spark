@@ -72,11 +72,13 @@ public class SparkTemplateGeneratorTests
     [Fact]
     public void A_store_bound_feature_is_disabled_for_the_other_store()
     {
-        var history = TemplateRepository.Symbols(Generated.TemplateJson)["History"]!;
+        // Replication is RavenDB ETL, so it stays bound to RavenDB for good (#536).
+        var replication = TemplateRepository.Symbols(Generated.TemplateJson)["Replication"]!;
 
-        history["isEnabled"]!.GetValue<string>().Should().Be("Store == \"RavenDB\"");
-        history["description"]!.GetValue<string>()
-            .Should().Be("Revisions, audit stamping and revert (MintPlayer.Spark.History). Needs RavenDB.");
+        replication["isEnabled"]!.GetValue<string>().Should().Be("Store == \"RavenDB\"");
+        replication["description"]!.GetValue<string>()
+            .Should().Be("Receive read-only copies of other Spark modules' collections through RavenDB ETL (MintPlayer.Spark.Replication). Needs RavenDB. Turns on Messaging.");
+        TemplateRepository.Symbols(Generated.TemplateJson)["History"]!["isEnabled"].Should().BeNull("History runs on any store with revisions");
     }
 
     [Fact]

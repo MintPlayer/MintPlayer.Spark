@@ -129,31 +129,52 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot add values to transient LookupReference '{name}'");
 
-        using var session = store.OpenSession();
-
-        ValidateName(name);
-        var documentId = $"LookupReferences/{name}";
-        var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
-
-        if (document == null)
+        return await EditAsync(name, (document, documentId) =>
         {
-            document = new DynamicLookupReferenceDocument
+            document ??= new DynamicLookupReferenceDocument
             {
                 Id = documentId,
                 Name = name,
                 Values = new List<DynamicLookupReferenceValue>()
             };
+
+            // Check for duplicate key
+            if (document.Values.Any(v => v.Key == value.Key))
+                throw new InvalidOperationException($"A value with key '{value.Key}' already exists");
+
+            document.Values.Add(DynamicLookupReferenceValue.FromDto(value));
+            return (document, value);
+        });
+    }
+
+    private const int EditAttempts = 5;
+
+    /// <summary>
+    /// Loads the lookup's document, applies <paramref name="edit"/> and stores it at the version it was read at, again from
+    /// a fresh read when another edit landed first (#536 PRD §3, "Lookup references"). The values are one document, so
+    /// two administrators editing one lookup at once used to keep only the last one's change. Each round lets at least
+    /// one writer through; after <see cref="EditAttempts"/> the conflict reaches the caller.
+    /// </summary>
+    private async Task<T> EditAsync<T>(string name, Func<DynamicLookupReferenceDocument?, string, (DynamicLookupReferenceDocument Document, T Result)> edit)
+    {
+        ValidateName(name);
+        var documentId = $"LookupReferences/{name}";
+        for (var attempt = 1; ; attempt++)
+        {
+            using var session = store.OpenSession();
+            var loaded = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
+            var expectedVersion = loaded is null ? string.Empty : session.GetVersion(loaded);
+            var (document, result) = edit(loaded, documentId);
+            await session.StoreAsync(document, expectedVersion, documentId);
+            try
+            {
+                await session.SaveChangesAsync();
+                return result;
+            }
+            catch (SparkStoreConcurrencyException) when (attempt < EditAttempts)
+            {
+            }
         }
-
-        // Check for duplicate key
-        if (document.Values.Any(v => v.Key == value.Key))
-            throw new InvalidOperationException($"A value with key '{value.Key}' already exists");
-
-        document.Values.Add(DynamicLookupReferenceValue.FromDto(value));
-        await session.StoreAsync(document);
-        await session.SaveChangesAsync();
-
-        return value;
     }
 
     public async Task<LookupReferenceValueDto> UpdateValueAsync(string name, string key, LookupReferenceValueDto value)
@@ -165,35 +186,30 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot update values in transient LookupReference '{name}'");
 
-        using var session = store.OpenSession();
-
-        ValidateName(name);
-        var documentId = $"LookupReferences/{name}";
-        var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
-
-        if (document == null)
-            throw new InvalidOperationException($"LookupReference '{name}' has no values in database");
-
-        var existingValue = document.Values.FirstOrDefault(v => v.Key == key);
-        if (existingValue == null)
-            throw new InvalidOperationException($"Value with key '{key}' not found");
-
-        // Update the value
-        existingValue.Translations = value.Values.Translations;
-        existingValue.IsActive = value.IsActive;
-        existingValue.Extra = value.Extra;
-
-        // If key changed, update it
-        if (value.Key != key)
+        return await EditAsync(name, (document, _) =>
         {
-            if (document.Values.Any(v => v.Key == value.Key && v != existingValue))
-                throw new InvalidOperationException($"A value with key '{value.Key}' already exists");
-            existingValue.Key = value.Key;
-        }
+            if (document == null)
+                throw new InvalidOperationException($"LookupReference '{name}' has no values in database");
 
-        await session.SaveChangesAsync();
+            var existingValue = document.Values.FirstOrDefault(v => v.Key == key);
+            if (existingValue == null)
+                throw new InvalidOperationException($"Value with key '{key}' not found");
 
-        return existingValue.ToDto();
+            // Update the value
+            existingValue.Translations = value.Values.Translations;
+            existingValue.IsActive = value.IsActive;
+            existingValue.Extra = value.Extra;
+
+            // If key changed, update it
+            if (value.Key != key)
+            {
+                if (document.Values.Any(v => v.Key == value.Key && v != existingValue))
+                    throw new InvalidOperationException($"A value with key '{value.Key}' already exists");
+                existingValue.Key = value.Key;
+            }
+
+            return (document, existingValue.ToDto());
+        });
     }
 
     public async Task DeleteValueAsync(string name, string key)
@@ -205,21 +221,18 @@ internal partial class LookupReferenceService : ILookupReferenceService
         if (info.IsTransient)
             throw new InvalidOperationException($"Cannot delete values from transient LookupReference '{name}'");
 
-        using var session = store.OpenSession();
+        await EditAsync(name, (document, _) =>
+        {
+            if (document == null)
+                throw new InvalidOperationException($"LookupReference '{name}' has no values in database");
 
-        ValidateName(name);
-        var documentId = $"LookupReferences/{name}";
-        var document = await session.LoadAsync<DynamicLookupReferenceDocument>(documentId);
+            var valueToRemove = document.Values.FirstOrDefault(v => v.Key == key);
+            if (valueToRemove == null)
+                throw new InvalidOperationException($"Value with key '{key}' not found");
 
-        if (document == null)
-            throw new InvalidOperationException($"LookupReference '{name}' has no values in database");
-
-        var valueToRemove = document.Values.FirstOrDefault(v => v.Key == key);
-        if (valueToRemove == null)
-            throw new InvalidOperationException($"Value with key '{key}' not found");
-
-        document.Values.Remove(valueToRemove);
-        await session.SaveChangesAsync();
+            document.Values.Remove(valueToRemove);
+            return (document, true);
+        });
     }
 
     private async Task<DynamicLookupReferenceDocument?> LoadDynamicLookupAsync(string name)
@@ -297,8 +310,9 @@ internal partial class LookupReferenceService : ILookupReferenceService
 }
 
 /// <summary>
-/// RavenDB document for storing dynamic lookup reference values.
-/// Uses its own value type to match the stored format in RavenDB (Newtonsoft.Json).
+/// The stored values of one dynamic lookup reference (<c>LookupReferences/{name}</c>), on every store; a store with a
+/// schema keeps it in a table core declares (<see cref="SparkStoredTypes"/>). Uses its own value type to match the
+/// stored format in RavenDB (Newtonsoft.Json).
 /// </summary>
 internal class DynamicLookupReferenceDocument
 {

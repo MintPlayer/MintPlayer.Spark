@@ -148,16 +148,6 @@ public sealed class QnATestHost : SparkAppTestHost
         return client;
     }
 
-    /// <summary>A client with no session; the caller disposes it.</summary>
-    public SparkClient NewClient()
-    {
-        var handler = new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-        };
-        return new SparkClient(new HttpClient(handler) { BaseAddress = new Uri(AppUrl) }, ownsClient: true);
-    }
-
     // ---------- test seams (moderator only) ----------
 
     /// <summary>Runs Moderation's crediting job now; returns how many ledger entries it credited.</summary>

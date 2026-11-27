@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// <see cref="PersistentObjectAttribute.ShowedOn"/> an action sets on load and on new — Vidyano's
 /// <c>Visibility</c> pattern. Both must reach the wire unchanged: the client draws from them on its first render.
 /// </summary>
-public class RuntimeShowedOnTests : SparkTestDriver
+public class RuntimeShowedOnTests : RavenSparkTestDriver
 {
     private static readonly Guid CarTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000264");
 
@@ -23,7 +23,7 @@ public class RuntimeShowedOnTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<ShowedOnProbeContext>(Store, [ShowedOnProbeModels.Car(CarTypeId)]);
+        _factory = new SparkEndpointFactory<ShowedOnProbeContext>(Store.AsSparkTestDatabase(), [ShowedOnProbeModels.Car(CarTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

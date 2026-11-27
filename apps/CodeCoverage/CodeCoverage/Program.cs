@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Controllers;
@@ -405,7 +406,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 // The Data Protection key ring (auth + antiforgery cookies both decrypt with it) is wired by Spark
 // core (#460, D5). appsettings.json sets only ApplicationName=CodeCoverage; production sets
 // Spark__DataProtection__KeysPath in docker-compose.yml to a directory on the dataprotection-keys
-// volume, so a redeploy keeps the ring. Test hosts set Spark:DataProtection:Storage=RavenDb instead —
+// volume, so a redeploy keeps the ring. Test hosts set Spark:DataProtection:Storage=Store instead —
 // never both, which Spark refuses. Changing ApplicationName or the key location signs every user out
 // once. (The ring previously lived in RavenDB DataProtectionKeys/ documents; those are orphaned by the
 // move to KeysPath and can be deleted once the first deploy with the volume is healthy.)
@@ -568,22 +569,12 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
-// Model synchronization is a build step, not a run mode: it reflects over the entity classes to
-// write App_Data/Model/*.json and modelHashes.json, needs no database, and so runs here and
-// returns before Build(). --spark-verify-model is the same call in read-only mode (exit 3 on
-// drift), which is what lets CI gate the model without a RavenDB.
-if (builder.SynchronizeSparkModelsIfRequested(args))
-    return;
-
-// Same shape, over security.json instead: --spark-synchronize-security writes
-// App_Data/securityPosture.txt, --spark-verify-security exits 3 when the anonymous
-// surface moved. Computed from configuration alone, so CI gates it without a
-// RavenDB — the point being that widening security.json is a one-line diff that
-// reads no differently from narrowing it.
-if (builder.VerifySparkSecurityIfRequested(args))
-    return;
-
 var app = builder.Build();
+
+// Spark's commands (--spark-help lists them): model synchronization, security, and every package's own. Building the
+// host constructs no service and opens no connection, so the ones that need no database run in CI.
+if (await app.RunSparkCommandIfRequestedAsync(args))
+    return;
 
 // Before anything can load a FileCoverage — including the migration runner
 // inside UseSpark() — teach the store to read documents written before #420,

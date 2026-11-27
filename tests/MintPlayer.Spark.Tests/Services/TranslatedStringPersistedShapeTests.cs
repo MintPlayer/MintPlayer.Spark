@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// suite would notice, so this fails instead.
 /// </para>
 /// </summary>
-public class TranslatedStringPersistedShapeTests : SparkTestDriver
+public class TranslatedStringPersistedShapeTests : RavenSparkTestDriver
 {
     public class Car
     {

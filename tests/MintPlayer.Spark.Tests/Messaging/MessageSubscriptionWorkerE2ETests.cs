@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 
 /// <summary>
 /// End-to-end tests for <see cref="MessageSubscriptionWorker"/> driving real RavenDB
-/// subscriptions via <see cref="SparkTestDriver"/>. Each test seeds a <see cref="SparkMessage"/>,
+/// subscriptions via <see cref="RavenSparkTestDriver"/>. Each test seeds a <see cref="SparkMessage"/>,
 /// starts the worker, and polls for the resulting terminal document state.
 /// <para>
 /// Workers are intentionally constructed directly (bypassing <see cref="MessageSubscriptionManager"/>)
@@ -21,14 +22,10 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// each message transitions independently.
 /// </para>
 /// </summary>
-public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
+public class MessageSubscriptionWorkerE2ETests : MessagingRavenTestDriver
 {
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(20);
 
-    // MessageRetrySweeper queries the SparkMessages_ByQueue index (the redelivery tests
-    // depend on it); production deploys it via AddMessaging's middleware.
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
 
     public record SuccessMessage(string Id);
     public record FailMessage(string Id);
@@ -125,7 +122,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 
     private async Task<string> SeedAsync<T>(T payload, int maxAttempts = 5)
     {
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }));
         await bus.BroadcastAsync(payload);
 
         await Store.WaitForIndexingAsync();
@@ -163,10 +160,13 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     {
         return new MessageSubscriptionWorker(
             queueName,
-            Store,
+            Store.SparkSubscriptions(),
+            Store.SparkStore(),
             serviceProvider,
             serviceProvider.GetRequiredService<IOptions<SparkMessagingOptions>>(),
-            NullLoggerFactory.Instance);
+            NullLoggerFactory.Instance,
+            // RavenDB has no schema, so its readiness is complete at once (#536 D41).
+            new MintPlayer.Spark.Abstractions.Storage.SparkStoreReadiness(NSubstitute.Substitute.For<IServiceProvider>()));
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     /// would fail for the wrong reason.
     /// </summary>
     private MessagingLeaseManager HeldLease()
-        => new(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true };
+        => Store.HeldLease();
 
     /// <summary>
     /// The wake-up mechanism for parked messages. Redelivery tests must run one alongside
@@ -186,7 +186,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     private MessageRetrySweeper NewSweeper(SparkMessagingOptions? options = null)
     {
         return new MessageRetrySweeper(
-            Store,
+            Store.SparkStore(),
             Options.Create(options ?? new SparkMessagingOptions { FallbackPollInterval = TimeSpan.FromSeconds(1) }),
             NullLogger<MessageRetrySweeper>.Instance,
             HeldLease());
@@ -205,6 +205,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         // both are wired with the same ServiceCollection.
         services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
         services.AddSingleton<IDocumentStore>(Store);
+        services.AddRavenDbSessions(); // #536 D40
         services.AddSingleton(Options.Create(options ?? new SparkMessagingOptions { MaxAttempts = 5 }));
         services.AddLogging();
         services.AddScoped<MessageCheckpoint>();
@@ -298,6 +299,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         // MessageProcessor the batch handler throws on resolution and the message simply stays
         // Pending, which is a confusing way for this to fail.
         services.AddSingleton<IDocumentStore>(Store);
+        services.AddRavenDbSessions(); // #536 D40
         services.AddSingleton(Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
         services.AddLogging();
         services.AddScoped<MessageCheckpoint>();
@@ -489,7 +491,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         var recipient = new SuccessRecipient();
         var sp = ProviderFor<SuccessMessage, SuccessRecipient>(recipient);
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         await bus.DelayBroadcastAsync(new SuccessMessage("orders/delayed"), TimeSpan.FromSeconds(1));
         await Store.WaitForIndexingAsync();
         string id;

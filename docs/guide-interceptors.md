@@ -47,7 +47,7 @@ auto-index merge, a side-by-side swap, a reset), is logged as a warning and the 
 normally. A paused index costs every write to its collections the full 15 s; the warning names it.
 
 This covers everything that commits through `IDatabaseAccess` — including documents an interceptor
-stores in `context.Session`, which commit in the same `SaveChanges`. Scopes without an `HttpContext`
+stores in the scope's `ISparkSession`, which commit in the same `SaveChanges`. Scopes without an `HttpContext`
 (message handlers and durable interceptors, cron jobs, migrations, replication, hosted services) do not
 wait. Code that calls `SaveChangesAsync` on a session itself does not wait either; see
 [the custom actions guide](guide-custom-actions.md) for how to get the same behaviour.
@@ -93,8 +93,12 @@ the same stage. State therefore carries from its before-interceptor to its after
 
 ## 3. The context
 
-Every context carries `EntityType`, `User`, `IsSystemContext`, and `Session`: the RavenDB
-session the write commits through (`context.GetSession()` returns it typed).
+Every context carries `EntityType`, `User` and `IsSystemContext`. It carries **no session**: the write
+commits through the request scope's unit of work, so an interceptor that reads or stores documents
+injects the scoped `ISparkSession` (an Actions class does the same). Interceptors and Actions classes are
+scoped, so it is the very session the write saves (#536 D50). The one exception is
+`MaterializeContext.Session`: a `Before` materialize loads in a side session of its own, and a hydrating
+interceptor must read where the entity was loaded.
 
 - `SaveContext`: `Operation`, `PersistentObject` (the posted object, minus what the caller may not
   write), `Entity`, `Id`, `Before` (the stored row from a separate session; null for a create),
@@ -108,8 +112,8 @@ session the write commits through (`context.GetSession()` returns it typed).
 - **Validate**: throw `SparkValidationException` (400) or `SparkRowLevelAccessDeniedException` (404).
 - **Mutate the entity.** What it stamps is what WITH CHECK judges and what is written. It cannot swap
   the entity for another instance.
-- **Store side documents** in `context.Session`. They commit with the write, and are taken back when
-  anything refuses it.
+- **Store side documents** in the injected `ISparkSession`. They commit with the write, and are taken
+  back when anything refuses it.
 - **Prompt** with `manager.Retry.Action(...)`. The request is answered with a 449, and replayed
   with the answer, so an interceptor must be idempotent up to its prompt. A prompt during a **bulk** delete is
   refused: that row is named in the refusal ("asks for a confirmation; delete it on its own").
@@ -171,8 +175,9 @@ public sealed class OrderMail(IMailer mailer) : IBeforeSave<Order>, IAfterSaveCo
 They replace SoftDelete's `ISoftDeleteObserver` and History's `ISparkRevisionObserver`. Moderation's
 vote reversal and the DemoApp broadcasts are durable interceptors.
 
-Publishing a message of your own inside a write works the same way: `IMessageOutbox.EnqueueAsync(session,
-message)` stores it in the write's session, and it commits with the write.
+Publishing a message of your own inside a write works the same way: `IMessageOutbox.EnqueueAsync(message)`
+stores it in the scope's session, the one the write saves through, and it commits with the write. The outbox
+takes no session argument (#536 D50).
 
 ## 6. Order
 

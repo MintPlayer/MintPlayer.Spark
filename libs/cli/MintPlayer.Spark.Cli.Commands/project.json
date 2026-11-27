@@ -1,0 +1,13 @@
+{
+  "name": "MintPlayer.Spark.Cli.Commands",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "namedInputs": {
+    "production": [
+      "default",
+      "{workspaceRoot}/libs/templates/MintPlayer.Spark.Templates/features.json",
+      "{workspaceRoot}/libs/templates/MintPlayer.Spark.Templates.Build/FeatureManifest.cs",
+      "!{projectRoot}/**/bin/**/*",
+      "!{projectRoot}/**/obj/**/*"
+    ]
+  }
+}

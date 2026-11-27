@@ -54,13 +54,13 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
     private async Task<OidcApplication> LoadAsync(string id)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return await session.LoadAsync<OidcApplication>(id);
     }
 
     private async Task UpdateAsync(string id, Action<OidcApplication> change)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         change(await session.LoadAsync<OidcApplication>(id));
         await session.SaveChangesAsync();
     }
@@ -79,15 +79,15 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     private async Task<string> SeedDeveloperRequestAsync(string localPart, string status = OidcDeveloperStatuses.Requested)
     {
         var user = await SeedUserAsync(UserEmail(localPart));
-        using var session = Store.OpenAsyncSession();
-        OidcDevelopers.Set(session, user.Id!, new OidcDeveloper { Status = status, TermsVersion = 1, RequestedAt = DateTime.UtcNow });
+        using var session = Store.OpenSession();
+        await OidcDevelopers.SetAsync(session, user.Id!, new OidcDeveloper { Status = status, TermsVersion = 1, RequestedAt = DateTime.UtcNow }, CancellationToken.None);
         await session.SaveChangesAsync();
         return user.Id!;
     }
 
     private async Task DecideDeveloperAsync(bool approve, params string[] userIds)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await OidcDeveloperDecision.DecideAsync(
             Selected(userIds), approve, Substitute.For<IManager>(), session, As(Administrator), Developers, Audit,
             Factory.GetService<OidcPortalMail>(), Factory.GetService<OidcPortalLinks>(), CancellationToken.None);
@@ -176,9 +176,9 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     {
         var email = UserEmail("dev");
         var user = await SeedUserAsync(email);
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
-            OidcDevelopers.Set(session, user.Id!, new OidcDeveloper { Status = OidcDeveloperStatuses.Revoked, TermsVersion = 1 });
+            await OidcDevelopers.SetAsync(session, user.Id!, new OidcDeveloper { Status = OidcDeveloperStatuses.Revoked, TermsVersion = 1 }, CancellationToken.None);
             await session.SaveChangesAsync();
         }
         var portal = await OidcPortalClient.SignInAsync(Client, email, Password);
@@ -197,7 +197,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     private async Task SeedApiAsync(string owner, bool autoApprove = false)
     {
         _ = Factory;
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await session.StoreAsync(new OidcResource
         {
             Id = Id<OidcResource>.FromTrusted(OidcScopeCatalog.ResourceId(ApiName)),
@@ -216,7 +216,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
     {
         var added = scopes.Select(s => new OidcApplicationScope { Name = s }).ToList();
         app.Scopes.AddRange(added);
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await OidcApplicationInterceptors.MarkCrossOwnerScopesAsync(session, app, added, requestedBy);
         return added;
     }
@@ -303,7 +303,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
     private async Task DecideScopeAsync(OidcApplication app, OidcPortalAccess access, bool approve)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await OidcScopeDecision.DecideAsync(
             Selected($"{app.Id}|{ApiName}.read"), approve, Substitute.For<IManager>(), session, access, Audit,
             Factory.GetService<OidcPortalMail>(), CancellationToken.None);
@@ -370,7 +370,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
     private async Task SwitchToLiveAsync(OidcApplication app, OidcPortalAccess access, bool requireReview)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var action = new SwitchToLiveAction(
             manager: Substitute.For<IManager>(), session: session, access: access, audit: Audit, options: new Options(requireReview));
         await action.ExecuteAsync(new CustomActionArgs
@@ -419,7 +419,7 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
 
     private async Task DecideGoLiveAsync(OidcApplication app, OidcPortalAccess access, bool approve)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await OidcGoLiveDecision.DecideAsync(
             Selected(app.Id.Value), approve, Substitute.For<IManager>(), session, access, Audit,
             Factory.GetService<OidcPortalMail>(), CancellationToken.None);

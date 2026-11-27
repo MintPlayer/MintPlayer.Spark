@@ -14,18 +14,15 @@ public class SubscriptionWorkerRegistrationGeneratorTests
             using System.Threading;
             using System.Threading.Tasks;
             using Microsoft.Extensions.Logging;
+            using MintPlayer.Spark.Abstractions.Storage;
             using MintPlayer.Spark.SubscriptionWorker;
-            using Raven.Client.Documents;
-            using Raven.Client.Documents.Subscriptions;
 
             namespace TestApp.Workers;
 
             public class CarEventsWorker : SparkSubscriptionWorker<Car>
             {
-                public CarEventsWorker(IDocumentStore s, ILogger<CarEventsWorker> l) : base(s, l) { }
-                protected override SubscriptionCreationOptions ConfigureSubscription()
-                    => new SubscriptionCreationOptions { Query = "from Cars" };
-                protected override Task ProcessBatchAsync(SubscriptionBatch<Car> batch, CancellationToken ct)
+                public CarEventsWorker(ISparkSubscriptions s, ILoggerFactory l, ISparkStoreReadiness r) : base(s, l, r) { }
+                protected override Task ProcessBatchAsync(SparkSubscriptionBatch<Car> batch, CancellationToken ct)
                     => Task.CompletedTask;
             }
 
@@ -38,7 +35,7 @@ public class SubscriptionWorkerRegistrationGeneratorTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(SparkSubscriptionWorker<>)],
+            referenceTypes: [typeof(SparkSubscriptionWorker<>), typeof(MintPlayer.Spark.Abstractions.Storage.ISparkSubscriptions)],
             rootNamespace: "TestApp");
 
         result.GeneratedSources.Should().ContainSingle();

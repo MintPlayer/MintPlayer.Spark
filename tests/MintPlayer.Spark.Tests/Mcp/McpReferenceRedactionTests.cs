@@ -17,8 +17,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// same caller: the references are absent from <c>get</c>, <c>describe</c> and <c>query</c> alike.
 /// Fixtures: <see cref="ReferenceTargetRightsTests"/>' <c>RtCar</c> (references <c>RtDriver</c>).
 /// </summary>
-public class McpReferenceRedactionTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpReferenceRedactionTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private static readonly Guid CarTypeId = Guid.Parse("4c9d0000-00a1-4000-8000-0000000000a1");
     private static readonly Guid DriverTypeId = Guid.Parse("4c9d0000-00a2-4000-8000-0000000000a2");

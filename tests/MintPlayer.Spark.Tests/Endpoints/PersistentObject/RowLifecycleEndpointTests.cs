@@ -31,7 +31,7 @@ using Po = Abstractions.PersistentObject;
 /// row X" must not be a way to discover which rows, collections or parents are there.
 /// </para>
 /// </remarks>
-public class RowLifecycleEndpointTests : SparkTestDriver
+public class RowLifecycleEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid InvoiceTypeId = Guid.Parse("9a1c0000-0000-4000-8000-9a1c00000001");
     private static readonly Guid LineTypeId = Guid.Parse("9a1c0000-0000-4000-8000-9a1c00000002");
@@ -173,7 +173,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         }
 
         _factory = new SparkEndpointFactory<InvoiceContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InvoiceModel(), LineModel()],
             configureServices: services =>
             {

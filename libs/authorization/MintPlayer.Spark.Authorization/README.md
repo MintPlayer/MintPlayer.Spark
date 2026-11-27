@@ -1,6 +1,7 @@
 # MintPlayer.Spark.Authorization
 
-Identity for MintPlayer.Spark: ASP.NET Core Identity backed by RavenDB, external login providers,
+Identity for MintPlayer.Spark: ASP.NET Core Identity on the application's Spark store (RavenDB, SQL Server,
+PostgreSQL or in memory), external login providers,
 and automatic Angular frontend integration.
 
 ## Overview
@@ -18,7 +19,7 @@ application that wants to be open grants `*/*` in its file, where the decision i
 
 What this package still gives you:
 
-- **Identity** — `SparkUser`, `SparkRole`, RavenDB user/role stores, the `/spark/auth/*`
+- **Identity** — `SparkUser`, `SparkRole`, user/role stores on any Spark store, the `/spark/auth/*`
   endpoint family, and how much of it to mount (`SparkLocalCredentials`)
 - **External login** — GitHub and any other OAuth/OIDC provider
 - **JWT bearer** — for machine callers
@@ -37,7 +38,7 @@ dotnet add package MintPlayer.Spark.Authorization
 
 ### Add Authentication
 
-The authorization package includes built-in ASP.NET Core Identity support with RavenDB-backed user and role stores. To enable authentication:
+The authorization package includes built-in ASP.NET Core Identity support with user and role stores on the application's Spark store. Users are found by email, user name, external login and passkey through the store's reservations (compare exchange on RavenDB), never through a query, so each of them is unique. To enable authentication:
 
 ```csharp
 using MintPlayer.Spark.Authorization.Extensions;
@@ -779,8 +780,8 @@ See the demo apps for working authorization setups:
 
 ## Requirements
 
-- .NET 10.0+
-- RavenDB 6.2+
+- .NET 11.0
+- A Spark store: RavenDB 6.2+, SQL Server, PostgreSQL or in memory
 - Node.js (for automatic npm integration)
 - Angular 22+ (for frontend components)
 

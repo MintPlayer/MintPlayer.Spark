@@ -1,9 +1,6 @@
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations;
-using Raven.Client.Documents.Queries;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -19,45 +16,60 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// <item><b>An API resource:</b> every valid token carrying one of its scopes. Grants stay: a disabled scope is no
 /// longer issued, and re-enabling the resource honours the consent the users already gave.</item>
 /// </list>
-/// Both are set-based patches with every value a query parameter; the collection names come from the conventions
-/// and pass <see cref="RqlIdentifier.Collection"/>. The wait is bounded: a patch that outlives it keeps running on the
-/// server, and the access-token check (<see cref="AccessTokens"/>) reads the patched status, not this call.
+/// The rows come from a view (<see cref="OidcTokens_ByState"/>, <see cref="OidcTokens_ByScope"/>,
+/// <see cref="OidcGrants_BySubject"/>; #536 D47), read once the view has caught up (bounded), and the status is set
+/// set-based by id: on RavenDB a patch of <c>id() in (…)</c>, which needs no index. The access-token check
+/// (<see cref="AccessTokens"/>) reads the stored status, not this call.
 /// </remarks>
 internal static class OidcDisableCascade
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
 
-    public static async Task RevokeApplicationAsync(IDocumentStore store, string applicationId, CancellationToken ct = default)
-    {
-        var tokens = RqlIdentifier.Collection(store.Conventions.GetCollectionName(typeof(OidcToken)));
-        var grants = RqlIdentifier.Collection(store.Conventions.GetCollectionName(typeof(OidcGrant)));
-        var parameters = new Parameters { ["app"] = applicationId, ["valid"] = "valid", ["revoked"] = "revoked" };
+    /// <summary>How many ids one set-based write names.</summary>
+    private const int Batch = 256;
 
-        await RunAsync(store, $"from {tokens} where ApplicationId = $app and Status = $valid update {{ this.Status = $revoked; }}", parameters, ct);
-        await RunAsync(store, $"from {grants} where ApplicationId = $app and Status = $valid update {{ this.Status = $revoked; }}", parameters, ct);
+    public static async Task RevokeApplicationAsync(ISparkStore store, string applicationId, CancellationToken ct = default)
+    {
+        using var session = store.OpenSession();
+        var tokens = await session.ToListAsync(session.Query<OidcTokenState, OidcTokens_ByState>(Wait)
+            .Where(t => t.ApplicationId == applicationId && t.Status == "valid"), ct);
+        await RevokeTokensAsync(session, tokens.Select(t => t.Id), ct);
+
+        var grants = await session.ToListAsync(session.Query<OidcGrantState, OidcGrants_BySubject>(Wait)
+            .Where(g => g.ApplicationId == applicationId && g.Status == "valid"), ct);
+        await RevokeGrantsAsync(session, grants.Select(g => g.Id), ct);
     }
 
-    public static async Task RevokeScopesAsync(IDocumentStore store, IReadOnlyCollection<string> scopes, CancellationToken ct = default)
+    public static async Task RevokeScopesAsync(ISparkStore store, IReadOnlyCollection<string> scopes, CancellationToken ct = default)
     {
         if (scopes.Count == 0)
             return;
-        var tokens = RqlIdentifier.Collection(store.Conventions.GetCollectionName(typeof(OidcToken)));
-        var parameters = new Parameters { ["scopes"] = scopes.ToArray(), ["valid"] = "valid", ["revoked"] = "revoked" };
-
-        await RunAsync(store, $"from {tokens} where Status = $valid and Scopes in ($scopes) update {{ this.Status = $revoked; }}", parameters, ct);
+        var wanted = scopes.ToList();
+        using var session = store.OpenSession();
+        var tokens = await session.ToListAsync(session.Query<OidcTokenScope, OidcTokens_ByScope>(Wait)
+            .Where(t => t.Status == "valid" && wanted.Contains(t.Scope)), ct);
+        await RevokeTokensAsync(session, tokens.Select(t => t.Id), ct);
     }
 
-    private static async Task RunAsync(IDocumentStore store, string rql, Parameters parameters, CancellationToken ct)
+    /// <summary>Sets <c>Status = "revoked"</c> on the tokens named by <paramref name="ids"/>.</summary>
+    internal static async Task RevokeTokensAsync(ISparkSession session, IEnumerable<string?> ids, CancellationToken ct)
     {
-        // StaleTimeout: a token written a moment ago may not be in the auto-index yet, and without a timeout RavenDB refuses
-        // the whole patch at once ("Cannot perform bulk operation. Index is stale."), so nothing was revoked. The server now
-        // waits for the index, bounded like the rest.
-        var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(
-                new IndexQuery { Query = rql, QueryParameters = parameters },
-                new QueryOperationOptions { AllowStale = false, StaleTimeout = Wait }),
-            token: ct);
-        try { await operation.WaitForCompletionAsync(Wait); }
-        catch (TimeoutException) { /* still running server-side; see remarks */ }
+        foreach (var chunk in Chunks(ids))
+        {
+            var keys = chunk.Select(Id<OidcToken>.FromTrusted).ToList();
+            await session.UpdateWhereAsync<OidcToken>(t => keys.Contains(t.Id), set => set.Set(t => t.Status, "revoked"), ct);
+        }
     }
+
+    private static async Task RevokeGrantsAsync(ISparkSession session, IEnumerable<string?> ids, CancellationToken ct)
+    {
+        foreach (var chunk in Chunks(ids))
+        {
+            var keys = chunk.Select(Id<OidcGrant>.FromTrusted).ToList();
+            await session.UpdateWhereAsync<OidcGrant>(g => keys.Contains(g.Id), set => set.Set(g => g.Status, "revoked"), ct);
+        }
+    }
+
+    private static IEnumerable<string[]> Chunks(IEnumerable<string?> ids)
+        => ids.OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Chunk(Batch);
 }

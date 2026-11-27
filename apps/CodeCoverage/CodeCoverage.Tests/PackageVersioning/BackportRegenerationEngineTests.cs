@@ -581,7 +581,7 @@ public class BackportRegenerationEngineTests : CoverageRavenTest
         public List<BackportRegenerationStepMessage> Steps { get; } = [];
         public List<MergeQueueSignalMessage> Signals { get; } = [];
 
-        public Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
+        public Task EnqueueAsync<TMessage>(TMessage message, BroadcastOptions? options = null, CancellationToken cancellationToken = default)
         {
             if (message is BackportRegenerationStepMessage step) Steps.Add(step);
             if (message is MergeQueueSignalMessage signal) Signals.Add(signal);

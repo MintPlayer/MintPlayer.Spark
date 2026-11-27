@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// entity — the [DefaultIndex]-elected overview and a specialized hand-written index — and each
 /// Spark query declares which one it runs against. No ambient resolution, no ordinal-min.
 /// </summary>
-public class QueryDeclaredIndexBindingTests : SparkTestDriver
+public class QueryDeclaredIndexBindingTests : RavenSparkTestDriver
 {
     private static readonly Guid CommitTypeId = Guid.Parse("cccc3333-cccc-cccc-cccc-cccc33333333");
 
@@ -100,7 +100,7 @@ public class QueryDeclaredIndexBindingTests : SparkTestDriver
         await new Commits_Overview().ExecuteAsync(Store);
         await new Commits_ByRepository().ExecuteAsync(Store);
 
-        _factory = new SparkEndpointFactory<TestContext>(Store, [CommitModel()],
+        _factory = new SparkEndpointFactory<TestContext>(Store.AsSparkTestDatabase(), [CommitModel()],
             configureIndexCatalog: catalog =>
             {
                 catalog.RegisterIndex(typeof(Commits_Overview));

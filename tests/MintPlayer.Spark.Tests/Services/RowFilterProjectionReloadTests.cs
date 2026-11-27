@@ -26,7 +26,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// condition stops existing rather than merely becoming rarer.
 /// </para>
 /// </summary>
-public class RowFilterProjectionReloadTests : SparkTestDriver
+public class RowFilterProjectionReloadTests : RavenSparkTestDriver
 {
     private static readonly Guid LedgerTypeId = Guid.Parse("d1d1d1d1-8181-8181-8181-d1d1d1d1d1d1");
 

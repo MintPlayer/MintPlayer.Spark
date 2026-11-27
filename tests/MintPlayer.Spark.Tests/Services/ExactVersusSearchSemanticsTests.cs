@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// What <c>FieldIndexing.Exact</c> and <c>FieldIndexing.Search</c> actually do to the four operations
 /// Spark performs on a field, measured rather than reasoned about.
 /// </summary>
-public class ExactVersusSearchSemanticsTests : SparkTestDriver
+public class ExactVersusSearchSemanticsTests : RavenSparkTestDriver
 {
     public class SemanticsProbe
     {

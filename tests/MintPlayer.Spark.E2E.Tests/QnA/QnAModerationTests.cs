@@ -99,7 +99,7 @@ public class QnAModerationTests
         var (flagged, flagBody) = await flagger.Client.FlagAsync(QuestionTypeId, question.Id!, "Spam: this is an advertisement.");
         flagged.Should().BeOneOf(200, 204);
 
-        var caseId = $"moderationcases/flag/{question.Id}".ToLowerInvariant(); // Lower case, as ModerationIds writes it (#536 D7).
+        var caseId = $"reviewcases/flag/{question.Id}".ToLowerInvariant(); // Lower case, as ModerationIds writes it (#536 D7).
         await host.WaitForIndexingAsync();
         var queue = (await moderator.PostJsonAsync("/spark/moderation/cases", new { take = 200 })).Result();
         queue.EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().Contain(caseId);

@@ -20,13 +20,17 @@ internal sealed class InMemorySparkSession : ISparkSession
     /// <see cref="Snapshot"/> is the JSON last read or written (null: stored in this session, never committed).
     /// <see cref="ExpectedVersion"/> is the version a write must find, when the caller asked for a check.
     /// </summary>
-    private sealed class Tracked(object entity, string? snapshot, string? version)
+    private sealed class Tracked(object entity, string? snapshot, string? version, DateTimeOffset? expiresAt = null)
     {
         public object Entity { get; } = entity;
         public string? Snapshot { get; set; } = snapshot;
         public string? Version { get; set; } = version;
         public string? ExpectedVersion { get; set; }
         public bool Deleted { get; set; }
+        public DateTimeOffset? ExpiresAt { get; set; } = expiresAt;
+
+        /// <summary>The expiry was set since the last commit: a write even when the entity itself is unchanged.</summary>
+        public bool ExpiryChanged { get; set; }
     }
 
     /// <summary>Deletes by id of documents this session never loaded, with the version they must be at.</summary>
@@ -38,6 +42,12 @@ internal sealed class InMemorySparkSession : ISparkSession
 
     /// <summary>RavenDB's default (30), so a code path that would exhaust a RavenDB session fails here too.</summary>
     public int MaxNumberOfRequests { get; set; } = 30;
+
+    public bool OptimisticConcurrency { get; set; }
+
+    /// <summary>The version a write of <paramref name="row"/> must find: the caller's, else D37's implicit one, else none.</summary>
+    private string? Expected(Tracked row)
+        => row.ExpectedVersion ?? (OptimisticConcurrency ? (row.Snapshot is null ? string.Empty : row.Version) : null);
 
     public event Action<object>? BeforeStore;
     public event Action<object>? BeforeDelete;
@@ -52,19 +62,71 @@ internal sealed class InMemorySparkSession : ISparkSession
 
     // ---- reads ----
 
+    /// <remarks>
+    /// Read when the query runs, not when it is opened, as a RavenDB query is: that is what lets <see cref="StreamAsync{T}"/>
+    /// read the rows untracked.
+    /// </remarks>
+    /// <summary>Reads are always current here: nothing to wait for.</summary>
+    public IQueryable<T> Query<T>(TimeSpan waitForIndexes) where T : class => Query<T>();
+
     public IQueryable<T> Query<T>() where T : class
     {
         Request();
-        var rows = new List<T>();
-        foreach (var entry in database.InCollection(GetCollectionName(typeof(T))))
-            if (Materialize(entry, typeof(T)) is T row)
-                rows.Add(row);
-        return rows.AsQueryable();
+        return IgnoreCaseQuery.Wrap(Rows<T>(GetCollectionName(typeof(T))).AsQueryable());
     }
 
+    private IEnumerable<T> Rows<T>(string collection) where T : class
+    {
+        foreach (var entry in database.InCollection(collection))
+            if (Materialize(entry, typeof(T)) is T row)
+                yield return row;
+    }
+
+    /// <summary>While a stream reads its query: the rows it read untracked, with their id and version.</summary>
+    private Dictionary<object, (string Id, string Version)>? streaming;
+
+    public async IAsyncEnumerable<SparkStreamResult<T>> StreamAsync<T>(IQueryable<T> query,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var read = new Dictionary<object, (string Id, string Version)>(ReferenceEqualityComparer.Instance);
+        List<T> rows;
+        streaming = read;
+        try
+        {
+            rows = [.. query];
+        }
+        finally
+        {
+            streaming = null;
+        }
+
+        foreach (var row in rows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // A row this session already tracked comes back as its tracked instance; any other row is a detached copy.
+            var (id, version) = row is null ? default
+                : read.TryGetValue(row, out var detached) ? detached
+                : ids.TryGetValue(row, out var trackedId) ? (trackedId, tracked[trackedId].Version!)
+                : default;
+            yield return new SparkStreamResult<T>(id, row, version);
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>Views are rendered when queried: nothing to wait for.</summary>
+    public IQueryable<T> Query<T, TIndex>(TimeSpan waitForIndexes) where T : class where TIndex : class, new() => Query<T, TIndex>();
+
+    /// <remarks>A <see cref="Abstractions.Views.SparkView{TRow}"/> is rendered as LINQ to objects (#536 D32, D42); a native index is not.</remarks>
     public IQueryable<T> Query<T, TIndex>() where T : class where TIndex : class, new()
-        => throw new NotSupportedException(
-            $"The in-memory store has no indexes ({typeof(TIndex).Name}). Query the collection with Query<{typeof(T).Name}>() instead.");
+    {
+        if (!typeof(Abstractions.Views.ISparkView).IsAssignableFrom(typeof(TIndex)))
+            throw new NotSupportedException(
+                $"The in-memory store has no indexes ({typeof(TIndex).Name}). Query the collection with Query<{typeof(T).Name}>() instead.");
+        var view = (Abstractions.Views.ISparkView)new TIndex();
+        if (view.RowType != typeof(T))
+            throw new InvalidOperationException($"View {view.Name} yields {view.RowType.Name}, not {typeof(T).Name}.");
+        return (IQueryable<T>)InMemoryViewRenderer.Render(view, this);
+    }
 
     public Task<T?> LoadAsync<T>(string id, CancellationToken cancellationToken = default) where T : class
         => Task.FromResult(LoadOne(id, typeof(T)) as T);
@@ -93,10 +155,15 @@ internal sealed class InMemorySparkSession : ISparkSession
     public Task<IReadOnlyDictionary<string, object?>> LoadAsync(Type entityType, IEnumerable<string> ids, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyDictionary<string, object?>>(LoadMany(ids, entityType));
 
-    public Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, CancellationToken cancellationToken = default) where T : class
+    /// <remarks>Untyped, as on RavenDB: an id names one document across every collection, and the caller checks which one.</remarks>
+    public Task<IReadOnlyDictionary<string, object?>> LoadReferencedAsync(Type target, IEnumerable<string> ids, CancellationToken cancellationToken = default)
+        => LoadAsync<object>(ids, cancellationToken);
+
+    public Task<IReadOnlyList<T>> LoadStartingWithAsync<T>(string idPrefix, int start = 0, int pageSize = 25, string? startAfter = null, CancellationToken cancellationToken = default) where T : class
     {
         Request();
         IReadOnlyList<T> rows = [.. database.StartingWith(idPrefix)
+            .Where(e => startAfter is null || StringComparer.OrdinalIgnoreCase.Compare(e.Id, startAfter) > 0)
             .Skip(start)
             .Take(pageSize)
             .Select(e => Materialize(e, typeof(T)))
@@ -160,9 +227,14 @@ internal sealed class InMemorySparkSession : ISparkSession
             return null;
 
         var type = requested.IsAssignableFrom(entry.ClrType) ? entry.ClrType : requested;
-        var entity = InMemoryJson.Deserialize(entry.Json, type);
+        var entity = SparkDocumentJson.Deserialize(entry.Json, type);
         InMemoryConventions.WriteId(entity, entry.Id);
-        tracked[entry.Id] = new Tracked(entity, InMemoryJson.Serialize(entity), entry.Version);
+        if (streaming is not null)
+        {
+            streaming[entity] = (entry.Id, entry.Version);
+            return entity;
+        }
+        tracked[entry.Id] = new Tracked(entity, SparkDocumentJson.Serialize(entity), entry.Version, entry.ExpiresAt);
         ids[entity] = entry.Id;
         return entity;
     }
@@ -238,7 +310,7 @@ internal sealed class InMemorySparkSession : ISparkSession
             throw new ArgumentException("Delete(object) takes an entity; delete by id with Delete<T>(Id<T>) or Delete(Type, string).", nameof(entity));
         if (!ids.TryGetValue(entity, out var id))
             throw new InvalidOperationException($"{entity.GetType().Name} is not associated with the session; it cannot be deleted.");
-        Delete(id);
+        Delete(entity.GetType(), id);
     }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -252,32 +324,36 @@ internal sealed class InMemorySparkSession : ISparkSession
                 // Like RavenDB's OnBeforeDelete: raised by the commit, for the entities it deletes.
                 BeforeDelete?.Invoke(row.Entity);
                 if (row.Snapshot is not null || row.ExpectedVersion is not null)
-                    writes.Add(new InMemoryDatabase.Remove(id, row.ExpectedVersion));
+                    writes.Add(new InMemoryDatabase.Remove(id, Expected(row)));
                 continue;
             }
-            if (row.Snapshot is not null && row.ExpectedVersion is null && InMemoryJson.Serialize(row.Entity) == row.Snapshot)
+            if (row.Snapshot is not null && row.ExpectedVersion is null && !row.ExpiryChanged && SparkDocumentJson.Serialize(row.Entity) == row.Snapshot)
                 continue;
 
             // Like RavenDB's OnBeforeStore: the hook may still change the entity, so it serializes afterwards.
             BeforeStore?.Invoke(row.Entity);
-            var json = InMemoryJson.Serialize(row.Entity);
-            writes.Add(new InMemoryDatabase.Put(id, row.ExpectedVersion, json, row.Entity.GetType(), GetCollectionName(row.Entity.GetType())));
+            var json = SparkDocumentJson.Serialize(row.Entity);
+            writes.Add(new InMemoryDatabase.Put(id, Expected(row), json, row.Entity.GetType(), GetCollectionName(row.Entity.GetType()), row.ExpiresAt));
             stored.Add((row, json));
         }
         foreach (var (id, expected) in deletesById)
             writes.Add(new InMemoryDatabase.Remove(id, expected));
+        writes.AddRange(patches);
 
-        if (writes.Count == 0)
+        if (writes.Count == 0 && reservations.Count == 0)
             return Task.CompletedTask;
 
         Request();
-        var versions = database.Commit(writes);
+        var versions = database.Commit(writes, reservations);
+        reservations.Clear();
+        patches.Clear();
 
         foreach (var (row, json) in stored)
         {
             row.Snapshot = json;
             row.Version = versions[ids[row.Entity]];
             row.ExpectedVersion = null;
+            row.ExpiryChanged = false;
         }
         foreach (var id in tracked.Where(p => p.Value.Deleted).Select(p => p.Key).ToList())
         {
@@ -288,7 +364,102 @@ internal sealed class InMemorySparkSession : ISparkSession
         return Task.CompletedTask;
     }
 
+    /// <summary>Appends staged for the next commit, which applies them to the stored JSON under the database's lock.</summary>
+    private readonly List<InMemoryDatabase.Patch> patches = [];
+
+    public void PatchAppend<T, TItem>(string id, System.Linq.Expressions.Expression<Func<T, IEnumerable<TItem>>> list, TItem item) where T : class
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        var read = list.Compile();
+        patches.Add(new InMemoryDatabase.Patch(id, entry =>
+        {
+            var row = Read<T>(entry) ?? throw new InvalidOperationException($"Document '{id}' is not a {typeof(T).Name}.");
+            var target = read(row) as ICollection<TItem>
+                ?? throw new InvalidOperationException($"Cannot append to {list} of '{id}': the list is null or fixed-size.");
+            target.Add(item);
+            return SparkDocumentJson.Serialize(row);
+        }));
+    }
+
+    // ---- set-based ----
+
+    public Task<long> DeleteWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) where T : class
+    {
+        var matches = predicate.Compile();
+        Request();
+        return Task.FromResult(database.Rewrite(GetCollectionName(typeof(T)),
+            entry => Read<T>(entry) is { } row && matches(row) ? InMemoryDatabase.Deleted : null));
+    }
+
+    public Task<long> UpdateWhereAsync<T>(System.Linq.Expressions.Expression<Func<T, bool>> predicate, Action<SparkSetters<T>> set, CancellationToken cancellationToken = default) where T : class
+    {
+        var setters = new SparkSetters<T>();
+        set(setters);
+        var matches = predicate.Compile();
+        Request();
+        return Task.FromResult(database.Rewrite(GetCollectionName(typeof(T)), entry =>
+        {
+            // Read as the stored type (Read<T>), so the rewritten JSON keeps a derived type's members.
+            if (Read<T>(entry) is not { } row || !matches(row))
+                return null;
+            foreach (var setter in setters.Setters)
+                setter.ApplyTo(row);
+            return SparkDocumentJson.Serialize(row);
+        }));
+    }
+
+    /// <summary>A stored row as <typeparamref name="T"/>, detached from the session.</summary>
+    private static T? Read<T>(InMemoryDatabase.Entry entry) where T : class
+    {
+        var type = typeof(T).IsAssignableFrom(entry.ClrType) ? entry.ClrType : typeof(T);
+        var row = SparkDocumentJson.Deserialize(entry.Json, type);
+        InMemoryConventions.WriteId(row, entry.Id);
+        return row as T;
+    }
+
+    // ---- reservations ----
+
+    /// <summary>The claims and releases the next commit applies, in order.</summary>
+    private readonly List<InMemoryDatabase.Reservation> reservations = [];
+
+    public void Reserve(string key, string ownerId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentException.ThrowIfNullOrEmpty(ownerId);
+        reservations.Add(new InMemoryDatabase.Reservation(key, ownerId, Claim: true));
+    }
+
+    public void Release(string key, string ownerId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentException.ThrowIfNullOrEmpty(ownerId);
+        reservations.Add(new InMemoryDatabase.Reservation(key, ownerId, Claim: false));
+    }
+
+    public Task<string?> GetReservationAsync(string key, CancellationToken cancellationToken = default)
+    {
+        Request();
+        return Task.FromResult(database.ReservationOwner(key));
+    }
+
     // ---- metadata ----
+
+    public void SetExpiry(object entity, DateTimeOffset? expiresAt)
+    {
+        var row = TrackedRow(entity);
+        row.ExpiresAt = expiresAt?.ToUniversalTime();
+        row.ExpiryChanged = true;
+    }
+
+    public DateTimeOffset? GetExpiry(object entity) => TrackedRow(entity).ExpiresAt;
+
+    private Tracked TrackedRow(object entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        return ids.TryGetValue(entity, out var id) && tracked.TryGetValue(id, out var row)
+            ? row
+            : throw new InvalidOperationException($"{entity.GetType().Name} is not associated with the session; store or load it first.");
+    }
 
     public string? GetId(object entity) => ids.GetValueOrDefault(entity);
 
@@ -319,7 +490,8 @@ internal sealed class InMemorySparkSession : ISparkSession
             || tracked[id] is not { } row
             || row.Snapshot is null
             || row.Deleted
-            || InMemoryJson.Serialize(entity) != row.Snapshot;
+            || row.ExpiryChanged
+            || SparkDocumentJson.Serialize(entity) != row.Snapshot;
 
     public IReadOnlyCollection<SparkTrackedEntity> TrackedEntities
         => [.. tracked.Values.Select(row => new SparkTrackedEntity(row.Entity, row.Deleted))];
@@ -335,6 +507,8 @@ internal sealed class InMemorySparkSession : ISparkSession
         tracked.Clear();
         ids.Clear();
         deletesById.Clear();
+        reservations.Clear();
+        patches.Clear();
     }
 
     public Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken cancellationToken = default) => Task.FromResult(query.ToList());

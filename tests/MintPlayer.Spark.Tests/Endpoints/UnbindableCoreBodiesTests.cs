@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// <c>InvalidOperationException</c> (a 500) while the endpoints read by hand; typed, they get the same
 /// answer as every other unbindable body, from <c>OnBindFailedAsync</c>.
 /// </remarks>
-public class UnbindableCoreBodiesTests : SparkTestDriver
+public class UnbindableCoreBodiesTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("3b3b0000-0000-4000-8000-000000000001");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("3b3b0000-0000-4000-8000-000000000011");
@@ -41,7 +41,7 @@ public class UnbindableCoreBodiesTests : SparkTestDriver
         [
             new SparkQuery { Id = AllPeopleQueryId, Name = "AllPeople", Source = "Database.People" },
         ];
-        _factory = new SparkEndpointFactory(Store, [model], configureServices: ConfigureServices);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model], configureServices: ConfigureServices);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
 
         await SeedAsync(async session =>

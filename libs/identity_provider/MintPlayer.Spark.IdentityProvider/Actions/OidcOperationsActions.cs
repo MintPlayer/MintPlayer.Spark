@@ -3,9 +3,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -15,10 +12,10 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 /// </summary>
 internal partial class OidcAuditEventActions : DefaultPersistentObjectActions<OidcAuditEvent>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
 
-    public IRavenQueryable<OidcAuditEvent> AuditEvents() => session.Query<OidcAuditEvent>();
+    public IQueryable<OidcAuditEvent> AuditEvents() => session.Query<OidcAuditEvent>();
 
     public override async Task<Expression<Func<OidcAuditEvent, bool>>?> GetRowFilterAsync(string action)
     {
@@ -27,19 +24,16 @@ internal partial class OidcAuditEventActions : DefaultPersistentObjectActions<Oi
         if (access.UserId is not { } userId)
             return e => false;
 
-        var adminOf = await session.Query<OidcApplication>()
-            .Where(a => a.Members.Any(m => m.UserId == userId && m.Status == OidcMemberStatuses.Active && m.Role == OidcMemberRoles.Admin))
-            .ToListAsync();
-        // The documents, not a projection of Id: a raw session cannot project a typed id (#536).
-        var adminOfIds = adminOf.Select(a => a.Id.Value).ToList();
-        return e => e.ApplicationId != null && e.ApplicationId.In(adminOfIds);
+        // From the members view, not a query of the collection (#536 D47, D42).
+        var adminOfIds = (await session.ApplicationsAdministeredByAsync(userId, CancellationToken.None)).Select(a => a.Id.Value).ToList();
+        return e => e.ApplicationId != null && adminOfIds.Contains(e.ApplicationId);
     }
 }
 
 /// <summary>Every user's grants, for identity-provider administrators (D9), with a revoke action.</summary>
 public partial class OidcGrantActions : DefaultPersistentObjectActions<OidcGrant>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
-    public IRavenQueryable<OidcGrant> Grants() => session.Query<OidcGrant>();
+    public IQueryable<OidcGrant> Grants() => session.Query<OidcGrant>();
 }

@@ -151,12 +151,17 @@ public static class SparkModelShape
     /// "not part of this hash" rather than "empty" — a hash written before those files were covered
     /// must keep verifying, or every existing application reports drift on upgrade.
     /// </param>
+    /// <param name="storedGettersHash">
+    /// Roll-up over the stored getters' formulas (<see cref="ModelHashFile.StoredGetters"/>, #536 O13); absent when the
+    /// model has none, so such a model's hash stays what it was.
+    /// </param>
     public static string ComputeModelHash(
         IReadOnlyDictionary<string, string> perEntityHashes,
         string contextRootsHash,
         string modelFilesHash,
         string? configFilesHash = null,
-        string? layersHash = null)
+        string? layersHash = null,
+        string? storedGettersHash = null)
     {
         var builder = new StringBuilder();
         foreach (var entry in perEntityHashes.OrderBy(e => e.Key, StringComparer.Ordinal))
@@ -173,6 +178,10 @@ public static class SparkModelShape
         // The layers each composed entry came from (composition D7), when a library states any.
         if (layersHash is not null)
             builder.Append("layers:").Append(layersHash).Append('\n');
+
+        // The stored getters' formulas (#536 O13), when the model has any.
+        if (storedGettersHash is not null)
+            builder.Append("getters:").Append(storedGettersHash).Append('\n');
 
         return Sha256Hex(builder.ToString());
     }

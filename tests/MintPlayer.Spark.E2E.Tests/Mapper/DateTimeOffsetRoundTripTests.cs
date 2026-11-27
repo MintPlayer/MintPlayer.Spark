@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.E2E.Tests.Mapper;
 /// The `DateTimeOffset` fidelity work, end to end over HTTP against the real Fleet API.
 /// <para>
 /// The existing coverage sits either side of the wire: <c>DateTimeOffsetRoundTripTests</c> in
-/// `MintPlayer.Spark.Tests` drives RavenDB through <c>SparkTestDriver</c>, and the ng-spark specs
+/// `MintPlayer.Spark.Tests` drives RavenDB through <c>RavenSparkTestDriver</c>, and the ng-spark specs
 /// cover the browser conversions. Neither crosses the HTTP boundary, and both defects this work
 /// found lived on paths that no single layer's tests could see.
 /// </para>

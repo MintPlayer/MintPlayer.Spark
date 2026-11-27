@@ -42,12 +42,10 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
-		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
 		<!-- No Authorization reference (docs/notification_bell_PRD.md G4): accounts come through ISparkAccountDirectory,
 		     the hooks and the principal from MintPlayer.Spark.Abstractions. The mail channel's ISparkMailer: -->
 		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />

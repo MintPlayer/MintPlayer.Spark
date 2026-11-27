@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// projection filter path.
 /// </para>
 /// </summary>
-public class DatabaseAccessSelectionBatchingTests : SparkTestDriver
+public class DatabaseAccessSelectionBatchingTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("5c1b22bb-22bb-22bb-22bb-5c1b22bb22bb");
 
@@ -31,7 +31,7 @@ public class DatabaseAccessSelectionBatchingTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store, [GuardedDocModel.For(DocTypeId)]);
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [GuardedDocModel.For(DocTypeId)]);
         _dbAccess = _factory.GetService<IDatabaseAccess>();
         // Same instance the read path uses: both are scoped and both resolve off the root scope.
         _session = _factory.GetService<IAsyncDocumentSession>();

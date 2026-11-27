@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// commit, delivered later with the payload (never the entity). A refused or cancelled write commits
 /// none. Delivery here is <see cref="TestAfterCommitOutbox"/>, which stores exactly as Messaging does.
 /// </summary>
-public class DurableAfterCommitInterceptorTests : SparkTestDriver
+public class DurableAfterCommitInterceptorTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04682");
 
@@ -29,7 +29,7 @@ public class DurableAfterCommitInterceptorTests : SparkTestDriver
     {
         await base.InitializeAsync();
         factory = new SparkEndpointFactory<DurableContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
             configureServices: services =>
             {
@@ -186,7 +186,7 @@ public class DurableAfterCommitInterceptorTests : SparkTestDriver
         var act = async () =>
         {
             await using var bare = new SparkEndpointFactory<DurableContext>(
-                Store,
+                Store.AsSparkTestDatabase(),
                 [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
                 configureServices: services => services.AddSingleton(log).AddSingleton(committed),
                 configureSpark: spark => spark.AddInterceptor<RecordingCommittedInterceptor>());
@@ -217,7 +217,7 @@ public class DurableAfterCommitInterceptorTests : SparkTestDriver
     {
         // The startup check sees registered interceptors only; an Actions class is found per type, at the write.
         await using var bare = new SparkEndpointFactory<DurableContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
             configureServices: services => services.AddSingleton(log).AddSingleton(committed));
 
@@ -244,7 +244,6 @@ public class DurableAfterCommitInterceptorTests : SparkTestDriver
             Operation = PersistentObjectOperation.New,
             PersistentObject = new PersistentObject { ObjectTypeId = NoteTypeId, Name = "InterceptedNote" },
             Entity = new InterceptedNote(),
-            Session = scope.ServiceProvider.GetRequiredService<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
         };
 
         var act = () => interceptors.EnqueueCommittedAsync(context, "InterceptedNotes|", PersistentObjectOperation.New, isDelete: false, isReplaced: false, previousChangeVector: null);

@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Abstractions.Views;
 
 namespace MintPlayer.Spark.Storage.InMemory;
 
@@ -13,11 +14,16 @@ namespace MintPlayer.Spark.Storage.InMemory;
 [Register(typeof(ISparkQueryProvider), ServiceLifetime.Scoped)]
 internal sealed partial class InMemorySparkQueryProvider : ISparkQueryProvider
 {
+    [Inject] private readonly ISparkSession session;
+
     public bool IsStoreQuery(IQueryable source) => false;
 
+    /// <summary>A <see cref="SparkView{TRow}"/> runs as LINQ to objects (#536 D32); the store has no native indexes.</summary>
     public IQueryable OpenIndex(Type entityType, Type indexType, bool narrowToCollection)
-        => throw new NotSupportedException(
-            $"The in-memory store has no indexes: {indexType.Name} cannot be queried. Query {entityType.Name}'s collection instead.");
+        => typeof(ISparkView).IsAssignableFrom(indexType)
+            ? InMemoryViewRenderer.Render((ISparkView)Activator.CreateInstance(indexType)!, session)
+            : throw new NotSupportedException(
+                $"The in-memory store has no native indexes: {indexType.Name} cannot be queried. Declare it as a SparkView<TRow>, or query {entityType.Name}'s collection.");
 
     public IQueryable Project(IQueryable source, Type resultType) => source;
 
@@ -28,7 +34,7 @@ internal sealed partial class InMemorySparkQueryProvider : ISparkQueryProvider
 
     public IReadOnlySet<string>? IndexedFields(IQueryable source) => null;
 
-    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, string term) => null;
+    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, IReadOnlyList<string> words) => null;
 
     public Task<int> CountAsync(IQueryable source, CancellationToken cancellationToken)
         => Task.FromResult(source.Cast<object>().Count());

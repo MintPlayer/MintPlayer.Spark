@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// passing for the wrong reason, the migration requirement can be revisited; until then it cannot.
 /// </para>
 /// </remarks>
-public class NestedRowIdentityTests : SparkTestDriver
+public class NestedRowIdentityTests : RavenSparkTestDriver
 {
     public class Person
     {

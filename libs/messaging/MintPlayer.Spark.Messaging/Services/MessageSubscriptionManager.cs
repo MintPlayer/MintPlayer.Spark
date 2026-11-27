@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -13,7 +13,8 @@ namespace MintPlayer.Spark.Messaging.Services;
 internal sealed partial class MessageSubscriptionManager : BackgroundService
 {
     [Inject] private readonly IServiceProvider serviceProvider;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore documentStore;
+    [Inject] private readonly ISparkSubscriptions subscriptions;
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
     [Inject] private readonly ILogger<MessageSubscriptionManager> logger;
     [Inject] private readonly ILoggerFactory loggerFactory;
@@ -21,6 +22,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     [Inject] private readonly LegacySubscriptionCleanup legacyCleanup;
     [Inject] private readonly MessageQueueRouter router;
     [Inject] private readonly MessageProcessor processor;
+    [Inject] private readonly ISparkStoreReadiness storeReadiness;
 
     private readonly List<MessageSubscriptionWorker> perQueueWorkers = new();
     private MessageFeeder? feeder;
@@ -52,6 +54,11 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         // call and no ordering argument to defend. See LegacySubscriptionCleanup.
         using var loop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, stopRequested.Token);
         var loopToken = loop.Token;
+
+        // Not before the schema (#536 D41): a hosted service starts before UseSpark migrates a relational store, and
+        // the lease's first read found no table. The retry sweeper needs no gate of its own: it runs only while this
+        // loop holds the lease.
+        await storeReadiness.WaitAsync(loopToken);
 
         await legacyCleanup.RunAsync(loopToken);
 
@@ -140,7 +147,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         if (Options.SubscriptionMode == ESubscriptionMode.SingleSubscription)
         {
             router.Start(leaseLifetime.Token);
-            feeder = new MessageFeeder(router, processor.Admission, documentStore, options, loggerFactory);
+            feeder = new MessageFeeder(router, processor.Admission, subscriptions, documentStore, options, loggerFactory, storeReadiness);
             feederTask = feeder.StartAsync(leaseLifetime.Token);
             await feederTask;
             logger.LogInformation(
@@ -152,7 +159,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         foreach (var queueName in queueNames)
         {
             var worker = new MessageSubscriptionWorker(
-                queueName, documentStore, serviceProvider, options, loggerFactory);
+                queueName, subscriptions, documentStore, serviceProvider, options, loggerFactory, storeReadiness);
             lock (perQueueWorkers) perQueueWorkers.Add(worker);
             logger.LogInformation("Starting subscription worker for queue '{QueueName}'", queueName);
             await worker.StartAsync(leaseLifetime.Token);

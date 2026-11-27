@@ -57,7 +57,7 @@ internal static class SparkDataProtection
             $"The Data Protection key ring is not persisted (environment '{environment.EnvironmentName}'). "
             + "Every authentication cookie and antiforgery token is encrypted with it, so a key ring that "
             + "does not survive a redeploy signs every user out on every redeploy. Set one of:\n"
-            + "  Spark:DataProtection:Storage = RavenDb   (keys stored in the application's database), or\n"
+            + "  Spark:DataProtection:Storage = Store     (keys stored in the application's database), or\n"
             + "  Spark:DataProtection:KeysPath = <folder> (⚠️ must be a durable, mounted volume — a folder "
             + "inside the container is lost on redeploy exactly like the default).\n"
             + "Also set Spark:DataProtection:ApplicationName if the entry assembly name may change.");
@@ -98,12 +98,12 @@ internal static class SparkDataProtection
             // Optional: a bare ServiceCollection (unit tests, tooling) has no host environment.
             var environment = services.GetService<IHostEnvironment>();
 
-            if (value.Storage == SparkDataProtectionStorage.RavenDb)
+            if (value.Storage == SparkDataProtectionStorage.Store)
             {
                 options.XmlRepository = services.GetService<ISparkDataProtectionKeyStore>()
                     ?? throw new InvalidOperationException(
-                        "Spark:DataProtection:Storage = RavenDb keeps the key ring in the application's database, but the store " +
-                        "provider registers no ISparkDataProtectionKeyStore. Call UseRavenDb(), or set Storage = File.");
+                        "Spark:DataProtection:Storage = Store keeps the key ring in the application's database, but the store " +
+                        "provider registers no ISparkDataProtectionKeyStore. Use a store provider that keeps keys, or set KeysPath instead.");
                 return;
             }
 

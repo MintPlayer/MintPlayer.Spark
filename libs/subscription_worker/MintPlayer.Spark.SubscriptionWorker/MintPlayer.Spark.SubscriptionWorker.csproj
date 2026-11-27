@@ -12,8 +12,8 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>RavenDB subscription worker framework for MintPlayer.Spark with built-in retry logic, incremental backoff, and ASP.NET Core lifecycle management.</Description>
-		<PackageTags>ravendb;subscription;worker;background-service;retry</PackageTags>
+		<Description>Background workers for MintPlayer.Spark over the store's durable subscriptions (RavenDB, SQL Server, PostgreSQL or memory): exclusive across hosts, at least once, a failed batch delivered again, and ASP.NET Core lifecycle management.</Description>
+		<PackageTags>ravendb;sqlserver;postgresql;subscription;worker;background-service;retry</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>

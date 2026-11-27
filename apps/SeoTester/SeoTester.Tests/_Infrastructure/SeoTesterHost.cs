@@ -41,7 +41,7 @@ public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictio
 
         builder.UseSetting("Spark:RavenDb:Urls:0", store.Urls[0]);
         builder.UseSetting("Spark:RavenDb:Database", store.Database);
-        builder.UseSetting("Spark:DataProtection:Storage", "RavenDb");
+        builder.UseSetting("Spark:DataProtection:Storage", "Store");
         builder.UseSetting("Spark:HttpsRedirection", "false");
         builder.UseSetting("Spark:Auth:PublicBaseUrl", "http://localhost");
         builder.UseSetting("Spark:Mail:PickupFolder", Path.Combine(Path.GetTempPath(), $"seotester-tests-mail-{Environment.ProcessId}"));
@@ -188,7 +188,7 @@ internal static class SeoRequests
 }
 
 /// <summary>The one SeoTester host the tests share (see <see cref="SeoTesterWebAppFactory"/>'s remarks).</summary>
-public class SeoTesterHostFixture : SparkTestDriver
+public class SeoTesterHostFixture : RavenSparkTestDriver
 {
     /// <summary>Host settings of this fixture (a subclass tunes the crawl for its collection).</summary>
     protected virtual IReadOnlyDictionary<string, string?>? HostSettings => null;

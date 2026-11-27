@@ -1,17 +1,24 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
-/// A user's developer status (<c>docs/identity_provider_platform_PRD.md</c> D1, D2). Stored as the
-/// <see cref="FieldName"/> field of the user's own document, not in a collection of its own: the
-/// identity provider patches it in and reads it with a projection, so the user type needs no
-/// property for it. RavenDB keeps the field across every load and save of the user
-/// (<c>PreserveDocumentPropertiesNotFoundOnModel</c>, measured true in RavenDB.Client 7.2.6).
+/// A user's developer status (<c>docs/identity_provider_platform_PRD.md</c> D1, D2): the <c>OidcDevelopers</c> collection,
+/// one document per user, at an id derived from the user's (<see cref="Services.OidcDevelopers.DocumentId"/>), so a load
+/// answers a membership decision consistently.
+/// <para>
+/// Until #536 (D47) the status was a <c>Developer</c> field patched into the user's own document, which only RavenDB
+/// keeps for a type that has no property for it. The migration <c>M_202611251300_OidcDevelopersCollection</c> moves each
+/// such field into a document of this collection and removes it from the user.
+/// </para>
 /// </summary>
-public class OidcDeveloper
+[IdKind(SparkIdKind.Natural)]
+public partial class OidcDeveloper
 {
-    /// <summary>The field on the user document.</summary>
-    public const string FieldName = "Developer";
-
+    /// <summary><c>oidcdevelopers/&lt;hash of the user id&gt;</c>.</summary>
+    public Id<OidcDeveloper> Id { get; set; }
+    /// <summary>The user this status belongs to.</summary>
+    public string UserId { get; set; } = string.Empty;
     /// <summary><c>Requested</c>, <c>Approved</c>, <c>Rejected</c> or <c>Revoked</c>.</summary>
     public string Status { get; set; } = OidcDeveloperStatuses.Requested;
     /// <summary>The version of the developer terms the user accepted.</summary>

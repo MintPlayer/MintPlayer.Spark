@@ -5,7 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 
@@ -51,7 +50,7 @@ internal sealed partial class IssueRegistrationToken : IPostEndpoint
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly OidcDevelopers developers;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -114,7 +113,7 @@ internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDevelop
     [Inject] private readonly OidcDevelopers developers;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly SparkIdentityProviderOptions options;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override async Task<IResult> HandleAsync(OidcDeveloperRequestBody request, CancellationToken cancellationToken)
@@ -161,7 +160,7 @@ internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDevelop
                 break;
         }
 
-        OidcDevelopers.Set(session, userId, developer);
+        await OidcDevelopers.SetAsync(session, userId, developer, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok(new OidcDeveloperStatusResponse(

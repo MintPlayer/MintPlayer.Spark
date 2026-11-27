@@ -117,7 +117,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await task;
         var loaded = (PersistentObject?)task.GetCompletedTaskResult();
         if (loaded is not null)
-            await interceptors.RunAfterLoadAsync(entityType, session, [loaded]);
+            await interceptors.RunAfterLoadAsync(entityType, [loaded]);
         return loaded;
     }
 
@@ -156,7 +156,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (actions is Actions.IBatchedLoadActions { SupportsBatchedLoad: true } batched)
         {
             var batch = await batched.LoadManyAsync(ids, null);
-            await interceptors.RunAfterLoadAsync(entityType, session, batch);
+            await interceptors.RunAfterLoadAsync(entityType, batch);
             return batch;
         }
 
@@ -169,7 +169,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if ((PersistentObject?)task.GetCompletedTaskResult() is { } obj)
                 resolved.Add(obj);
         }
-        await interceptors.RunAfterLoadAsync(entityType, session, resolved);
+        await interceptors.RunAfterLoadAsync(entityType, resolved);
         return resolved;
     }
 
@@ -848,8 +848,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
             UnwritableAttributes = unwritable,
             Entity = entity,
             Id = existing is null ? null : obj.Id,
-            Session = session.Native,
-            StorageSession = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
         };
@@ -895,8 +893,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Id = id,
             Entity = entity,
             Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
-            Session = session.Native,
-            StorageSession = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
         };
@@ -944,8 +940,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Id = persistentObject.Id!,
             PersistentObject = persistentObject,
             Existing = existing,
-            Session = session.Native,
-            StorageSession = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
         };

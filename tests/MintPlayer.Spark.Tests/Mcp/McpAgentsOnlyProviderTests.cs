@@ -19,8 +19,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// everything else, advertises only what it maps, and the M3b agent flows (metadata document, loopback registration,
 /// refresh) still work through it.
 /// </summary>
-public class McpAgentsOnlyProviderTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpAgentsOnlyProviderTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string LoopbackRedirect = "http://127.0.0.1:53682/callback";
 
@@ -226,12 +226,12 @@ public class McpAgentsOnlyProviderTests(SparkSharedDatabase database)
         // A valid initial access token of an approved developer, as the portal would have issued it: developer registration
         // is not part of this provider, so it registers nothing.
         string initialAccessToken;
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.AsSparkStore().OpenSession())
         {
-            OidcDevelopers.Set(session, user.Id!, new OidcDeveloper
+            await OidcDevelopers.SetAsync(session, user.Id!, new OidcDeveloper
             {
                 Status = OidcDeveloperStatuses.Approved, TermsVersion = 1, RequestedAt = DateTime.UtcNow, DecidedAt = DateTime.UtcNow,
-            });
+            }, CancellationToken.None);
             initialAccessToken = await OidcClientRegistration.IssueInitialAccessTokenAsync(session, user.Id!, CancellationToken.None);
             await session.SaveChangesAsync();
         }

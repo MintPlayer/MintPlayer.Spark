@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Live;
 /// the printed numbers are the evidence.
 /// </summary>
 /// <remarks>Fixture names start with <c>Sp</c>: <c>ActionsResolver</c> matches actions classes by simple name.</remarks>
-public class LiveSpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class LiveSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private static readonly Guid RunTypeId = Guid.Parse("5b8e0000-0000-4000-8000-000000000001");
     private static readonly Guid RunsQueryId = Guid.Parse("5b8e0000-0000-4000-8000-000000000011");
@@ -37,7 +37,7 @@ public class LiveSpikeTests(ITestOutputHelper output) : SparkTestDriver
     private SparkEndpointFactory<SpContext> Start(Action<SparkLiveOptions>? live = null, LiveLogRecorder? logs = null)
     {
         var factory = new SparkEndpointFactory<SpContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [new EntityTypeFile
             {
                 PersistentObject = new EntityTypeDefinition

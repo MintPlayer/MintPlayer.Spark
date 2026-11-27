@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Tests.Extensions;
 /// change to the package's placement fails here and not just in its own repository.
 /// </para>
 /// </remarks>
-public class XsrfMintingPlacementTests : SparkTestDriver
+public class XsrfMintingPlacementTests : RavenSparkTestDriver
 {
     private const string CookieName = "XSRF-TOKEN";
 
@@ -46,6 +46,8 @@ public class XsrfMintingPlacementTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddAntiforgery(o => o.HeaderName = "X-XSRF-TOKEN");
                     services.AddAuthorization();
@@ -165,7 +167,7 @@ public class XsrfMintingPlacementTests : SparkTestDriver
     /// </remarks>
     private async Task SeedUserAsync()
     {
-        using var store = new UserStore<SparkUser>(Store);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore());
         var existing = await store.FindByNameAsync("PROBE@EXAMPLE.COM", CancellationToken.None);
         if (existing is not null)
         {

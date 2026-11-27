@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -126,10 +127,9 @@ public class WebhookDeliveryTests : AppsTestHost
         var (endpointId, _) = await CreateEndpointAsync(ann.Id!, WebhookOwner.User(ann.Id!));
 
         using (var scope = Factory.CreateScope())
-        using (var session = Store.OpenAsyncSession())
         {
-            (await Publisher(scope).PublishAsync(new OrderShipped("rolled-back", 1, null), WebhookOwner.User(ann.Id!), session)).Should().NotBeNull();
-            // no SaveChanges: the business write failed, so the event never happened
+            (await Publisher(scope).PublishAsync(new OrderShipped("rolled-back", 1, null), WebhookOwner.User(ann.Id!))).Should().NotBeNull();
+            // no SaveChanges on the scope's session: the business write failed, so the event never happened
         }
         (await PublishAsync(new OrderShipped("bob's", 1, null), WebhookOwner.User(bob.Id!))).Should().BeNull("bob has no webhook");
 
@@ -148,9 +148,8 @@ public class WebhookDeliveryTests : AppsTestHost
         async Task<string?> Keyed(string orderId, string key)
         {
             using var scope = Factory.CreateScope();
-            using var session = Store.OpenAsyncSession();
-            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key, session);
-            await session.SaveChangesAsync();
+            var id = await Publisher(scope).PublishAsync(new OrderShipped(orderId, 1, null), owner, key);
+            await ScopeSession(scope).SaveChangesAsync();
             return id;
         }
 
@@ -195,7 +194,7 @@ public class WebhookDeliveryTests : AppsTestHost
         delivery.Status.Should().Be(WebhookDeliveryStatus.Succeeded);
         delivery.Attempts.Select(a => a.StatusCode).Should().Equal([500, 204]);
         delivery.Attempts[0].ResponseBody.Should().Be("boom");
-        (await EndpointAsync(endpointId)).ConsecutiveFailures.Should().Be(0, "a success ends the failure streak");
+        await UntilEndpointAsync(endpointId, e => e.ConsecutiveFailures == 0, "a success ends the failure streak");
     }
 
     [Fact]
@@ -227,8 +226,7 @@ public class WebhookDeliveryTests : AppsTestHost
         await UntilSettledAsync(endpointId, 1);
 
         Receiver.Received.Count.Should().Be(1, "410 is never retried");
-        var endpoint = await EndpointAsync(endpointId);
-        endpoint.Enabled.Should().BeFalse();
+        var endpoint = await UntilEndpointAsync(endpointId, e => !e.Enabled, "410 disables the endpoint");
         endpoint.DisabledReason.Should().Contain("410");
         await UntilDisabledHandlerToldAsync(endpointId);
         DisabledCount(endpointId).Should().Be(1);
@@ -349,7 +347,7 @@ public class WebhookDeliveryTests : AppsTestHost
         await UntilSettledAsync(endpointId, 1);
 
         Receiver.Received.Count.Should().Be(1, "the first failure past 5 days disables the endpoint; no retry follows");
-        (await EndpointAsync(endpointId)).Enabled.Should().BeFalse();
+        await UntilEndpointAsync(endpointId, e => !e.Enabled, "the failure past 5 days disables the endpoint");
         await UntilDisabledHandlerToldAsync(endpointId);
         DisabledCount(endpointId).Should().Be(1);
 
@@ -395,7 +393,7 @@ public class WebhookDeliveryTests : AppsTestHost
         var delivery = (await DeliveriesAsync(endpointId)).Single();
         delivery.Status.Should().Be(WebhookDeliveryStatus.Failed);
         delivery.Attempts.Should().ContainSingle("a refused address is not retried").Which.Error.Should().Be("Refused: The target address is not allowed.");
-        (await EndpointAsync(endpointId)).ConsecutiveFailures.Should().Be(1);
+        await UntilEndpointAsync(endpointId, e => e.ConsecutiveFailures == 1, "the refusal counts against the endpoint");
     }
 
     [Fact]
@@ -539,8 +537,7 @@ public class WebhookDeliveryTests : AppsTestHost
     {
         var ann = await SeedUserAsync("ann");
         using var scope = Factory.CreateScope();
-        using var session = Store.OpenAsyncSession();
-        var publish = () => Publisher(scope).PublishAsync(new { Hello = "world" }, WebhookOwner.User(ann.Id!), session);
+        var publish = () => Publisher(scope).PublishAsync(new { Hello = "world" }, WebhookOwner.User(ann.Id!));
         (await publish.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("not a webhook event");
     }
 }

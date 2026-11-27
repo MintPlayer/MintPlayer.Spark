@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -15,8 +16,8 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// envelope for every delivery, and every app subscribing to only one of them was paying for both.
 /// </para>
 /// </summary>
-public class MessageRecipientRegistryTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class MessageRecipientRegistryTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     public sealed class ConsumedMessage { }
     public sealed class UnconsumedMessage { }
@@ -37,6 +38,7 @@ public class MessageRecipientRegistryTests(SparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging();
         register(services);
         return services.BuildServiceProvider();

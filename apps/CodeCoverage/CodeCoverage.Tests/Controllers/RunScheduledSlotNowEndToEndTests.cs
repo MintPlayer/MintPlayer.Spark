@@ -15,7 +15,7 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 /// <remarks>
 /// Through the real endpoint (<c>POST /spark/actions/execute</c>, the detail-page invocation with a <c>parent</c>) of the
-/// real composition root, on <see cref="OwnerPrivacyHostFixture"/> (a <c>SparkTestDriver</c>): the owner manages acme
+/// real composition root, on <see cref="OwnerPrivacyHostFixture"/> (a <c>RavenSparkTestDriver</c>): the owner manages acme
 /// (open, secret, admin-only), the repository admin administers acme/open and acme/admin-only only, the member reaches
 /// acme read-only, the CodeCoverage administrator and the stranger manage nothing, and user B owns globex. "Queued" is
 /// read from the database: the action's <c>BroadcastOnceAsync</c> stores one <c>SparkMessages/dependency-run-now_…</c>

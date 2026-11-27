@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -14,7 +15,6 @@ using Raven.Client.Documents.Conventions;
 using Raven.Client.Http;
 using Raven.Client.ServerWide.Operations;
 using Sparrow.Json;
-using MintPlayer.Spark.Messaging.Indexes;
 using Xunit.Abstractions;
 
 namespace MintPlayer.Spark.Tests.Messaging;
@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// figures of the 1000-message run (<c>SPARK_SPIKE_SM3_BULK=1000</c>).
 /// </para>
 /// </summary>
-public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : MessagingRavenTestDriver
 {
     private const string BulkQueue = "spike-bulk";
     private const string TransactionalQueue = "spike-transactional";
@@ -42,8 +42,6 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1) / Compression;
     private const int MaxPerInterval = 20;
 
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
 
     [MessageQueue(BulkQueue)]
     public sealed record BulkMail(int Number);
@@ -112,14 +110,10 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
         await RunAsync(BulkCount, measureWrites: false, afterDrain: async () =>
         {
             var subscriptions = await Store.Subscriptions.GetSubscriptionsAsync(0, 16);
-            var stats = await Store.Maintenance.SendAsync(new GetIndexStatisticsOperation(new SparkMessages_ByPriority().IndexName));
-            var errors = await Store.Maintenance.SendAsync(new GetIndexErrorsOperation([new SparkMessages_ByPriority().IndexName]));
-            output.WriteLine($"S-M9 subscriptions on the database: {subscriptions.Count} [{string.Join(", ", subscriptions.Select(s => s.SubscriptionName))}]; "
-                + $"{nameof(SparkMessages_ByPriority)} state={stats.State} entries={stats.EntriesCount} errors={errors.Sum(e => e.Errors.Length)}");
+            output.WriteLine($"S-M9 subscriptions on the database: {subscriptions.Count} [{string.Join(", ", subscriptions.Select(s => s.SubscriptionName))}]");
 
+            // Since #536 D40 messaging deploys no static index; the page is a plain (auto-index) query.
             subscriptions.Select(s => s.SubscriptionName).Should().Equal([MintPlayer.Spark.Messaging.Services.MessageFeeder.SubscriptionNameConstant], "one subscription, well inside Community's 3");
-            stats.State.Should().Be(IndexState.Normal);
-            errors.Sum(e => e.Errors.Length).Should().Be(0);
         });
     }
 
@@ -140,6 +134,7 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new TestOutputLoggerProvider(output)));
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton(recorder);
         services.AddSparkMessaging(o =>
         {
@@ -203,7 +198,7 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
             var feeder = hosted.OfType<MintPlayer.Spark.Messaging.Services.MessageSubscriptionManager>().Single().Feeder;
             if (feeder is not null)
                 output.WriteLine($"S-M3 feeder merge: pulledAhead={feeder.PulledAheadCount} (from the sorted page, not in the batch) "
-                    + $"batchOnly={feeder.BatchOnlyCount} (from the batch, not in the page: not indexed yet, or beyond it) pageUnavailable={feeder.PageUnavailableCount}");
+                    + $"batchOnly={feeder.BatchOnlyCount} (from the batch, not in the page: not visible to the page query yet, or beyond it)");
 
             await Store.WaitForIndexingAsync();
             if (afterDrain is not null)

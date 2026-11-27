@@ -68,7 +68,7 @@ public static class SparkComposedQueries
             {
                 problems.Add(
                     $"Query '{query.Name}' is live over '{type.Name}', which declares no clrType. A live query " +
-                    $"is re-run when its RavenDB collection changes, or secures an app stream's rows as " +
+                    $"is re-run when its entity's stored rows change, or secures an app stream's rows as " +
                     $"entities of that class, and a composed type has neither. Remove \"live\", or point the " +
                     $"query at a type backed by an entity class.");
             }

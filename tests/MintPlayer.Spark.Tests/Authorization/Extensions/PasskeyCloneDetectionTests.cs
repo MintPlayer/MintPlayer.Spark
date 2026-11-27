@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// <c>/passkeys/sign-in</c> with a software authenticator: an ES256 key, a hand-built authenticator-data
 /// block and a DER signature — nothing mocked on the server side.
 /// </summary>
-public class PasskeyCloneDetectionTests : SparkTestDriver
+public class PasskeyCloneDetectionTests : RavenSparkTestDriver
 {
     private sealed class SoftwareAuthenticator
     {

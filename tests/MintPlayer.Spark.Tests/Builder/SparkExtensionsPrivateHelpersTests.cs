@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// that's a deliberate trade: the tests pin the branches the public API delegates to, and a rename of the
 /// private method is a fast, localized failure rather than a silent coverage regression.
 /// </summary>
-public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
+public class SparkExtensionsPrivateHelpersTests : RavenSparkTestDriver
 {
     private static MethodInfo PrivateMethod(string name) => PrivateMethod(typeof(SparkExtensions), name);
 

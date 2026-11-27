@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// hits it through <c>Repository.BadgeToken</c>.
 /// </para>
 /// </remarks>
-public class StaticIndexSearchTests : SparkTestDriver
+public class StaticIndexSearchTests : RavenSparkTestDriver
 {
     private static readonly Guid GadgetTypeId = Guid.Parse("cccc4444-cccc-cccc-cccc-cccc44444444");
 
@@ -121,7 +121,7 @@ public class StaticIndexSearchTests : SparkTestDriver
 
     private IQueryExecutor Executor(bool bindIndex = false)
     {
-        _factory = new SparkEndpointFactory<Sp4Context>(Store, [GadgetModel(bindIndex)],
+        _factory = new SparkEndpointFactory<Sp4Context>(Store.AsSparkTestDatabase(), [GadgetModel(bindIndex)],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Sp4Gadgets_Overview)));
         return _factory.GetService<IQueryExecutor>();
     }

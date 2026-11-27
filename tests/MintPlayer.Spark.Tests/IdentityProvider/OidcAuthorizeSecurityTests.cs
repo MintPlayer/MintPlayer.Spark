@@ -1,7 +1,6 @@
 using MintPlayer.Spark.Testing;
 using System.Net;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -86,7 +85,7 @@ public class OidcAuthorizeSecurityTests(OidcSharedHost host) : OidcTestHost(host
 
         // Guard the fixture itself: if the seed silently kept the model's default of
         // ["authorization_code"], the assertion below would pass for the wrong reason.
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = await session.LoadAsync<OidcApplication>(seeded.Id.Value);
             stored.AllowedGrantTypes.Should().ContainSingle().Which.Should().Be("client_credentials");
@@ -195,8 +194,8 @@ public class OidcAuthorizeSecurityTests(OidcSharedHost host) : OidcTestHost(host
 
         // Asserting absence through an index: without the wait a stale read is indistinguishable
         // from the property holding, and the test passes either way.
-        await Store.WaitForIndexingAsync();
-        using var session = Store.OpenAsyncSession();
+        await WaitForIndexesAsync();
+        using var session = Store.OpenSession();
         var requests = await CaseAuthorizationRequestsAsync(session);
 
         requests.Should().BeEmpty("the request is only persisted once there is a subject to bind it to");

@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -64,7 +65,7 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
                     {
                         // Nothing of this attempt is stored: measured pages are cached, so the next attempt does not ask again.
                         logger.LogWarning("PageSpeed Insights quota exhausted for {RunId}; asking again later (attempt {Attempt})", run.Id, attempt + 1);
-                        await outbox.EnqueueAsync(session, new PsiMessage(run.Id.Value, attempt + 1),
+                        await outbox.EnqueueAsync(new PsiMessage(run.Id.Value, attempt + 1),
                             new BroadcastOptions { Delay = client.Options.QuotaRetryDelay * (attempt + 1) }, cancellationToken);
                         await session.SaveChangesAsync(cancellationToken);
                         return;
@@ -79,7 +80,7 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
         }
 
         RunPipeline.AddFindings(session, run, pages, site);
-        await pipeline.FinishStageAsync(session, outbox, run.Id.Value, PipelineStages.Psi, cancellationToken);
+        await pipeline.FinishStageAsync(run.Id.Value, PipelineStages.Psi, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 

@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </list>
 /// Each runs on a real database with documents, an index and a query, on both engines.
 /// </summary>
-public abstract class RowPolicyCompositionSpikeTests : SparkTestDriver
+public abstract class RowPolicyCompositionSpikeTests : RavenSparkTestDriver
 {
     protected abstract string Engine { get; }
 

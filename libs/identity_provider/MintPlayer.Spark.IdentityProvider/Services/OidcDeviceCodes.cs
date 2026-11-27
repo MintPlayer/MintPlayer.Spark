@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -35,7 +34,7 @@ internal static class OidcDeviceCodes
     }
 
     /// <summary>The device authorization behind a typed user code, if it is still waiting.</summary>
-    public static async Task<OidcToken?> FindByUserCodeAsync(IAsyncDocumentSession session, string userCode, CancellationToken ct)
+    public static async Task<OidcToken?> FindByUserCodeAsync(ISparkSession session, string userCode, CancellationToken ct)
     {
         var pointer = await session.LoadAsync<OidcToken>(UserCodeDocumentId(userCode), ct);
         if (pointer?.Properties.GetValueOrDefault("device") is not { } deviceId)

@@ -12,7 +12,7 @@ public class SparkMessage
     /// <summary>
     /// The queue's <c>SparkQueuePriority</c> as a number (<c>-1</c> Low, <c>0</c> Normal, <c>1</c> High),
     /// stamped at publish (#460, M16b). Stored on the message because the single feeder's sorted query
-    /// (<c>SparkMessages_ByPriority</c>) orders by it, and an index cannot read configuration. A priority
+    /// (the view <c>SparkMessages_ByState</c>) orders by it, and a view cannot read configuration. A priority
     /// changed in configuration therefore applies to messages published after the change.
     /// </summary>
     public int Priority { get; set; }
@@ -20,7 +20,7 @@ public class SparkMessage
     /// <summary>
     /// <c>BroadcastOptions.Expedite</c> (dependency-updates PRD R29): a rare, human-triggered message that
     /// jumps its lane. Not to be confused with <see cref="Priority"/>, which is the <i>queue's</i> rank in
-    /// the feeder and still sorts first. Indexed by <c>SparkMessages_ByPriority</c> so the feeder's page
+    /// the feeder and still sorts first. In the view <c>SparkMessages_ByState</c> so the feeder's page
     /// pulls it ahead within its queue priority; the lane then takes it before any normal message, with a
     /// starvation cap (<c>LaneBuffer.StarvationCap</c>). Absent on messages written before it existed,
     /// which read as false.
@@ -46,11 +46,12 @@ public class SparkMessage
     public DateTime? RateLimitedUntilUtc { get; set; }
 
     /// <summary>
-    /// When the message joined the queue <b>by the database server's clock</b> (#460, M16b, spike S-M7):
-    /// the <c>@last-modified</c> of the write that made it claimable, captured by the feeder on the first
-    /// write it makes to the message (its claim or its throttle deferral), which costs no extra write.
-    /// Null until then; the index reads <c>@last-modified</c> itself in the meantime, which is the same
-    /// value because nothing else writes a claimable message before the feeder does.
+    /// When the message joined the queue, <b>on the messaging lease holder's clock</b> (#536 D40), the one
+    /// writer of every <c>QueuedAtUtc</c>: the feeder assigns it after every key it already handed out (the
+    /// subscription batch in commit order, then what only the page holds by <see cref="CreatedAtUtc"/>) and
+    /// stores it with its first write to the message (its claim or its throttle deferral), which costs no
+    /// extra write. Null until then. It replaced RavenDB's <c>@last-modified</c> (#460 M16b, spike S-M7),
+    /// which no other store has.
     /// <para>
     /// Never the producer's <see cref="CreatedAtUtc"/>: ordering by the publisher's wall clock across
     /// instances is the design the decision register rejects. Captured once, so a retry, a reclaim or a

@@ -1,17 +1,18 @@
 # MintPlayer.Spark.History
 
-Revision history for [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark): RavenDB
-revisions configured from the model, audit stamping, revision reads through Spark's row security and
+Revision history for [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark): revisions
+configured from the model, audit stamping, revision reads through Spark's row security and
 redaction, revert through the normal save pipeline, and the changed attributes of every write for
-durable after-commit interceptors.
+durable after-commit interceptors. It runs on every store with revisions (`ISparkRevisions`): RavenDB keeps its own,
+SQL Server and PostgreSQL write a `spark.Revisions` row in the save's transaction, and the in-memory store keeps them
+in memory.
 
 - `IAuditable` — `CreatedBy`, `CreatedAt`, `ModifiedBy`, `ModifiedAt`, stamped on every write with
   **user ids** (never names). It is the union of `IAuditCreated` (the created pair) and
   `IAuditModified` (the modified pair); implement either half alone to keep only that pair.
 - The members are **generated** (#271): in a `partial` type of an entity library that references
   `MintPlayer.Spark.LibraryGenerators`, declare the interface and nothing else.
-- `"revisions"` in a model file — the collection's RavenDB revisions settings, merged into the
-  database at startup.
+- `"revisions"` in a model file — the collection's revisions settings, applied to the store at startup.
 - `POST /spark/po/revisions`, `/spark/po/revision`, `/spark/po/revert`.
 - `ISparkHistory` (the same three in code).
 
@@ -38,7 +39,7 @@ public partial class Article : IAuditable
 ```
 
 Without the generator, declare the four yourself as public read/write properties (`UseSpark()` refuses
-an explicit interface implementation, which RavenDB would never store). A member you declare is left
+an explicit interface implementation, which no store would persist). A member you declare is left
 alone, so you can also declare one to give it attributes of your own. See [docs/guide-auditing.md](../../../docs/guide-auditing.md).
 
 `App_Data/Model/Article.json`, hand-written (model synchronization keeps it):
@@ -64,11 +65,15 @@ alone, so you can also declare one to give it attributes of your own. See [docs/
 
 At startup every model type with a `revisions` block has its collection configured: `enabled` →
 `Disabled = !enabled`, `minimumRevisionsToKeep`, `minimumRevisionAgeToKeep` (`"d.hh:mm:ss"`),
-`purgeOnDelete`. RavenDB's `ConfigureRevisionsOperation` replaces the **whole** configuration, so the
+`purgeOnDelete`. Only those types keep revisions on SQL Server, PostgreSQL and memory: every other save writes
+nothing extra.
+
+On RavenDB, `ConfigureRevisionsOperation` replaces the **whole** configuration, so the
 package reads the current one first and changes only those collections: the `Default`, every other
 collection and every setting the model does not express are kept, and nothing is sent when the
 collections already match (a restart writes nothing). Removing the block does not disable revisions —
-it leaves the collection to whoever owns the database.
+it leaves the collection to whoever owns the database. RavenDB's database-wide `Default` setting, made outside Spark,
+has no equivalent on the other stores.
 
 ### Revision limits from configuration (#460 M16)
 
@@ -96,11 +101,12 @@ from "unset", so it defers to the default; only `true` in the model is explicit.
 
 **Defaults:** revisions are kept **30 days** (`MinimumRevisionAgeToKeep`), with no count limit and no
 purge on delete. Chosen to fit the Community licence and to bound how long revisions keep personal data
-(account deletion does not rewrite them, D8). RavenDB deletes a revision only once it is past **both**
-limits, and only when the document is written again — a document nobody edits keeps its old revisions.
+(account deletion does not rewrite them, D8). Every store deletes a revision only once it is past **both**
+limits, and only when the document is written again (RavenDB's rule, which the other stores apply in the write's
+transaction) — a document nobody edits keeps its old revisions.
 Set `Spark:History:Revisions:MinimumRevisionAgeToKeep=00:00:00` for unlimited history.
 
-⚠️ **Licence limits.** RavenDB caps what a collection may ask for. Measured on a **Community**
+⚠️ **Licence limits (RavenDB).** RavenDB caps what a collection may ask for; the other stores have no caps. Measured on a **Community**
 licence (7.2): at most **2** `minimumRevisionsToKeep`, at most **45 days** `minimumRevisionAgeToKeep`,
 and no *enabled* `Default` configuration (a disabled one is accepted). When `GET /license/status` reports
 `Community`, History checks the merged limits **before** sending anything and refuses startup naming

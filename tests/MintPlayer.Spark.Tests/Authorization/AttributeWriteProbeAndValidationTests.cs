@@ -51,7 +51,7 @@ public class WvContext : SparkContext
 /// the caller may not write (blanked per row, or refused by a static <c>Edit</c> right) failed
 /// "required" although the save keeps its stored value.
 /// </summary>
-public class AttributeWriteProbeAndValidationTests : SparkTestDriver
+public class AttributeWriteProbeAndValidationTests : RavenSparkTestDriver
 {
     private static readonly Guid ItemTypeId = Guid.Parse("a77b0000-0000-4000-8000-00000000c001");
 
@@ -70,7 +70,7 @@ public class AttributeWriteProbeAndValidationTests : SparkTestDriver
     private async Task<SparkClient> StartAsync(SparkTestSecurity security)
     {
         var factory = new SparkEndpointFactory<WvContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ItemModel()],
             configureServices: services => services.AddScoped<WvItemActions>(),
             security: security);

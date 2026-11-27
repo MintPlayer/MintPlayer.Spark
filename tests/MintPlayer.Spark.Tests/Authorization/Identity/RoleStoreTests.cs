@@ -12,9 +12,9 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// derives role document IDs deterministically from the role name, so a regression in the
 /// ID convention silently breaks <c>FindByName</c> across the entire authorization stack.
 /// </summary>
-public class RoleStoreTests : SparkTestDriver
+public class RoleStoreTests : RavenSparkTestDriver
 {
-    private RoleStore CreateStore() => new(Store);
+    private RoleStore CreateStore() => new(Store.AsSparkStore());
 
     [Fact]
     public async Task CreateAsync_assigns_deterministic_id_derived_from_name()

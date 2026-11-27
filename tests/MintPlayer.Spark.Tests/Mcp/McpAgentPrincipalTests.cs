@@ -25,8 +25,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// Fleet administrator's agent saw only the administrator's own cars (2026-10-12). A removed role is gone on the next
 /// call (S4), while the cookie keeps its claims until Identity revalidates it.
 /// </remarks>
-public class McpAgentPrincipalTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpAgentPrincipalTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string Reviewers = "Reviewers";
 

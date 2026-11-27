@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    #536 O17 setting 3. The design-time package (EF Design, Roslyn, MSBuild: about 17 MB) belongs in bin, where
+    synchronize runs, and never in a publish.
+    - A reference written by hand without PrivateAssets="all" is marked Publish="false" here. This runs from a .targets
+      file because a .props file is imported before the project's own items exist, so its Update matches nothing
+      (measured, PRD §8.9).
+    - When the package reaches a project only through another project, nothing on the package side can keep its closure
+      out of that publish (measured): warn instead.
+  -->
+  <ItemGroup>
+    <PackageReference Update="MintPlayer.Spark.Relational.Design" Publish="false" />
+  </ItemGroup>
+
+  <Target Name="_SparkRelationalDesignTransitiveWarning" BeforeTargets="Build"
+          Condition="'@(PackageReference->WithMetadataValue('Identity', 'MintPlayer.Spark.Relational.Design'))' == ''">
+    <Warning Code="SPARKDESIGN001"
+             Text="MintPlayer.Spark.Relational.Design reaches $(MSBuildProjectName) through another project, so a publish of it ships the EF design-time closure (Roslyn, about 17 MB). Reference the package in the host project itself, as a development dependency, and remove it from the library that brings it." />
+  </Target>
+</Project>

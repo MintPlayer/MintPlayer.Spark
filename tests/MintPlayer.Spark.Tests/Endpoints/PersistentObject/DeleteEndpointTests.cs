@@ -6,7 +6,7 @@ using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
-public class DeleteEndpointTests : SparkTestDriver
+public class DeleteEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("66666666-eeee-eeee-eeee-666666666666");
 
@@ -16,7 +16,7 @@ public class DeleteEndpointTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

@@ -29,7 +29,8 @@ namespace MintPlayer.Spark.Apps;
 /// [WebhookEvent("report.completed", Permission = "reports:read")]
 /// public sealed record ReportCompleted(string ReportId, decimal LineRate);
 ///
-/// await webhooks.PublishAsync(new ReportCompleted(id, rate), WebhookOwner.Organization(orgId), session);
+/// // In the scope's session: the event commits with the business write's SaveChanges.
+/// await webhooks.PublishAsync(new ReportCompleted(id, rate), WebhookOwner.Organization(orgId));
 /// </code>
 /// </summary>
 public static class SparkAppsExtensions
@@ -42,15 +43,21 @@ public static class SparkAppsExtensions
     /// SSRF-safe client), the user and organization owners and the <c>/spark/apps</c> endpoints. Needs
     /// <c>AddAuthentication&lt;TUser&gt;()</c> and <c>AddMessaging()</c>.
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Apps", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddApps(this ISparkBuilder builder, Action<AppsBuilder>? configure = null)
     {
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Apps", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
-
+        // #536: Apps run on any store (ISparkStore); Messaging and Authorization bring their own requirements.
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(AppsMarker)))
             throw new InvalidOperationException("AddApps() is called twice; register every event in one call.");
         services.AddSingleton<AppsMarker>();
+        // #536 D36: the documents Apps keeps; a store with a schema builds their tables.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.SparkApp>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.AppInstallation>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookEndpoint>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookOwnerRegistry>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookEventKey>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookDelivery>(services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.WebhookChain>(services);
 
         var apps = new AppsBuilder();
         configure?.Invoke(apps);
@@ -118,7 +125,9 @@ public static class SparkAppsExtensions
 
     internal static void ValidateStartup(IServiceProvider services)
     {
-        if (services.GetService<IMessageOutbox>() is null)
+        // Asks for the registration and builds nothing: the outbox is scoped (over the scope's session, #536 D50), and this
+        // runs on the root provider.
+        if (!services.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IMessageOutbox)))
             throw new InvalidOperationException("Spark Apps needs Messaging: call spark.AddMessaging(). Every event and delivery is a durable message.");
         if (SparkAppsFeature.IsOn(services) && services.GetService<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>() is null)
             throw new InvalidOperationException("apps.EnableApps() needs the identity provider: call spark.AddIdentityProvider(). An App is an OAuth client of this site (D5).");

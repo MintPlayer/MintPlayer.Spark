@@ -38,7 +38,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </summary>
 public class DateTimeOffsetRoundTripTests(DateTimeOffsetRoundTripTests.SeededMeetings host)
-    : SparkSharedTestDriver(host), IClassFixture<DateTimeOffsetRoundTripTests.SeededMeetings>
+    : RavenSparkSharedTestDriver(host), IClassFixture<DateTimeOffsetRoundTripTests.SeededMeetings>
 {
     private static readonly Guid MeetingTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
 
@@ -138,7 +138,7 @@ public class DateTimeOffsetRoundTripTests(DateTimeOffsetRoundTripTests.SeededMee
         }
 
         protected override SparkEndpointFactory<TestContext> CreateFactory() =>
-            new(Store, [MeetingModel()],
+            new(Store.AsSparkTestDatabase(), [MeetingModel()],
                 configureIndexCatalog: catalog =>
                 {
                     catalog.RegisterIndex(typeof(Meetings_Overview));

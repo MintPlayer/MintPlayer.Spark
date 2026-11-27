@@ -4,11 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
-using Raven.Client;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Commands.Batches;
-using Raven.Client.Documents.Operations;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
@@ -29,7 +25,7 @@ namespace MintPlayer.Spark.Messaging.Services;
 internal sealed partial class MessageProcessor
 {
     [Inject] private readonly IServiceProvider serviceProvider;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore documentStore;
     [Inject] private readonly IOptions<SparkMessagingOptions> optionsAccessor;
     [Inject] private readonly ILogger<MessageProcessor> logger;
 
@@ -63,8 +59,8 @@ internal sealed partial class MessageProcessor
     /// </param>
     public async Task ProcessAsync(string messageId, string ownerId, CancellationToken cancellationToken, CancellationToken stoppingToken = default)
     {
-        using var session = documentStore.OpenAsyncSession();
-        var sparkMessage = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
+        using var storeSession = documentStore.OpenSession();
+        var sparkMessage = await storeSession.LoadAsync<SparkMessage>(messageId, cancellationToken);
 
         if (sparkMessage is null)
         {
@@ -89,13 +85,13 @@ internal sealed partial class MessageProcessor
         // is alive, so each one carries a fresh expiry instead — never earlier than any renewal made
         // before it. Terminal and parked states clear the claim first, so they are left alone.
         var claimTtl = Options.ClaimTtl;
-        session.Advanced.OnBeforeStore += (_, e) =>
+        storeSession.BeforeStore += entity =>
         {
-            if (ReferenceEquals(e.Entity, sparkMessage))
+            if (ReferenceEquals(entity, sparkMessage))
                 ExtendOwnClaim(sparkMessage, ownerId, claimTtl);
         };
 
-        await RunHandlersAsync(session, sparkMessage, cancellationToken, stoppingToken);
+        await RunHandlersAsync(new MessageSession(documentStore, storeSession, sparkMessage, ownerId), sparkMessage, cancellationToken, stoppingToken);
     }
 
     /// <summary>
@@ -118,7 +114,7 @@ internal sealed partial class MessageProcessor
     /// <see cref="ClaimedExecution"/> (claim renewal + <see cref="SparkMessagingOptions.HandlerTimeout"/>).
     /// </summary>
     public async Task RunHandlersAsync(
-        IAsyncDocumentSession session,
+        MessageSession session,
         SparkMessage sparkMessage,
         CancellationToken cancellationToken,
         CancellationToken stoppingToken = default)
@@ -418,7 +414,7 @@ internal sealed partial class MessageProcessor
     /// now; otherwise the message has been saved dead-lettered (Expired) or deferred to its reserved
     /// slot, and the caller returns.
     /// </summary>
-    private async Task<bool> AdmitAsync(IAsyncDocumentSession session, SparkMessage sparkMessage, CancellationToken cancellationToken)
+    private async Task<bool> AdmitAsync(MessageSession session, SparkMessage sparkMessage, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
 
@@ -447,7 +443,7 @@ internal sealed partial class MessageProcessor
                 return false;
 
             default:
-                if (await MessageClaims.DeferUnstartedAsync(session, sparkMessage, decision.Slot, cancellationToken))
+                if (await MessageClaims.DeferUnstartedAsync(session.Session, sparkMessage, decision.Slot, cancellationToken))
                 {
                     logger.LogDebug("Message {MessageId} (queue: {QueueName}) throttled; deferred to {Slot}",
                         sparkMessage.Id, sparkMessage.QueueName, decision.Slot);
@@ -487,7 +483,7 @@ internal sealed partial class MessageProcessor
     /// Parks a message for another attempt at <paramref name="next"/>. A retry that would fall after the
     /// message's expiry dead-letters it as Expired instead: the retry could only ever run too late.
     /// </summary>
-    private void ParkForRetry(IAsyncDocumentSession session, SparkMessage sparkMessage, DateTime next)
+    private void ParkForRetry(MessageSession session, SparkMessage sparkMessage, DateTime next)
     {
         if (sparkMessage.ExpiresAtUtc is { } expiresAt && next > expiresAt)
         {
@@ -505,10 +501,10 @@ internal sealed partial class MessageProcessor
         sparkMessage.NextAttemptAtUtc = next;
     }
 
-    private void DeadLetter(IAsyncDocumentSession session, SparkMessage sparkMessage, EDeadLetterReason reason)
+    private void DeadLetter(MessageSession session, SparkMessage sparkMessage, EDeadLetterReason reason)
         => Finish(session, sparkMessage, EMessageStatus.DeadLettered, reason);
 
-    private void Expire(IAsyncDocumentSession session, SparkMessage sparkMessage)
+    private void Expire(MessageSession session, SparkMessage sparkMessage)
     {
         foreach (var handler in sparkMessage.Handlers)
         {
@@ -522,7 +518,7 @@ internal sealed partial class MessageProcessor
     }
 
     /// <summary>The one place a message becomes terminal.</summary>
-    private void Finish(IAsyncDocumentSession session, SparkMessage sparkMessage, EMessageStatus status, EDeadLetterReason? reason)
+    private void Finish(MessageSession session, SparkMessage sparkMessage, EMessageStatus status, EDeadLetterReason? reason)
     {
         sparkMessage.Status = status;
         sparkMessage.DeadLetterReason = status == EMessageStatus.DeadLettered ? reason : null;
@@ -537,7 +533,7 @@ internal sealed partial class MessageProcessor
         SetExpiration(session, sparkMessage);
     }
 
-    private void RollupMessageStatus(SparkMessage sparkMessage, IAsyncDocumentSession session)
+    private void RollupMessageStatus(SparkMessage sparkMessage, MessageSession session)
     {
         if (sparkMessage.Handlers.Count == 0)
         {
@@ -585,34 +581,22 @@ internal sealed partial class MessageProcessor
     }
 
     /// <summary>
-    /// Retention for a terminal message, and the same <c>@expires</c> on every progress sidecar its
+    /// Retention for a terminal message, and the same expiry on every progress sidecar its
     /// handlers wrote — a sidecar must not outlive its message, nor die before it.
     /// </summary>
-    private void SetExpiration(IAsyncDocumentSession session, SparkMessage msg)
+    private void SetExpiration(MessageSession session, SparkMessage msg)
     {
         if (Options.RetentionDays <= 0) return;
 
-        var expires = DateTime.UtcNow.AddDays(Options.RetentionDays);
-        var metadata = session.Advanced.GetMetadataFor(msg);
-        metadata[Constants.Documents.Metadata.Expires] = expires;
+        var expires = new DateTimeOffset(DateTime.UtcNow.AddDays(Options.RetentionDays), TimeSpan.Zero);
+        session.Session.SetExpiry(msg, expires);
 
         if (msg.Id is null)
             return;
 
-        for (var i = 0; i < msg.Handlers.Count; i++)
-        {
-            if (!msg.Handlers[i].HasProgress)
-                continue;
-
-            session.Advanced.Defer(new PatchCommandData(
-                SparkMessageProgress.IdFor(msg.Id, i),
-                changeVector: null,
-                patch: new PatchRequest
-                {
-                    Script = "this['@metadata']['@expires'] = args.expires;",
-                    Values = { ["expires"] = expires.ToString("O") },
-                }));
-        }
+        session.ExpireSidecars(
+            Enumerable.Range(0, msg.Handlers.Count).Where(i => msg.Handlers[i].HasProgress).Select(i => SparkMessageProgress.IdFor(msg.Id, i)),
+            expires);
     }
 
     /// <summary>
@@ -620,7 +604,7 @@ internal sealed partial class MessageProcessor
     /// them runs again. Returns true when that made the message terminal (it has been saved).
     /// </summary>
     private async Task<bool> DeadLetterExhaustedByReclaimsAsync(
-        IAsyncDocumentSession session, SparkMessage sparkMessage, int parksPerAttempt, CancellationToken cancellationToken)
+        MessageSession session, SparkMessage sparkMessage, int parksPerAttempt, CancellationToken cancellationToken)
     {
         var reclaims = sparkMessage.ReclaimCount;
 

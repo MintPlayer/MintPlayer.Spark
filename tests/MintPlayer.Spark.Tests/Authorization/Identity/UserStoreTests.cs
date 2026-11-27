@@ -14,14 +14,14 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// cluster-safe email uniqueness — a regression in the email-reservation flow silently breaks
 /// registration across the entire authentication stack.
 /// </summary>
-public class UserStoreTests : SparkTestDriver
+public class UserStoreTests : RavenSparkTestDriver
 {
     // #460 D5: the store protects the authenticator key and tokens, so it needs a key ring. One
     // ephemeral ring per test class instance, shared by every store the test creates.
     private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider dataProtection =
         new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
 
-    private UserStore<SparkUser> CreateStore() => new(Store, dataProtection);
+    private UserStore<SparkUser> CreateStore() => new(Store.AsSparkStore(), dataProtection);
 
     private static SparkUser NewUser(string? userName = "alice", string? email = null)
     {
@@ -402,7 +402,7 @@ public class UserStoreTests : SparkTestDriver
                 ["a1b2c3d4-0000-0000-0000-000000000002"] = "Fleet managers",
             },
         });
-        using var store = new UserStore<SparkUser>(Store, dataProtection, securityConfiguration: loader);
+        using var store = new UserStore<SparkUser>(Store.AsSparkStore(), dataProtection, securityConfiguration: loader);
         var user = new SparkUser { Roles = ["fleet MANAGERS", "Fleet managers"] };
 
         await store.AddToRoleAsync(user, "ADMINISTRATORS", CancellationToken.None);

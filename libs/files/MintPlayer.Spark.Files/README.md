@@ -29,7 +29,9 @@ How it works:
   the type, the attribute and the object.
 - **Fail closed.** Types are recognised by their magic bytes, never by the client's name or MIME type. Markup (HTML,
   SVG, XML) is refused. `*` is refused. An unusual format needs `files.AddSignature(…)`.
-- **Stores.** RavenDB attachments are built in. The file-system, Azure Blob and S3 stores are separate packages.
+- **Stores.** RavenDB attachments are built in, and are the default on RavenDB. The file-system, Azure Blob and S3 stores
+  are separate packages. SQL Server and PostgreSQL have no attachments, so there one of them is required: without it the
+  app refuses to start.
 - **Scanning.** Register an `IFileScanner` (`files.UseClamAV(…)` from `MintPlayer.Spark.Files.ClamAV`, or
   `files.UseScanner<T>()`). Only a file the scanner calls clean can be claimed and served. Infected files are deleted.
   A failed scan (a timeout, a reset, an exception) is never treated as a pass. Scanning runs during the commit by default; set
@@ -45,9 +47,11 @@ How it works:
 
   ```csharp
   var app = builder.Build();
-  if (await app.RegenerateSparkImageVariantsIfRequested(args))
+  if (await app.RunSparkCommandIfRequestedAsync(args))
       return;
   ```
+
+  That one line runs every Spark command (`--spark-help` lists them); `AddFiles` registers this one.
 
   Without a processor, an image is stored as uploaded, with no variants, and startup logs a warning.
 - **The client.** Add `withFileAttributes()` from `@mintplayer/ng-spark/files` to `provideSpark(...)`. It renders every

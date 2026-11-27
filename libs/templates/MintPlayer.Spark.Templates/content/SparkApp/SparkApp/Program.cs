@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 #endif
 using MintPlayer.Spark;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Extensions;
 #if (HasAuth)
 using MintPlayer.Spark.Authorization.Configuration;
@@ -111,7 +112,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 #endif
 #if (UseMessaging)
 
-    // A durable message bus on RavenDB, configured from Spark:Messaging.
+    // A durable message bus on the app's store, configured from Spark:Messaging.
     spark.AddMessaging();
 #endif
 #if (UseMail)
@@ -232,19 +233,12 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
 });
 #endif
 
-// Build steps, not run modes: each writes or checks a file under App_Data and returns before Build().
-// Without a flag, the first call also writes the missing model (SynchronizeModelIfMissing above).
-//   --spark-synchronize-model     App_Data/Model/*.json from the entity classes
-//   --spark-init-security         a starting App_Data/security.json (never overwrites)
-//   --spark-verify-security       fails when the rights reachable without signing in have changed
-if (builder.SynchronizeSparkModelsIfRequested(args))
-    return;
-if (builder.InitializeSparkSecurityIfRequested(args))
-    return;
-if (builder.VerifySparkSecurityIfRequested(args))
-    return;
-
 var app = builder.Build();
+
+// Spark's commands (--spark-help lists them): model synchronization, security, and every package's own. Building the
+// host constructs no service and opens no connection, so the ones that need no database run in CI.
+if (await app.RunSparkCommandIfRequestedAsync(args))
+    return;
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

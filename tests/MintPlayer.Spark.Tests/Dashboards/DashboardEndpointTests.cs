@@ -16,7 +16,8 @@ namespace MintPlayer.Spark.Tests.Dashboards;
 /// A dashboard through the real route table and <c>/spark/live</c> (<c>docs/spark_dashboards_PRD.md</c> §9.3, S10's
 /// local half): the group bound to <c>dashboards:administrators</c> loads it and follows it, with the providers'
 /// values; an anonymous caller and a signed-in non-administrator get Spark's one denial on the load (404) and on the
-/// live subscription (<c>gone</c>), and no provider runs for them.
+/// live subscription (<c>gone</c>), and no provider runs for them. On the database <c>SPARK_TEST_DATABASE</c> picks
+/// (#536 D45).
 /// </summary>
 public class DashboardEndpointTests : SparkTestDriver
 {
@@ -85,7 +86,7 @@ public class DashboardEndpointTests : SparkTestDriver
     {
         TdProvider.Reset();
         var factory = new SparkEndpointFactory<StContext>(
-            Store,
+            Database,
             [Model()],
             configureServices: services => services.AddSingleton<IStartupFilter, StPrincipalStartupFilter>(),
             configureSpark: spark => spark.AddDashboards(
@@ -196,7 +197,7 @@ public class DashboardEndpointTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task The_shipped_database_statistics_dashboard_reads_ravendb()
+    public async Task The_shipped_database_statistics_dashboard_reads_the_store()
     {
         var factory = Factory();
 
@@ -204,7 +205,10 @@ public class DashboardEndpointTests : SparkTestDriver
         var (editor, _) = await LoadAsync(factory, DatabaseStatisticsTypeId, "main", "users/editor", EditorsName);
 
         status.Should().Be(HttpStatusCode.OK);
-        Value(po, "DatabaseSize").GetInt64().Should().BeGreaterThan(0);
+        if (factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>().ProviderName == MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.InMemory)
+            Value(po, "DatabaseSize").ValueKind.Should().Be(JsonValueKind.Null, "memory has no size on disk");
+        else
+            Value(po, "DatabaseSize").GetInt64().Should().BeGreaterThan(0);
         Value(po, "DocumentCount").GetInt64().Should().BeGreaterThanOrEqualTo(0);
         Value(po, "Collections").ValueKind.Should().Be(JsonValueKind.Array);
         Value(po, "DatabaseSizeHistory").ValueKind.Should().Be(JsonValueKind.Array, "the history read ran (empty: nothing sampled yet)");
@@ -262,7 +266,7 @@ public class DashboardEndpointTests : SparkTestDriver
         var act = () =>
         {
             var factory = new SparkEndpointFactory<StContext>(
-                Store,
+                Database,
                 [Model()],
                 configureServices: services => services.AddSingleton<IStartupFilter, StPrincipalStartupFilter>(),
                 configureSpark: spark => spark.AddDashboards(dashboards => dashboards.Add("TdMissing", d => d.Provider<TdProvider>())),

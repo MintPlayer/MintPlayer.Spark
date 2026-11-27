@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// assumed from the documentation.
 /// </para>
 /// </summary>
-public class NaturalIdConventionTests : SparkTestDriver
+public class NaturalIdConventionTests : RavenSparkTestDriver
 {
     private class Car : IHasNaturalId
     {
@@ -33,7 +33,7 @@ public class NaturalIdConventionTests : SparkTestDriver
         public string? Label { get; set; }
     }
 
-    // No PreInitialize override: SparkTestDriver installs Spark's id conventions for every
+    // No PreInitialize override: RavenSparkTestDriver installs Spark's id conventions for every
     // fixture. This file used to do it by hand, which is how the gap was noticed.
     private IDocumentStore SparkStore() => Store;
 

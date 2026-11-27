@@ -1,9 +1,8 @@
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Moderation.Indexes;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -13,7 +12,10 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// </summary>
 internal sealed partial class ReputationLedger
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    /// <summary>How long a read that must include every committed write waits for RavenDB's indexes.</summary>
+    internal static readonly TimeSpan IndexWait = TimeSpan.FromSeconds(30);
+
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IOptions<SparkModerationOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
 
@@ -26,13 +28,13 @@ internal sealed partial class ReputationLedger
     /// by a retraction or a reversal, however often a rule fires.
     /// </summary>
     /// <returns>The compensation written, or null when there already was one.</returns>
-    public static async Task<ReputationEvent?> CompensateAsync(IAsyncDocumentSession session, ReputationEvent original, string kind, DateTime nowUtc, string? ruleId = null, string? caseId = null)
+    public static async Task<ReputationEvent?> CompensateAsync(ISparkSession session, ReputationEvent original, string kind, DateTime nowUtc, string? ruleId = null, string? caseId = null)
     {
         if (original.CompensatedById is not null || original.Kind is ReputationEventKinds.Reversal or ReputationEventKinds.Retraction)
             return null;
 
         var id = ModerationIds.Compensation(original.Id.Value);
-        if (await session.Advanced.ExistsAsync(id.Value))
+        if (await session.ExistsAsync(id))
             return null;
 
         // A reversal (detector, moderator, deletion, merge) of an entry that already counts is a
@@ -80,7 +82,7 @@ internal sealed partial class ReputationLedger
             using var session = OpenSession();
             var votes = await session.LoadAsync<ModerationVote>(chunk, cancellationToken);
             var eventIds = votes.Values.Where(v => v is not null).SelectMany(v => v!.EventIds).Distinct().ToArray();
-            var events = eventIds.Length == 0 ? new Dictionary<string, ReputationEvent>() : await session.LoadAsync<ReputationEvent>(eventIds, cancellationToken);
+            var events = eventIds.Length == 0 ? new Dictionary<string, ReputationEvent?>() : await session.LoadAsync<ReputationEvent>(eventIds, cancellationToken);
             var now = UtcNow;
 
             foreach (var vote in votes.Values)
@@ -132,21 +134,23 @@ internal sealed partial class ReputationLedger
         for (var page = 0; page < maxPages; page++)
         {
             using var session = OpenSession();
-            var due = await session.Query<Moderation_EntriesToCredit.Result, Moderation_EntriesToCredit>()
-                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-                .Where(e => e.CreditableAfterUtc <= now)
-                .OfType<ReputationEvent>()
-                .Take(512)
-                .ToListAsync(cancellationToken);
-            if (due.Count == 0)
+            var dueIds = await session.ToListAsync(session.Query<Moderation_Ledger.Result, Moderation_Ledger>(IndexWait)
+                .Where(e => e.Credited != true && e.CreditableAfterUtc <= now)
+                .Select(e => e.Id)
+                .Take(512), cancellationToken);
+            if (dueIds.Count == 0)
                 break;
 
-            foreach (var entry in due)
+            var due = await session.LoadAsync<ReputationEvent>(dueIds.OfType<string>(), cancellationToken);
+            foreach (var entry in due.Values)
             {
+                // Credited or deleted since the view was read: nothing to do.
+                if (entry is null || entry.Credited)
+                    continue;
                 entry.Credited = true;
                 users.Add(entry.UserId);
+                credited++;
             }
-            credited += due.Count;
             await session.SaveChangesAsync(cancellationToken);
         }
 
@@ -160,7 +164,7 @@ internal sealed partial class ReputationLedger
         foreach (var userId in userIds.Where(u => !string.IsNullOrEmpty(u) && u != ModerationIds.DeletedUser).Distinct(StringComparer.Ordinal))
         {
             // Derived data: the last computation wins, no concurrency check.
-            using var session = documentStore.OpenAsyncSession();
+            using var session = store.OpenSession();
             var summary = await ComputeAsync(session, userId, cancellationToken);
             await session.StoreAsync(summary, ModerationIds.Summary(userId).Value, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
@@ -177,22 +181,21 @@ internal sealed partial class ReputationLedger
     /// </summary>
     public async Task<int> ReadPendingAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         try
         {
-            var row = await session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
-                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(2)))
-                .Where(c => c.UserId == userId)
-                .FirstOrDefaultAsync(cancellationToken);
-            return row?.Points ?? 0;
+            return await PendingAsync(session, session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>(TimeSpan.FromSeconds(2)), userId, cancellationToken);
         }
         catch (TimeoutException)
         {
-            var row = await session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
-                .Where(c => c.UserId == userId)
-                .FirstOrDefaultAsync(cancellationToken);
-            return row?.Points ?? 0;
+            return await PendingAsync(session, session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>(), userId, cancellationToken);
         }
+    }
+
+    private static async Task<int> PendingAsync(ISparkSession session, IQueryable<Moderation_PendingReputation.Result> view, string userId, CancellationToken cancellationToken)
+    {
+        var rows = await session.ToListAsync(view.Where(c => c.UserId == userId).Take(1), cancellationToken);
+        return rows.Count == 0 ? 0 : rows[0].Points;
     }
 
     /// <summary>
@@ -201,18 +204,13 @@ internal sealed partial class ReputationLedger
     /// least <c>max(DiversityMinVoters, votes / DiversityVotersDivisor)</c> distinct voters over at
     /// least <c>votes / DiversityDaysDivisor</c> distinct days; otherwise only the non-vote part does.
     /// </summary>
-    public async Task<ReputationSummary> ComputeAsync(IAsyncDocumentSession session, string userId, CancellationToken cancellationToken = default)
+    public async Task<ReputationSummary> ComputeAsync(ISparkSession session, string userId, CancellationToken cancellationToken = default)
     {
         var fraud = options.Value.Fraud;
-        var cells = await session.Query<Moderation_ReputationCells.Result, Moderation_ReputationCells>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
+        var cells = await session.ToListAsync(session.Query<Moderation_ReputationCells.Result, Moderation_ReputationCells>(IndexWait)
             .Where(c => c.UserId == userId)
-            .Take(int.MaxValue)
-            .ToListAsync(cancellationToken);
-        var pending = await session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(c => c.UserId == userId)
-            .FirstOrDefaultAsync(cancellationToken);
+            .Take(int.MaxValue), cancellationToken);
+        var pending = await PendingAsync(session, session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>(IndexWait), userId, cancellationToken);
 
         var total = cells.Sum(c => c.Points);
         var voteCells = cells.Where(c => c.VoterId.Length > 0).ToList();
@@ -229,7 +227,7 @@ internal sealed partial class ReputationLedger
         {
             UserId = userId,
             Total = total,
-            Pending = pending?.Points ?? 0,
+            Pending = pending,
             PrivilegeReputation = diversity ? total : total - votePoints,
             CreditedVotes = votes,
             DistinctVoters = voters,
@@ -239,11 +237,11 @@ internal sealed partial class ReputationLedger
         };
     }
 
-    private IAsyncDocumentSession OpenSession()
+    private ISparkSession OpenSession()
     {
-        var session = documentStore.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+        var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
+        session.MaxNumberOfRequests = int.MaxValue;
         return session;
     }
 }

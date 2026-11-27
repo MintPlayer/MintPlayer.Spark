@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 // A real (empty) database: every query page now reads its rows' etags from document metadata
 // (#467, D30a), which a substituted session cannot answer. The rows here are never stored, so they
 // carry no etag; the shape is what is under test.
-public class QueryExecutorRowShapeTests : SparkTestDriver
+public class QueryExecutorRowShapeTests : RavenSparkTestDriver
 {
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();

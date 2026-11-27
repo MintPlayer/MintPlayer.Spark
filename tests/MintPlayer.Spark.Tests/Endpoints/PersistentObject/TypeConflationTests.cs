@@ -39,7 +39,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// implementation; it is the thing the implementation has to satisfy.
 /// </para>
 /// </remarks>
-public class TypeConflationTests : SparkTestDriver
+public class TypeConflationTests : RavenSparkTestDriver
 {
     private static readonly Guid OpenTypeId = Guid.Parse("c04f0000-0000-4000-8000-c04f00000001");
     private static readonly Guid ClosedTypeId = Guid.Parse("c04f0000-0000-4000-8000-c04f00000002");
@@ -86,7 +86,7 @@ public class TypeConflationTests : SparkTestDriver
         await base.InitializeAsync();
 
         _factory = new SparkEndpointFactory<ConflationContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [OpenModel(), ClosedModel()],
             configureServices: services =>
             {

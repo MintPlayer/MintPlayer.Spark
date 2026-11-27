@@ -10,7 +10,7 @@ using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Endpoints;
 using MintPlayer.Spark.Services;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Contributions;
 
@@ -112,7 +112,7 @@ internal sealed partial class RevertContribution : IPostEndpoint<RevertContribut
             client.Notify(ContributionMessages.Format(services, ContributionMessages.Reverted, affected.Count), NotificationKind.Success);
             return addOn.Envelope(reverted, StatusCodes.Status200OK);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return addOn.ConcurrencyConflict();
         }

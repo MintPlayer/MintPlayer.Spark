@@ -1,5 +1,4 @@
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -26,7 +25,7 @@ internal static class OidcGrants
     /// </para>
     /// </summary>
     public static async Task<bool> PermitsAsync(
-        IAsyncDocumentSession session, OidcToken token, CancellationToken ct)
+        ISparkSession session, OidcToken token, CancellationToken ct)
     {
         // No grant to consult. Two populations, and both must be allowed rather than refused:
         // client_credentials tokens, which have no user by construction and are permanent; and

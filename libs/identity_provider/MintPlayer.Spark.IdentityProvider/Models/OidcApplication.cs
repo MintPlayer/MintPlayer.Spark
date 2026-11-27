@@ -8,6 +8,11 @@ namespace MintPlayer.Spark.IdentityProvider.Models;
 /// secrets, its scopes, its members (D3), its mode (D4), its branding and its per-client protocol
 /// settings (D8).
 /// </summary>
+// Natural ids (#536 D49): the provider sets every application's id before storing it, and two shapes coexist. An agent
+// client's key is derived from its client id ("agent-" + hash, OidcAgentClients.ApplicationId), and the others are a
+// random Guid in its 32-digit form. Neither may be rewritten: the Guid kind would move the 32-digit keys to the
+// dashed form when an id is parsed, and on a relational store it would refuse the agent keys outright.
+[IdKind(SparkIdKind.Natural)]
 public partial class OidcApplication
 {
     /// <summary>Unique identifier of the client application, assigned automatically on creation.</summary>

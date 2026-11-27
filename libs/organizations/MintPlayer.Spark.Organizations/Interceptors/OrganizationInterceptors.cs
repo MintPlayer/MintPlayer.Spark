@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Organizations.Services;
@@ -22,9 +24,14 @@ namespace MintPlayer.Spark.Organizations.Interceptors;
 /// hands (D42): its user stays its only Owner, while its other members are edited and removed as anywhere.</item>
 /// </list>
 /// </summary>
-internal sealed class OrganizationInterceptors(SparkOrganizations organizations, OrganizationMembershipReader reader, TimeProvider timeProvider)
-    : IBeforeSave<Organization>, IBeforeDelete<Organization>
+internal sealed partial class OrganizationInterceptors : IBeforeSave<Organization>, IBeforeDelete<Organization>
 {
+    [Inject] private readonly SparkOrganizations organizations;
+    [Inject] private readonly OrganizationMembershipReader reader;
+    [Inject] private readonly TimeProvider timeProvider;
+    /// <summary>The scope's session, which the save and the delete commit through.</summary>
+    [Inject] private readonly ISparkSession session;
+
     public async ValueTask OnBeforeSaveAsync(Organization entity, SaveContext context)
     {
         entity.Name = SparkOrganizations.ValidName(entity.Name);
@@ -39,7 +46,6 @@ internal sealed class OrganizationInterceptors(SparkOrganizations organizations,
         if (OrganizationMembershipInterceptors.CallerId(context) is not { } userId)
             throw new SparkRowLevelAccessDeniedException("New/Organization");
 
-        var session = context.GetSession();
         var user = await session.LoadAsync<SparkUser>(userId)
             ?? throw new SparkRowLevelAccessDeniedException("New/Organization");
 
@@ -59,15 +65,17 @@ internal sealed class OrganizationInterceptors(SparkOrganizations organizations,
         if (entity.IsPersonal && !context.IsSystemContext)
             throw new SparkValidationException("A personal organization is deleted with the account.");
 
-        await organizations.DeleteDependentsAsync(context.GetSession(), entity, CancellationToken.None);
+        await organizations.DeleteDependentsAsync(session, entity, CancellationToken.None);
         reader.Invalidate();
     }
 }
 
 /// <summary>The membership half of <see cref="OrganizationInterceptors"/>: role edits and removals.</summary>
-internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipReader reader)
-    : IBeforeSave<OrganizationMembership>, IBeforeDelete<OrganizationMembership>
+internal sealed partial class OrganizationMembershipInterceptors : IBeforeSave<OrganizationMembership>, IBeforeDelete<OrganizationMembership>
 {
+    [Inject] private readonly OrganizationMembershipReader reader;
+    /// <summary>The scope's session, which the save and the delete commit through.</summary>
+    [Inject] private readonly ISparkSession session;
 
     public async ValueTask OnBeforeSaveAsync(OrganizationMembership entity, SaveContext context)
     {
@@ -88,7 +96,6 @@ internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipR
         if (entity.Role == stored.Role)
             return;
 
-        var session = context.GetSession();
         if (entity.Role == OrganizationRole.Owner || stored.Role == OrganizationRole.Owner)
         {
             await RequireNotPersonalAsync(session, stored.OrganizationId!);
@@ -102,7 +109,6 @@ internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipR
 
     public async ValueTask OnBeforeDeleteAsync(OrganizationMembership entity, DeleteContext context)
     {
-        var session = context.GetSession();
         if (entity.Role == OrganizationRole.Owner)
         {
             await RequireNotPersonalAsync(session, entity.OrganizationId!);
@@ -115,14 +121,14 @@ internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipR
     }
 
     /// <summary>A change that gives or takes the Owner role: never in a personal organization (D42).</summary>
-    private static async Task RequireNotPersonalAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, string organizationId)
+    private static async Task RequireNotPersonalAsync(ISparkSession session, string organizationId)
     {
         if (await session.LoadAsync<Organization>(organizationId) is { IsPersonal: true })
             throw new SparkValidationException(SparkOrganizations.PersonalOwnerProblem, nameof(OrganizationMembership.Role));
     }
 
     /// <summary>Only an Owner touches the Owner role. Read from storage, not the request's cache.</summary>
-    private static async Task RequireOwnerAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, SparkInterceptorContext context, string organizationId, OrganizationMembership target)
+    private static async Task RequireOwnerAsync(ISparkSession session, SparkInterceptorContext context, string organizationId, OrganizationMembership target)
     {
         if (context.IsSystemContext)
             return;

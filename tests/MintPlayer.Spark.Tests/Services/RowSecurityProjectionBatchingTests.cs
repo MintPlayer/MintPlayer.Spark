@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// because those tests seed a handful of cars.
 /// </para>
 /// </summary>
-public class RowSecurityProjectionBatchingTests : SparkTestDriver
+public class RowSecurityProjectionBatchingTests : RavenSparkTestDriver
 {
     public class Note
     {

@@ -32,7 +32,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// expected change vector and maps RavenDB's <c>ConcurrencyException</c> to the 409 envelope.
 /// </para>
 /// </remarks>
-public class ConcurrentWriteRaceTests : SparkTestDriver
+public class ConcurrentWriteRaceTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("c0cc2222-eeee-eeee-eeee-c0cc2222eeee");
     private const string Id = "people/1";
@@ -49,7 +49,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         await base.InitializeAsync();
         _race = new RaceSwitch(Store);
         _factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
             configureSpark: spark => spark.AddInterceptor<ConcurrentWriterInterceptor>());

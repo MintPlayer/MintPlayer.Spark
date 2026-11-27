@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </remarks>
 [Collection(LocalZoneCollection.Name)]
 public class RegCarLocalZoneFilterTests(SeededRegCars host)
-    : SparkSharedTestDriver(host), IClassFixture<SeededRegCars>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<SeededRegCars>, IDisposable
 {
     private readonly LocalZone _zone = new();
     private IServiceScope? _scope;

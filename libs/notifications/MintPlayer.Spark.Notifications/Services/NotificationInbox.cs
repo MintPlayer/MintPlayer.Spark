@@ -1,14 +1,13 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Notifications.Actions;
 using MintPlayer.Spark.Notifications.Models;
 using MintPlayer.Spark.WebPush;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Notifications.Services;
 
 /// <summary>What a caller does with their own notifications (user or visitor) and devices (users only): the <c>/spark/notifications</c> endpoints.</summary>
-internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNotificationsOptions> options, TimeProvider timeProvider)
+internal sealed class NotificationInbox(ISparkStore store, IOptions<SparkNotificationsOptions> options, TimeProvider timeProvider)
 {
     internal const int MarkAllLimit = 1024;
 
@@ -18,7 +17,7 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
         if (!owner.IsKnown)
             return 0;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         List<Notification> targets;
         if (ids is { Count: > 0 })
         {
@@ -29,11 +28,10 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
         {
             // The values are parameters (never spliced). The index may lag a just-stored notification by a few
             // milliseconds; a click on "mark all" a moment after a push is answered by the next one.
-            targets = await session.Query<Notification>()
+            targets = await session.ToListAsync(session.Query<Notification>()
                 .Where(owner.Filter())
                 .Where(n => n.IsRead != true)
-                .Take(MarkAllLimit)
-                .ToListAsync(cancellationToken);
+                .Take(MarkAllLimit), cancellationToken);
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -58,7 +56,7 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
         if (!options.Value.WebPush.IsAllowedService(endpoint))
             throw new ArgumentException("This push service is not allowed (Spark:Notifications:WebPush:AllowedPushServices).");
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var id = PushSubscription.IdFor(userId, subscription.Endpoint);
         var stored = await session.LoadAsync<PushSubscription>(id.Value, cancellationToken);
         if (stored is null)
@@ -67,7 +65,7 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
             await session.StoreAsync(stored, id.Value, cancellationToken);
 
             // One device too many drops the oldest, so a user who reinstalls a browser a hundred times keeps a bounded list.
-            var existing = await session.Advanced.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), pageSize: 1024, token: cancellationToken);
+            var existing = await session.LoadStartingWithAsync<PushSubscription>(PushSubscription.PrefixFor(userId), 0, 1024, cancellationToken: cancellationToken);
             var others = existing.Where(e => e.Id != id).OrderBy(e => e.CreatedAtUtc).ToList();
             var max = Math.Max(1, options.Value.WebPush.MaxDevicesPerUser);
             foreach (var old in others.Take(Math.Max(0, others.Count + 1 - max)))
@@ -84,7 +82,7 @@ internal sealed class NotificationInbox(IDocumentStore store, IOptions<SparkNoti
     /// <summary>Forgets the device with <paramref name="endpoint"/>, if it is <paramref name="userId"/>'s.</summary>
     public async Task<bool> UnsubscribeAsync(string userId, string endpoint, CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var id = PushSubscription.IdFor(userId, endpoint);
         if (await session.LoadAsync<PushSubscription>(id.Value, cancellationToken) is not { } stored)
             return false;

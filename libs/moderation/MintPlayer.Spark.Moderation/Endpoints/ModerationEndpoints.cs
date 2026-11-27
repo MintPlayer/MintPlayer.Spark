@@ -206,7 +206,7 @@ internal sealed partial class StatusEndpoint : IPostEndpoint<ModerationTargetReq
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationTargets targets;
     [Inject] private readonly IPermissionService permissions;
-    [Inject] private readonly Raven.Client.Documents.IDocumentStore documentStore;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Storage.ISparkStore store;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
@@ -218,9 +218,14 @@ internal sealed partial class StatusEndpoint : IPostEndpoint<ModerationTargetReq
             var target = await targets.ResolveAsync(type, r.Id ?? string.Empty);
             var canLock = await permissions.IsAllowedAsync(ModerationRights.Lock, target.TypeName);
             var canReview = await permissions.IsAllowedAsync(ModerationRights.Review, ModerationRights.Target);
-            using var session = documentStore.OpenAsyncSession();
-            var lockDoc = await session.LoadAsync<Documents.ModerationLock>(Documents.ModerationIds.Lock(target.Id).Value);
-            var flagCase = canReview ? await session.LoadAsync<Documents.ReviewCase>(Documents.ModerationIds.FlagCase(target.Id).Value) : null;
+            using var session = store.OpenSession();
+            var lockId = Documents.ModerationIds.Lock(target.Id).Value;
+            var caseId = Documents.ModerationIds.FlagCase(target.Id).Value;
+            await session.PreloadAsync(canReview
+                ? [(typeof(Documents.ModerationLock), lockId), (typeof(Documents.ReviewCase), caseId)]
+                : [(typeof(Documents.ModerationLock), lockId)]);
+            var lockDoc = await session.LoadAsync<Documents.ModerationLock>(lockId);
+            var flagCase = canReview ? await session.LoadAsync<Documents.ReviewCase>(caseId) : null;
             return new
             {
                 id = target.Id,

@@ -10,6 +10,15 @@ namespace MintPlayer.Spark.AllFeatures;
 public class SparkFullOptions
 {
     /// <summary>
+    /// Picks the store (#536): <c>spark =&gt; spark.UseSqlServer(…)</c>, <c>spark.UsePostgreSql(…)</c>,
+    /// <c>spark.UseInMemory()</c>. When null, the bundle runs on RavenDB, configured from <c>Spark:RavenDb</c>.
+    /// </summary>
+    /// <remarks>
+    /// Replication stays RavenDB-only (it is RavenDB ETL): leave <see cref="Replication"/> null on another store.
+    /// </remarks>
+    public Action<ISparkBuilder>? Store { get; set; }
+
+    /// <summary>
     /// Configures Spark's authentication surface — notably
     /// <see cref="SparkAuthenticationOptions.LocalCredentials"/>, which chooses how much of the
     /// email/password endpoint family to mount. When null, the full local-credential surface is

@@ -18,8 +18,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// The RavenDB store is real — the pending document's key is <em>derived</em>, and the whole reason
 /// for that (a load rather than a possibly-stale query) is invisible against an in-memory fake.
 /// </remarks>
-public class SparkExternalLoginLinkerTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class SparkExternalLoginLinkerTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string Provider = "GitLab";
     private const string ProviderKey = "gl-17";
@@ -79,7 +79,7 @@ public class SparkExternalLoginLinkerTests(SparkSharedDatabase database)
         var clock = new StoppedClock(new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero));
 
         return new Harness(
-            new SparkExternalLoginLinker<SparkUser>(Store, userManager, clock, sender),
+            new SparkExternalLoginLinker<SparkUser>(Store.AsSparkStore(), userManager, clock, sender),
             sender, clock, userManager, user);
     }
 
@@ -326,7 +326,7 @@ public class SparkExternalLoginLinkerTests(SparkSharedDatabase database)
     public async Task A_request_with_no_sender_registered_throws_rather_than_writing_silently()
     {
         var h = NewHarness();
-        var linker = new SparkExternalLoginLinker<SparkUser>(Store, h.UserManager, h.Clock, confirmationSender: null);
+        var linker = new SparkExternalLoginLinker<SparkUser>(Store.AsSparkStore(), h.UserManager, h.Clock, confirmationSender: null);
 
         var act = async () => await linker.RequestLinkAsync(
             h.User, Provider, ProviderKey, Provider, null, t => t);

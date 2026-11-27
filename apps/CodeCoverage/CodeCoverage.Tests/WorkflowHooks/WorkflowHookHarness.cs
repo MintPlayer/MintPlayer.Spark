@@ -116,7 +116,7 @@ internal sealed class WorkflowHookHarness(IDocumentStore store)
         using var session = store.OpenAsyncSession();
         var probe = (await session.LoadAsync<ProbeDocument>(step.DocumentId))!;
         var repository = (await session.LoadAsync<Entities.Repository>(RepositoryId))!;
-        await new ProbeSaga(this, session, probe, repository).HandleAsync(step);
+        await new ProbeSaga(this, probe, repository).HandleAsync(step);
         await session.SaveChangesAsync();
     }
 
@@ -156,7 +156,7 @@ internal sealed class WorkflowHookHarness(IDocumentStore store)
     }
 
     /// <summary>The probe's saga: one per handled message, over the document it loaded.</summary>
-    private sealed class ProbeSaga(WorkflowHookHarness harness, IAsyncDocumentSession session, ProbeDocument probe, Entities.Repository repository) : IWorkflowHookSaga
+    private sealed class ProbeSaga(WorkflowHookHarness harness, ProbeDocument probe, Entities.Repository repository) : IWorkflowHookSaga
     {
         public Entities.Repository Repository => repository;
 
@@ -165,7 +165,7 @@ internal sealed class WorkflowHookHarness(IDocumentStore store)
         public void Note(string text) => probe.History.Add($"{harness.Time.GetUtcNow():O} {text}");
 
         public Task ScheduleAsync(EWorkflowHookStep step, TimeSpan? delay, long? runId, CancellationToken cancellationToken)
-            => harness.Outbox.EnqueueAsync(session, new ProbeStep
+            => harness.Outbox.EnqueueAsync(new ProbeStep
             {
                 DocumentId = probe.Id!,
                 Generation = probe.Generation,

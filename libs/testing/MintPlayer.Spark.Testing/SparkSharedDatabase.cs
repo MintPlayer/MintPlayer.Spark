@@ -1,142 +1,74 @@
 using System.Reflection;
-using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents;
-using Raven.TestDriver;
 
 namespace MintPlayer.Spark.Testing;
 
 /// <summary>
-/// One RavenDB database, shared by every test in a single test class.
+/// One database for a whole test class, on the test assembly's database type (#536 D35). Use it as xUnit's
+/// <c>IClassFixture&lt;SparkSharedDatabase&gt;</c> with <see cref="SparkSharedTestDriver"/>, which borrows it:
+/// <code>
+/// public class CarQueryTests(SparkSharedDatabase shared) : SparkSharedTestDriver(shared), IClassFixture&lt;SparkSharedDatabase&gt;
+/// </code>
+/// Tests in the class see each other's rows: scope what they write (<see cref="SparkSharedTestDriver.Scope"/>).
 /// </summary>
 /// <remarks>
-/// Use with xUnit's <c>IClassFixture&lt;&gt;</c>, which constructs it once per test class and
-/// disposes it when the class finishes. Pair it with <see cref="SparkSharedTestDriver"/>, which
-/// gives the test class the same helpers <see cref="SparkTestDriver"/> does:
-/// <code>
-/// public class CarQueryTests(SparkSharedDatabase database)
-///     : SparkSharedTestDriver(database), IClassFixture&lt;SparkSharedDatabase&gt;
-/// {
-///     [Fact]
-///     public async Task Lists_the_cars_it_seeded() { … }
-/// }
-/// </code>
-///
-/// <para><b>What this trades, and against what.</b></para>
-/// <para>
-/// <see cref="SparkTestDriver"/> gives a database per test CASE: total isolation, at the cost of a
-/// create/delete cycle each time — several hundred per run in a suite this size — and of a
-/// <c>SparkEndpointFactory</c> host that cannot be built once per class because the store it needs
-/// does not outlive the case. This gives a database per test CLASS instead. Both drivers ship, and
-/// neither replaces the other.
-/// </para>
-/// <para>
-/// The isolation boundary is still a real RavenDB database, so classes cannot see each other and
-/// xUnit's default parallelism is untouched. That is deliberate, and it is the whole reason this is
-/// not modelled on a single process-wide database: xUnit runs test classes CONCURRENTLY, so a
-/// database shared across classes would be entered by several at once. (NUnit is sequential by
-/// default, which is why the same design is safe in the originating framework and would not be here.)
-/// </para>
-///
-/// <para><b>⚠️ What you give up: tests in one class share state.</b></para>
-/// <para>
-/// This is the only new hazard, and it is bounded to the class you can see. A test must not depend
-/// on the database being empty, and must not assert on anything it did not put there itself. In
-/// particular:
-/// </para>
-/// <list type="bullet">
-/// <item><description><b>No unscoped counts.</b> <c>Query&lt;T&gt;().CountAsync()</c>,
-/// <c>SingleAsync()</c> over a collection, <c>Should().BeEmpty()</c> and
-/// <c>TotalRecords.Should().Be(3)</c> all become answers about the whole class's data. Assert on
-/// the ids you seeded.</description></item>
-/// <item><description><b>No reused ids.</b> Two tests both writing <c>people/1</c> now collide.
-/// Use <see cref="SparkSharedTestDriver.Id"/>, which prefixes with a per-test scope.</description></item>
-/// <item><description><b>Nothing database-wide.</b> <c>StopIndexingOperation</c>, subscription
-/// enumeration, compare-exchange on a fixed key, and index-error or entry-count assertions all
-/// reach past the test that issued them. Those classes belong on
-/// <see cref="SparkTestDriver"/>.</description></item>
-/// </list>
-/// <para>
-/// If a class needs any of the above, that is not a defect in the class — keep it on
-/// <see cref="SparkTestDriver"/>. The per-case driver exists for exactly these.
-/// </para>
-///
-/// <para><b>Thread-safety.</b></para>
-/// <para>
-/// The embedded server is process-wide and already shared by both drivers; see
-/// <see cref="SparkEmbeddedServer"/> for why its configuration is a type initialiser. This type
-/// itself needs no locking: xUnit constructs one instance per class, awaits
-/// <see cref="InitializeAsync"/> before any test in that class runs, and runs the tests of a class
-/// sequentially. <see cref="IDocumentStore"/> is thread-safe and intended to be shared;
-/// <c>IAsyncDocumentSession</c> is not, which is why every helper here opens its own and none is
-/// exposed.
-/// </para>
+/// Created on first use rather than in the fixture's own lifecycle, because only the test class knows its assembly,
+/// and the assembly names the database type.
 /// </remarks>
-public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
+public sealed class SparkSharedDatabase : IAsyncLifetime
 {
-    static SparkSharedDatabase() => SparkEmbeddedServer.EnsureConfigured();
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private ISparkTestDatabase? database;
 
-    private readonly List<string> deployedIndexNames = [];
-
-    /// <summary>The store for this class's database. Thread-safe; shared by the class's tests.</summary>
-    public IDocumentStore Store { get; private set; } = null!;
-
-    /// <inheritdoc cref="SparkTestDriver.RequireLicense"/>
-    protected virtual bool RequireLicense => true;
-
-    /// <inheritdoc cref="SparkTestDriver.IndexAssemblies"/>
-    /// <remarks>
-    /// Deployed once for the whole class rather than once per test — which is most of the point of
-    /// sharing, since building an index into an empty database is otherwise repeated per case.
-    /// </remarks>
-    protected virtual IEnumerable<Assembly> IndexAssemblies { get; } = [];
-
-    /// <inheritdoc cref="SparkTestDriver.PreInitialize"/>
-    protected override void PreInitialize(IDocumentStore documentStore)
+    /// <summary>The class's database, created on the first call.</summary>
+    public async Task<ISparkTestDatabase> GetAsync(Assembly testAssembly, CancellationToken cancellationToken = default)
     {
-        // The same call production makes -- see MintPlayer.Spark.SparkStoreConfiguration.
-        documentStore.ApplySparkConventions();
-        // Zero-wait hard delete on dispose — see RavenDatabaseDeletion.
-        RavenDatabaseDeletion.DeleteOnDispose(documentStore);
-        // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
-        RavenDatabaseDeletion.DisableTopologyCache(documentStore);
-        base.PreInitialize(documentStore);
-    }
-
-    public virtual async Task InitializeAsync()
-    {
-        if (RequireLicense)
-            LicenseHelper.EnsureAvailable();
-
-        // Before the first store: without a server directory RavenDB throws a bare ArgumentNullException.
-        RavenServerLocator.RequireServerDirectory();
-        Store = GetDocumentStore();
-
-        var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
-        if (assemblies.Length > 0)
+        if (database is { } created)
+            return created;
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            await RavenIndexHelper.DeployIndexesAsync(Store, assemblies);
-            deployedIndexNames.AddRange(RavenIndexHelper.DeclaredIndexNames(assemblies));
+            return database ??= await SparkTestDatabases.For(testAssembly).CreateDatabaseAsync(cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
         }
     }
 
-    /// <inheritdoc cref="SparkTestDriver.WaitForIndexesAsync"/>
-    public Task WaitForIndexesAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
-        => Store.WaitForIndexingAsync(
-            timeout: timeout,
-            expectedIndexes: deployedIndexNames,
-            cancellationToken: cancellationToken);
+    public Task InitializeAsync() => Task.CompletedTask;
 
-    public virtual Task DisposeAsync()
+    public async Task DisposeAsync()
     {
-        // Null-guarded for the same reason SparkTestDriver's is: InitializeAsync can fail before
-        // assigning Store, and a NullReferenceException here would replace the real failure in the
-        // test output.
-        //
-        // Dispose() runs the zero-wait delete PreInitialize subscribed (RavenDatabaseDeletion), so
-        // the driver's own AfterDispose delete no longer waits the server's hard-coded 15 s. A shared
-        // database carries a whole class's indexes and documents, which is exactly when that wait
-        // is long.
-        Store?.Dispose();
-        return Task.CompletedTask;
+        if (database is not null)
+            await database.DisposeAsync();
+        gate.Dispose();
     }
+}
+
+/// <summary>
+/// The base class for tests on a <see cref="SparkSharedDatabase"/>: the class's database, per case. It carries the
+/// <see cref="SparkTestTraits"/> trait; a class that takes the fixture without this base declares the trait itself.
+/// </summary>
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
+public abstract class SparkSharedTestDriver : IAsyncLifetime
+{
+    private readonly SparkSharedDatabase shared;
+    private ISparkTestDatabase? database;
+
+    protected SparkSharedTestDriver(SparkSharedDatabase shared)
+    {
+        ArgumentNullException.ThrowIfNull(shared);
+        this.shared = shared;
+    }
+
+    /// <summary>The class's database. Disposing is the fixture's job.</summary>
+    protected ISparkTestDatabase Database
+        => database ?? throw new InvalidOperationException("The database is fetched in InitializeAsync; a constructor cannot use it.");
+
+    /// <summary>A prefix unique to this test case, for the keys and names it writes into the shared database.</summary>
+    protected string Scope { get; } = $"t{Guid.NewGuid().ToString("N")[..8]}";
+
+    public virtual async Task InitializeAsync() => database = await shared.GetAsync(GetType().Assembly);
+
+    public virtual Task DisposeAsync() => Task.CompletedTask;
 }

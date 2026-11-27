@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Services;
 /// </remarks>
 internal interface ISparkTypeResolver
 {
-    /// <returns>The type; <c>null</c> when no loaded assembly declares it, or when
+    /// <returns>The type; <c>null</c> when no loaded assembly declares it (nor one the search loads), or when
     /// <paramref name="clrType"/> itself is null — a JSON-only virtual type, which by definition
     /// resolves to nothing.</returns>
     Type? Resolve(string? clrType);
@@ -47,25 +47,31 @@ internal partial class SparkTypeResolver : ISparkTypeResolver
                 var type = Type.GetType(clrType);
                 if (type != null) return type;
 
-                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-
-                foreach (var assembly in assemblies)
+                // Reading an assembly's types loads the assemblies their base types live in, so the scan can load the
+                // assembly that declares the type. Look again in every assembly it loaded: a miss is cached for good,
+                // and the model would then depend on load order (#536 M9b: SqlDemo's Author resolved to nothing at
+                // startup because the scan loaded SqlDemo.Library only after listing the assemblies).
+                var scanned = new HashSet<Assembly>();
+                while (AppDomain.CurrentDomain.GetAssemblies().Where(scanned.Add).ToList() is { Count: > 0 } assemblies)
                 {
-                    type = assembly.GetType(clrType);
-                    if (type != null) return type;
-                }
-
-                foreach (var assembly in assemblies)
-                {
-                    try
+                    foreach (var assembly in assemblies)
                     {
-                        type = assembly.GetTypes().FirstOrDefault(t =>
-                            (t.FullName == clrType || t.Name == clrType) && !t.IsAbstract && !t.IsInterface);
+                        type = assembly.GetType(clrType);
                         if (type != null) return type;
                     }
-                    catch (ReflectionTypeLoadException)
+
+                    foreach (var assembly in assemblies)
                     {
-                        continue; // skip assemblies that can't be loaded
+                        try
+                        {
+                            type = assembly.GetTypes().FirstOrDefault(t =>
+                                (t.FullName == clrType || t.Name == clrType) && !t.IsAbstract && !t.IsInterface);
+                            if (type != null) return type;
+                        }
+                        catch (ReflectionTypeLoadException)
+                        {
+                            continue; // skip assemblies that can't be loaded
+                        }
                     }
                 }
 

@@ -21,7 +21,7 @@ build, checks RavenDB and the OIDC authority, and runs `npm install` and the fir
 A Spark host, an entity library and an Angular client, plus a test project with RavenDB. The template pins every
 Spark package in `Directory.Packages.props`, at the versions released with it.
 
-`MyApp.Tests` is built on `MintPlayer.Spark.Testing`: `SparkTestDriver` gives each test its own database on an
+`MyApp.Tests` is built on `MintPlayer.Spark.Testing.RavenDB`: `RavenSparkTestDriver` gives each test its own database on an
 embedded RavenDB server, and `SparkEndpointFactory` boots the app in process. The embedded server needs a RavenDB
 licence. Set `RAVENDB_LICENSE` to the licence JSON or to its file's path, or put `raven-license.log` next to the
 solution (it is in `.gitignore`). `--store InMemory` generates no test project.

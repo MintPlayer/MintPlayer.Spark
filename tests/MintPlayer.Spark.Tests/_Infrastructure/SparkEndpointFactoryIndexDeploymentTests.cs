@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// context lives in its application assembly. Each rule is asserted against the database itself,
 /// except the top-level one, which is asserted on the filter (see that test for why).
 /// </remarks>
-public class SparkEndpointFactoryIndexDeploymentTests : SparkTestDriver
+public class SparkEndpointFactoryIndexDeploymentTests : RavenSparkTestDriver
 {
     public sealed class DeployProbe
     {
@@ -44,7 +44,7 @@ public class SparkEndpointFactoryIndexDeploymentTests : SparkTestDriver
     [Fact]
     public async Task By_default_an_unarmed_nested_fixture_index_is_not_deployed()
     {
-        await using var factory = new SparkEndpointFactory(Store, []);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), []);
 
         (await DeployedIndexNamesAsync()).Should().NotContain(new DeployProbes_Unarmed().IndexName);
     }
@@ -66,7 +66,7 @@ public class SparkEndpointFactoryIndexDeploymentTests : SparkTestDriver
 
         Func<Type, bool>? filter = null;
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store, [],
+            Store.AsSparkTestDatabase(), [],
             configureSpark: spark => filter = spark.Registry.IndexDeploymentFilter);
 
         filter.Should().NotBeNull();
@@ -78,7 +78,7 @@ public class SparkEndpointFactoryIndexDeploymentTests : SparkTestDriver
     public async Task An_index_armed_through_configureIndexCatalog_is_deployed()
     {
         await using var factory = new SparkEndpointFactory<TestSparkContext>(
-            Store, [],
+            Store.AsSparkTestDatabase(), [],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(DeployProbes_Armed)));
 
         var deployed = await DeployedIndexNamesAsync();
@@ -89,7 +89,7 @@ public class SparkEndpointFactoryIndexDeploymentTests : SparkTestDriver
     [Fact]
     public async Task DeployAllIndexes_restores_deploying_every_index()
     {
-        await using var factory = new SparkEndpointFactory<TestSparkContext>(Store, [], deployAllIndexes: true);
+        await using var factory = new SparkEndpointFactory<TestSparkContext>(Store.AsSparkTestDatabase(), [], deployAllIndexes: true);
 
         var deployed = await DeployedIndexNamesAsync();
         deployed.Should().Contain(new DeployProbes_Unarmed().IndexName);

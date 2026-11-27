@@ -1,6 +1,5 @@
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Organizations.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Organizations.Services;
 
@@ -20,7 +19,7 @@ namespace MintPlayer.Spark.Organizations.Services;
 /// (<see cref="Invalidate"/>), so an organization created in a request is readable in its response.
 /// </para>
 /// </remarks>
-internal sealed class OrganizationMembershipReader(IDocumentStore store)
+internal sealed class OrganizationMembershipReader(ISparkStore store)
 {
     /// <summary>Memberships are paged in batches of this size; a user in more organizations takes more round trips.</summary>
     internal const int PageSize = 1024;
@@ -33,7 +32,7 @@ internal sealed class OrganizationMembershipReader(IDocumentStore store)
         if (cache.TryGetValue(userId, out var cached))
             return cached;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var memberships = await LoadAsync(session, userId, cancellationToken);
         var roles = memberships
             .Where(m => !string.IsNullOrEmpty(m.OrganizationId))
@@ -52,14 +51,13 @@ internal sealed class OrganizationMembershipReader(IDocumentStore store)
     }
 
     /// <summary>Every membership document of <paramref name="userId"/>, by id prefix, through <paramref name="session"/>.</summary>
-    public static async Task<List<OrganizationMembership>> LoadAsync(IAsyncDocumentSession session, string userId, CancellationToken cancellationToken)
+    public static async Task<List<OrganizationMembership>> LoadAsync(ISparkSession session, string userId, CancellationToken cancellationToken)
     {
         var prefix = OrganizationMembership.PrefixFor(userId);
         var all = new List<OrganizationMembership>();
         for (var start = 0; ; start += PageSize)
         {
-            var page = await session.Advanced.LoadStartingWithAsync<OrganizationMembership>(prefix, start: start, pageSize: PageSize, token: cancellationToken);
-            var batch = page.ToList();
+            var batch = await session.LoadStartingWithAsync<OrganizationMembership>(prefix, start, PageSize, cancellationToken: cancellationToken);
             all.AddRange(batch);
             if (batch.Count < PageSize)
                 return all;

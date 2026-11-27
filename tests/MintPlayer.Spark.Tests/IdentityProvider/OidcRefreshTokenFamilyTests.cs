@@ -3,8 +3,6 @@ using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.Indexes;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -76,23 +74,19 @@ public class OidcRefreshTokenFamilyTests(OidcSharedHost host) : OidcTestHost(hos
         first.Status.Should().Be(HttpStatusCode.OK);
         (await RefreshAsync(app, first.Refresh!)).Status.Should().Be(HttpStatusCode.OK);
         (await RefreshAsync(app, first.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest);
-        await Store.WaitForIndexingAsync();
+        await WaitForIndexesAsync();
         return user.Id!;
     }
 
-    /// <summary>Runs <paramref name="body"/> while the database indexes nothing, so no index sees what it writes.</summary>
+    /// <summary>
+    /// Runs <paramref name="body"/> while RavenDB indexes nothing, so no index sees what it writes. Another store's view is
+    /// never behind, so there the case proves the decision itself.
+    /// </summary>
     private async Task WhileIndexingIsStoppedAsync(Func<Task> body)
     {
-        await Store.WaitForIndexingAsync();
-        await Store.Maintenance.SendAsync(new StopIndexingOperation());
-        try
-        {
-            await body();
-        }
-        finally
-        {
-            await Store.Maintenance.SendAsync(new StartIndexingOperation());
-        }
+        await WaitForIndexesAsync();
+        await using var paused = await PauseIndexingAsync();
+        await body();
     }
 
     /// <summary>
@@ -171,7 +165,7 @@ public class OidcRefreshTokenFamilyTests(OidcSharedHost host) : OidcTestHost(hos
 
         var rotatedA = await RefreshAsync(app, a.Refresh!);
         rotatedA.Status.Should().Be(HttpStatusCode.OK);
-        await Store.WaitForIndexingAsync();
+        await WaitForIndexesAsync();
 
         (await RefreshAsync(app, a.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest, "a rotated refresh token presented again");
         (await RefreshAsync(app, rotatedA.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest, "family A is revoked");

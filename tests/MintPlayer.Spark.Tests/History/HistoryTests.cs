@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Tests.History;
 /// Fixture names start with <c>Hi</c>: <c>ActionsResolver</c> matches actions classes by simple
 /// name across the whole assembly, and these types must not meet another fixture's.
 /// </remarks>
-public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
+public class HistoryTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46030000-0000-4000-8000-000000000001");
     private static readonly Guid LineTypeId = Guid.Parse("46030000-0000-4000-8000-000000000002");
@@ -50,7 +50,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     private async Task<Host> StartAsync(string? userId = Alice, SparkTestSecurity? security = null, Action<SparkHistoryOptions>? history = null)
     {
         var factory = new SparkEndpointFactory<HiContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [NoteModel(), LineModel()],
             configureServices: services =>
             {
@@ -91,7 +91,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         config.Default!.MinimumRevisionsToKeep.Should().Be(1, "the default is kept");
 
         // Idempotent: the same model again changes nothing, and sends nothing.
-        var changed = await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance);
+        var changed = await RevisionsConfigurator.ApplyAsync(host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkRevisions>(), host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(), host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance);
         changed.Should().BeEmpty();
     }
 
@@ -120,7 +120,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         config.Collections["HiOthers"].MinimumRevisionAgeToKeep.Should().Be(TimeSpan.FromDays(3));
         config.Default!.MinimumRevisionsToKeep.Should().Be(1, "the default is kept");
 
-        (await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance))
+        (await RevisionsConfigurator.ApplyAsync(host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkRevisions>(), host.Factory.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(), host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance))
             .Should().BeEmpty("the same options again send nothing");
     }
 
@@ -495,7 +495,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     private string NotesCollection => Store.Conventions.FindCollectionName(typeof(HiNote));
 
     private async Task<RevisionsConfiguration> ReadRevisionsConfigAsync()
-        => (await Store.Maintenance.SendAsync(new RevisionsConfigurator.GetRevisionsConfigurationOperation()))!;
+        => (await Store.Maintenance.SendAsync(new MintPlayer.Spark.Storage.Raven.RavenSparkRevisions.GetRevisionsConfigurationOperation()))!;
 
     private async Task<HiNote> SeedNoteAsync(string title, string? owner = null, string? secret = null)
     {

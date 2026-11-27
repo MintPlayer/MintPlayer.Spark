@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// breadcrumbs) does not materialize them as their type. <see cref="M_202610041800_UserDocumentsMovedAssembly"/>
 /// rewrites exactly that value.
 /// </summary>
-public class UserDocumentsMovedAssemblyMigrationTests : SparkTestDriver
+public class UserDocumentsMovedAssemblyMigrationTests : RavenSparkTestDriver
 {
     private const string OldUserType = "MintPlayer.Spark.Authorization.Identity.SparkUser, MintPlayer.Spark.Authorization";
     private const string OldRoleType = "MintPlayer.Spark.Authorization.Identity.SparkRole, MintPlayer.Spark.Authorization";

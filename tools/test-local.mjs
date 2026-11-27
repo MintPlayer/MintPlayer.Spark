@@ -29,11 +29,14 @@ import { spawnSync } from 'node:child_process';
 
 const E2E = 'MintPlayer.Spark.E2E.Tests';
 // The apps the E2E suite hosts (the SparkAppDescriptor in each *TestHost.cs under
-// tests/MintPlayer.Spark.E2E.Tests). Add one here when a new host appears, or it runs stale.
-const E2E_APPS = ['Fleet', 'QnA', 'HR', 'SparkId', 'MintPlayer'];
+// tests/MintPlayer.Spark.E2E.Tests). Add one here when a new host appears, or it runs stale. Add it to that
+// project's project.json too (implicitDependencies, and its ClientApp to the test inputs), or a change to the app
+// alone replays the suite's last result from the Nx cache instead of running it (#536, run 45814177990).
+// SqlDemo runs on PostgreSQL (#536): SPARK_TEST_POSTGRESQL's server, or the embedded instance.
+const E2E_APPS = ['Fleet', 'QnA', 'HR', 'SparkId', 'MintPlayer', 'SqlDemo'];
 // Their ClientApps. The .NET projects no longer depend on them in the Nx graph, so they are built here, in
 // parallel and from the cache, rather than one at a time by the host's own bundle check.
-const E2E_CLIENT_APPS = ['@spark-demo/fleet-demo', '@spark-demo/qna-demo', '@spark-demo/hr-demo', '@spark-demo/sparkid-demo', '@spark-apps/mint-player'];
+const E2E_CLIENT_APPS = ['@spark-demo/fleet-demo', '@spark-demo/qna-demo', '@spark-demo/hr-demo', '@spark-demo/sparkid-demo', '@spark-apps/mint-player', '@spark-demo/sql-demo'];
 
 const passthrough = process.argv.slice(2);
 
@@ -49,7 +52,9 @@ function nx(args, { env = process.env, capture = false } = {}) {
   return { status: result.status ?? 1, stdout: result.stdout ?? '' };
 }
 
-const env = { MSBUILDDISABLENODEREUSE: '1', ...process.env };
+// #536 D35: MintPlayer.Spark.Tests references four test databases; its neutral classes run on the one this
+// names. RavenDB, as on CI, unless the caller picked another.
+const env = { MSBUILDDISABLENODEREUSE: '1', SPARK_TEST_DATABASE: 'RavenDB', ...process.env };
 
 function finish(status) {
   // The compiler server and any reusable nodes another tool started would otherwise outlive the run.

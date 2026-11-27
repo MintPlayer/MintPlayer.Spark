@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.Services;
 
 /// <summary>
 /// Persists the ASP.NET Core Data Protection key ring in RavenDB, as documents under
-/// <c>DataProtectionKeys/</c> — selected by <c>Spark:DataProtection:Storage=RavenDb</c>.
+/// <c>DataProtectionKeys/</c> — selected by <c>Spark:DataProtection:Storage=Store</c>.
 /// </summary>
 /// <remarks>
 /// <para>

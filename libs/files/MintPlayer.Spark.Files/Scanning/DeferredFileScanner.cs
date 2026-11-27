@@ -7,8 +7,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Files.Staging;
 using MintPlayer.Spark.Files.Storage;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Files.Scanning;
 
@@ -21,7 +20,7 @@ namespace MintPlayer.Spark.Files.Scanning;
 internal sealed partial class DeferredFileScanner
 {
     [Inject] private readonly FileScanRunner runner;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IFileStore fileStore;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly TimeProvider clock;
@@ -51,8 +50,8 @@ internal sealed partial class DeferredFileScanner
         if (runner.Scanner is not { } scanner)
             return null;
 
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        using var session = store.OpenSession();
+        session.OptimisticConcurrency = true;
         var upload = await session.LoadAsync<SparkFileUpload>(SparkFileUpload.IdFor(token).Value, cancellationToken);
         if (upload is null || !WaitsForScan(upload) || IsExpired(upload))
             return null;
@@ -78,7 +77,7 @@ internal sealed partial class DeferredFileScanner
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             // Someone else moved the upload on (another worker, an expiry); their state stands.
             return null;
@@ -89,15 +88,14 @@ internal sealed partial class DeferredFileScanner
         return upload.ScanStatus;
     }
 
-    /// <summary>Queues every upload that still waits for a verdict. Streams the staging prefix: no index needed.</summary>
+    /// <summary>Queues every upload that still waits for a verdict. Streams the staging collection: a collection scan, no index.</summary>
     public async Task<int> SweepAsync(CancellationToken cancellationToken)
     {
         var count = 0;
-        using var session = store.OpenAsyncSession();
-        await using var stream = await session.Advanced.StreamAsync<SparkFileUpload>(SparkFileUpload.CollectionPrefix, token: cancellationToken);
-        while (await stream.MoveNextAsync())
+        using var session = store.OpenSession();
+        await foreach (var row in session.StreamAsync(session.Query<SparkFileUpload>(), cancellationToken))
         {
-            var upload = stream.Current.Document;
+            var upload = row.Document;
             if (upload is not null && WaitsForScan(upload) && !IsExpired(upload))
             {
                 Enqueue(upload.Token);
@@ -124,11 +122,25 @@ internal sealed partial class DeferredFileScanService : BackgroundService
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<DeferredFileScanService> logger;
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <summary>#536 D41: the sweep reads the uploads, whose table exists once <c>UseSpark</c> applied the schema.</summary>
+    [Inject] private readonly ISparkStoreReadiness storeReadiness;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (options.Value.ScanMode != SparkFileScanMode.Deferred || runner.Scanner is null)
-            return Task.CompletedTask;
-        return Task.WhenAll(DrainAsync(stoppingToken), SweepAsync(stoppingToken));
+            return;
+
+        // #536 D41: the host starts this before UseSpark applies a relational schema; the uploads have no table until then.
+        try
+        {
+            await storeReadiness.WaitAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await Task.WhenAll(DrainAsync(stoppingToken), SweepAsync(stoppingToken));
     }
 
     private async Task DrainAsync(CancellationToken stoppingToken)

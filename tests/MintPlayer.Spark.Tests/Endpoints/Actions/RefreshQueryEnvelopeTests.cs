@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Actions;
 /// The fixture's names start with <c>RefProbe</c> for the reason given on <c>RetryFromEveryHookTests</c>:
 /// <c>ActionsResolver</c> matches actions classes by simple name across the whole assembly.
 /// </remarks>
-public class RefreshQueryEnvelopeTests : SparkTestDriver
+public class RefreshQueryEnvelopeTests : RavenSparkTestDriver
 {
     private static readonly Guid ProbeTypeId = Guid.Parse("31900000-0000-4000-8000-319000000001");
     private const string ProbesQueryIdText = "3190abcd-0000-4000-8000-3190000000ef";
@@ -66,7 +66,7 @@ public class RefreshQueryEnvelopeTests : SparkTestDriver
     {
         await base.InitializeAsync();
         _factory = new(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ProbeModel()],
             configureServices: services =>
             {

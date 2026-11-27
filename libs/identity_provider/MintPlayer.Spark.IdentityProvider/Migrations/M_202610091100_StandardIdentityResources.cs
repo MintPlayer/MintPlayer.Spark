@@ -3,7 +3,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Migrations;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Migrations;
 
@@ -22,7 +21,7 @@ public partial class M_202610091100_StandardIdentityResources : ISparkMigration
     public static long Version => 202610091100;
     public static string? Description => "Identity provider: ensure the standard openid, profile and email identity resources";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
@@ -35,7 +34,7 @@ public partial class M_202610091100_StandardIdentityResources : ISparkMigration
     private async Task EnsureAsync(string name, TranslatedString displayName, List<string> claimTypes, bool required, CancellationToken ct)
     {
         var id = OidcScopeCatalog.ResourceId(name);
-        if (await session.Advanced.ExistsAsync(id, ct))
+        if (await session.ExistsAsync(typeof(OidcResource), id, ct))
             return;
 
         await session.StoreAsync(new OidcResource

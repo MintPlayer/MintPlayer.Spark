@@ -45,12 +45,10 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
-		<ProjectReference Include="..\..\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
 		<!-- The only package dependency (docs/seo_analyzer_PRD.md D25): SparkUser, the account hooks
 		     (sign-in, deletion, personal data), the public base URL for mailed links and the security slot. -->
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />

@@ -4,7 +4,6 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 
@@ -31,7 +30,7 @@ internal sealed partial class AcceptInvitation : IPostEndpoint<OidcAcceptInvitat
 
     [Inject] private readonly OidcInvitations invitations;
     [Inject] private readonly OidcAudit audit;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override async Task<IResult> HandleAsync(OidcAcceptInvitationBody request, CancellationToken cancellationToken)

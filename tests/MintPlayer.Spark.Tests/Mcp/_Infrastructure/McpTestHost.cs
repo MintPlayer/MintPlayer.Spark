@@ -71,7 +71,7 @@ internal static class McpTestHost
         Action<IServiceCollection>? configureServices = null)
         where TContext : SparkContext
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             models,
             configureServices: configureServices,
             configureSpark: spark =>

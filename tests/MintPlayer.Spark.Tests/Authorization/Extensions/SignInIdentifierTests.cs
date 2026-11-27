@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// steps under the <see cref="SparkSignInManager{TUser}"/> override, in cookie and bearer mode, through
 /// <c>MapIdentityApi</c>'s real <c>/login</c>.
 /// </summary>
-public class SignInIdentifierTests : SparkTestDriver
+public class SignInIdentifierTests : RavenSparkTestDriver
 {
     private static object Login(string identifier, string password = AccountTestHost.Password, string? code = null, string? recovery = null)
         => new { email = identifier, password, twoFactorCode = code, twoFactorRecoveryCode = recovery };
@@ -109,7 +109,7 @@ public class SignInIdentifierTests : SparkTestDriver
     public async Task The_oidc_login_page_honours_the_identifier_kinds(SparkSignInIdentifiers allowed, string label, string inputType)
     {
         await using var factory = new SparkEndpointFactory<OidcTestContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             models: [],
             configureSpark: spark =>
             {

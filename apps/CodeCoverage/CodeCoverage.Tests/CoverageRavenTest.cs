@@ -24,8 +24,8 @@ namespace CodeCoverage.Tests;
 /// </summary>
 public abstract class CoverageRavenTest : RavenTestDriver
 {
-    // The one server configuration of MintPlayer.Spark.Testing, shared with SparkTestDriver and
-    // SparkSharedDatabase so that a class on either can run in this process too. The licence comes from
+    // The one server configuration of MintPlayer.Spark.Testing, shared with RavenSparkTestDriver and
+    // RavenSparkSharedDatabase so that a class on either can run in this process too. The licence comes from
     // RAVENDB_LICENSE (the JSON or a path to it) or the repo-root raven-license.log; without one the
     // server starts restricted rather than refusing, because fork pull requests get no organization
     // secrets and nothing in this suite needs a licensed feature. An invalid licence still fails at startup.

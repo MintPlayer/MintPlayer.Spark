@@ -4,7 +4,8 @@ Disk usage, document counts, refused requests, queue lengths: figures an adminis
 edits belong on a dashboard (`MintPlayer.Spark.Dashboards`, alias `dashboards`; npm
 `@mintplayer/ng-spark/dashboards`). A dashboard is an ordinary Spark page: a **live virtual persistent object**
 whose attribute values your providers fill. The package adds the providers, a notifier that pushes the page over
-`/spark/live`, a shared read cache, optional history on RavenDB time series, and a tile layout. It adds no endpoint,
+`/spark/live`, a shared read cache, optional history (RavenDB time series, or sample rows on any other store), and a
+tile layout. It runs on every Spark store. It adds no endpoint,
 no authorization path and no push channel of its own: rights, the load, the live socket and the menu are Spark's.
 
 Decisions and evidence: [coverage_commit_graph_PRD.md](coverage_commit_graph_PRD.md) §0 D11–D14, D24, D29 and
@@ -112,7 +113,7 @@ internal sealed class OperatorFigures(IDocumentStore store) : IDashboardProvider
 
 | Builder call | Attributes | Source |
 |---|---|---|
-| `.DatabaseStatistics()` | `DatabaseSize` (bytes on disk), `DocumentCount`, `CollectionCount`, `Collections` (`name`, `documents`, `sizeBytes`, largest first) | RavenDB's detailed statistics, through the application's own store and certificate (D24) |
+| `.DatabaseStatistics()` | `DatabaseSize` (bytes on disk), `DocumentCount`, `CollectionCount`, `Collections` (`name`, `documents`, `sizeBytes`, largest first) | `ISparkStoreStatistics`, through the application's own store and credentials (D24): RavenDB's detailed statistics, a count per table and the catalog's sizes on SQL Server and PostgreSQL, counts only in memory |
 | `.HostMetrics()` | `HostDisk` (meter: used of total), `HostDiskFree`, `HostDiskUsedPercent`, `Memory` (meter: in use of the limit), `MemoryUsed`, `Cpu` (percent) | `DriveInfo("/")`, cgroup v2 `memory.current` / `memory.max` / `cpu.stat`, `/proc/meminfo` |
 
 Inside a container, `DriveInfo("/")` measures **the host's disk**: overlay2 reports its backing filesystem, and S10
@@ -134,9 +135,9 @@ The package's own **DatabaseStatistics** dashboard uses the first, with the hist
   named after it, on the document `SparkDashboards/{dashboard}`. Only a number, or a meter's `value`, is written; a
   table or text is skipped with a warning. Six values per entry silently disabled RavenDB's rollup and retention in
   S11, so there is no multi-valued form.
-- **One host per slot.** A slot is `floor(utcNow / interval)`; a host appends only after a compare-exchange
-  (`spark/dashboards/sampler`, `{NodeId, ExpiresAtUtc, Fence, LastSlot}`) let it claim the slot, and it appends at the
-  slot's start, so a second write of a slot would overwrite rather than add.
+- **One host per slot.** A slot is `floor(utcNow / interval)`; a host appends only after an atomic value
+  (`ISparkAtomicValues`, key `dashboards/sampler`, `{NodeId, ExpiresAtUtc, Fence, LastSlot}` as JSON) let it claim the
+  slot, and it appends at the slot's start, so a second write of a slot would overwrite rather than add.
 - **Retention by policy, not pruning:** raw points 7 days (`RawRetention`), a 5-minute rollup (`RollupInterval`) kept
   90 days (`RollupRetention`). The collection is configured at startup with `ConfigureRawTimeSeriesPolicyOperation`
   and `ConfigureTimeSeriesPolicyOperation`, which touch this collection only; other collections' policies are kept.
@@ -148,6 +149,13 @@ The package's own **DatabaseStatistics** dashboard uses the first, with the hist
   every value a parameter; the series name is checked against `RqlIdentifier` before it is spliced. Past the raw
   retention, RavenDB answers from the rollup.
 - `Spark:Dashboards:Sample = false` stops this process sampling (another host's sampler then takes every slot).
+
+The bullets above describe RavenDB. **On SQL Server, PostgreSQL and memory** (#536 D45) each sample is a row of
+`SparkDashboardSamples` (`…/{dashboard}/{series}/raw/{epoch ms}`), which expires after `RawRetention`. It is also
+added to the row of its rollup interval (`…/rollup/{epoch ms}`, a sum and a count), which expires after
+`RollupRetention`; the store's expiration sweep deletes both. A read at the rollup interval or coarser reads the
+rollups; a finer one reads the raw rows, and the rollups where those have expired. Synchronize adds the table to the
+app's migration.
 
 ## The page
 

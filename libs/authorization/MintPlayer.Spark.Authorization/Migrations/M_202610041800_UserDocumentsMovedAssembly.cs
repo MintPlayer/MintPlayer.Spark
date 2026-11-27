@@ -30,10 +30,17 @@ public partial class M_202610041800_UserDocumentsMovedAssembly : ISparkMigration
 
     private const string OldAssembly = "MintPlayer.Spark.Authorization";
 
-    [Inject] private readonly IDocumentStore store;
+    // RavenDB only (#536): it repairs documents written before any other provider existed, so on SQL Server, PostgreSQL
+    // and in memory there is nothing to repair and it does nothing.
+    [Inject] private readonly IDocumentStore? raven;
+    private IDocumentStore store = null!;
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
+        if (raven is null)
+            return;
+        store = raven;
+
         await RewriteAsync(typeof(SparkUser), cancellationToken);
         await RewriteAsync(typeof(SparkRole), cancellationToken);
     }

@@ -3,7 +3,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -27,7 +26,7 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
 
     static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Introspection;
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
@@ -59,7 +58,7 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
             return Results.Json(new { error = "invalid_request", error_description = "token is required." }, statusCode: 400);
         }
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         // Authenticate client (D8). Introspection discloses a token's subject and scopes, so a public
         // client, which proves nothing about who it is, may not use it.

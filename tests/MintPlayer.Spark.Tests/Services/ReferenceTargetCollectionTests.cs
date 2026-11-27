@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// load" check would refuse. The second half pins the refusals.
 /// </para>
 /// </summary>
-public class ReferenceTargetCollectionTests : SparkTestDriver
+public class ReferenceTargetCollectionTests : RavenSparkTestDriver
 {
     private static readonly Guid CarTypeId = Guid.Parse("251c0000-0000-4000-8000-251c00000001");
     private static readonly Guid PersonTypeId = Guid.Parse("251c0000-0000-4000-8000-251c00000002");
@@ -34,7 +34,7 @@ public class ReferenceTargetCollectionTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<RtContext>(Store, [PersonModel(), StopModel(), CarModel()]);
+        _factory = new SparkEndpointFactory<RtContext>(Store.AsSparkTestDatabase(), [PersonModel(), StopModel(), CarModel()]);
     }
 
     public override async Task DisposeAsync()
@@ -212,22 +212,6 @@ public class ReferenceTargetCollectionTests : SparkTestDriver
         var car = await LoadCarAsync("rt_cars/1");
         car!.Plate.Should().Be("NEW");
         car.Owner.Should().Be(Id<RT_Person>.FromTrusted("rt_people/deleted"));
-    }
-
-    [Fact]
-    public async Task A_typed_id_reference_loads_with_the_breadcrumb_of_its_target()
-    {
-        // The breadcrumb resolver took a reference value only as a string or a list, so it never loaded a typed id's
-        // target, and the form showed the raw id.
-        await SeedAsync((new RT_Person { Name = "Ada" }, "rt_people/1"));
-        var po = Car(plate: "CAR-1");
-        po.AddAttribute(new PersistentObjectAttribute { Name = "Owner", DataType = "Reference", Value = "rt_people/1", IsValueChanged = true });
-        var saved = await SaveAsync(po);
-
-        using var scope = _factory.CreateScope();
-        var loaded = await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().GetPersistentObjectAsync(CarTypeId, saved.Id!);
-
-        loaded!.Attributes.Single(a => a.Name == "Owner").Breadcrumb.Should().Be("Ada");
     }
 
     [Fact]

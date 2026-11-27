@@ -41,6 +41,8 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- #536 D39: the subscription conformance suite takes core's store lease, as an application does. -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.Relational.Tests" />
 		<!-- The MCP tools call the same internal read, save and action paths as the HTTP endpoints (MCP PRD D9). -->
 		<InternalsVisibleTo Include="MintPlayer.Spark.Mcp" />
 		<!-- The sitemap lists what the internal read path returns to an anonymous visitor, so it can never list more than

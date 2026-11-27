@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Queries;
 /// is the fields its map emits — attributes outside it are minted not sortable and not filterable, and the
 /// default sort comes only from emitted fields, because RavenDB answers a sort on anything else with a 500.
 /// </summary>
-public class ViewlessDefaultIndexTests : SparkTestDriver
+public class ViewlessDefaultIndexTests : RavenSparkTestDriver
 {
     public class VlBook
     {
@@ -241,7 +241,7 @@ public class ViewlessDefaultIndexTests : SparkTestDriver
 
     private async Task<IQueryExecutor> ExecutorAsync(bool authorSortable)
     {
-        var factory = new SparkEndpointFactory<VlBookContext>(Store, [BookModel(authorSortable)],
+        var factory = new SparkEndpointFactory<VlBookContext>(Store.AsSparkTestDatabase(), [BookModel(authorSortable)],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(VlBooks_ByTitle)));
         _factories.Add(factory);
         using (var session = Store.OpenAsyncSession())

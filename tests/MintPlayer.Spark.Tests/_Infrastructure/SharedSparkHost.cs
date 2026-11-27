@@ -10,8 +10,8 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// <para>
 /// A <see cref="SparkEndpointFactory{TContext}"/> boot is the expensive half of most endpoint
 /// tests: it writes model files, starts a <c>TestServer</c> and runs Spark's startup gates. With
-/// <see cref="SparkTestDriver"/> that happened per test CASE because the store did not outlive the
-/// case. Deriving from <see cref="SparkSharedDatabase"/> gives the host a store that does.
+/// <see cref="RavenSparkTestDriver"/> that happened per test CASE because the store did not outlive the
+/// case. Deriving from <see cref="RavenSparkSharedDatabase"/> gives the host a store that does.
 /// </para>
 /// <para>
 /// ⚠️ Only for classes whose cases leave nothing behind that a sibling could observe: no document
@@ -25,19 +25,19 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// public sealed class PeopleHost : SharedSparkHost&lt;TestSparkContext&gt;
 /// {
 ///     protected override SparkEndpointFactory&lt;TestSparkContext&gt; CreateFactory()
-///         =&gt; new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+///         =&gt; new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
 /// }
 ///
-/// public class PeopleTests(PeopleHost host) : SparkSharedTestDriver(host), IClassFixture&lt;PeopleHost&gt;
+/// public class PeopleTests(PeopleHost host) : RavenSparkSharedTestDriver(host), IClassFixture&lt;PeopleHost&gt;
 /// </code>
 /// </remarks>
-public abstract class SharedSparkHost<TContext> : SparkSharedDatabase
+public abstract class SharedSparkHost<TContext> : RavenSparkSharedDatabase
     where TContext : SparkContext
 {
     /// <summary>The class's host. Do not dispose it — the fixture owns it.</summary>
     public SparkEndpointFactory<TContext> Factory { get; private set; } = null!;
 
-    /// <summary>Builds the host against <see cref="SparkSharedDatabase.Store"/>, once per class.</summary>
+    /// <summary>Builds the host against <see cref="RavenSparkSharedDatabase.Store"/>, once per class.</summary>
     protected abstract SparkEndpointFactory<TContext> CreateFactory();
 
     /// <summary>

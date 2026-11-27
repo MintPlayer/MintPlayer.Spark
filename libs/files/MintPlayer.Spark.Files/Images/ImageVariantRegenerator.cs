@@ -8,8 +8,7 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Files.Services;
 using MintPlayer.Spark.Files.Storage;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Files.Images;
 
@@ -33,7 +32,7 @@ public sealed record ImageVariantRegeneration(int Images, int Regenerated, int F
 internal sealed partial class ImageVariantRegenerator
 {
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IFileStore fileStore;
     [Inject] private readonly IEnumerable<IImageProcessor> processors;
     [Inject] private readonly IOptions<SparkFilesOptions> options;
@@ -72,11 +71,11 @@ internal sealed partial class ImageVariantRegenerator
         where T : class
     {
         var ids = new List<string>();
-        using (var session = store.OpenAsyncSession())
+        using (var session = store.OpenSession())
         {
-            await using var stream = await session.Advanced.StreamAsync(session.Advanced.AsyncDocumentQuery<T>(), cancellationToken);
-            while (await stream.MoveNextAsync())
-                ids.Add(stream.Current.Id);
+            await foreach (var row in session.StreamAsync(session.Query<T>(), cancellationToken))
+                if (row.Id is { } rowId)
+                    ids.Add(rowId);
         }
 
         int images = 0, regenerated = 0, failed = 0;
@@ -90,11 +89,11 @@ internal sealed partial class ImageVariantRegenerator
                     (images, regenerated, failed) = (images + seen, regenerated + made, failed + broken);
                     break;
                 }
-                catch (ConcurrencyException) when (attempt == 0)
+                catch (SparkStoreConcurrencyException) when (attempt == 0)
                 {
                     // Edited while its variants were made: once more, from the new version.
                 }
-                catch (ConcurrencyException)
+                catch (SparkStoreConcurrencyException)
                 {
                     logger.LogWarning("{Id} kept changing while its image variants were regenerated; skipped.", id);
                     failed++;
@@ -112,7 +111,7 @@ internal sealed partial class ImageVariantRegenerator
         // Phase 1: make and write the variants. Writing an object can move the entity's own version (a RavenDB attachment
         // does), so nothing is saved from this read.
         T? entity;
-        using (var read = store.OpenAsyncSession())
+        using (var read = store.OpenSession())
             entity = await read.LoadAsync<T>(id, cancellationToken);
         if (entity is null)
             return (0, 0, 0);
@@ -139,7 +138,7 @@ internal sealed partial class ImageVariantRegenerator
 
         // Phase 2: record them on the entity as it is now, written with the version loaded here (an edit in between fails
         // the save, and the entity is retried).
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var current = await session.LoadAsync<T>(id, cancellationToken);
         var applied = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (_, property) in attributes)
@@ -156,7 +155,7 @@ internal sealed partial class ImageVariantRegenerator
         }
         if (current is not null && applied.Count > 0)
         {
-            await session.StoreAsync(current, session.Advanced.GetChangeVectorFor(current), id, cancellationToken);
+            await session.StoreAsync(current, session.GetVersion(current), id, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
 

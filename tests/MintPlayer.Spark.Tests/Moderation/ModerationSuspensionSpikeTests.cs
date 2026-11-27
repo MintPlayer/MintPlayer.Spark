@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Moderation;
 /// #460 M12 spike S-MOD-C: how long a suspended (locked-out, security stamp refreshed) user's cookie
 /// and bearer token keep working. Measured on a controllable clock, never by waiting.
 /// </summary>
-public class ModerationSuspensionSpikeTests(ITestOutputHelper output) : MintPlayer.Spark.Testing.SparkTestDriver
+public class ModerationSuspensionSpikeTests(ITestOutputHelper output) : MintPlayer.Spark.Testing.RavenSparkTestDriver
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
 

@@ -9,6 +9,7 @@ using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
 
@@ -136,16 +137,20 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     /// <summary>
     /// Segment B: a backport the forge failed is recorded for every line asked for (under the name it was asked by, since
     /// the line may not have been resolved), so it shows on the repository page although no comment could be posted.
+    /// Clear() first forgets whatever the failed run left pending in the scope's session, so only the failure records commit,
+    /// with the webhooks the publisher stores in that session (#536 D50). Clear() keeps the run's request count, so the
+    /// records (one per line asked for) are not held to what the run left of the budget.
     /// </summary>
     private async Task FailedAsync(Repository repository, BackportMessage message, string detail, CancellationToken cancellationToken)
     {
         try
         {
-            using var fresh = session.Advanced.DocumentStore.OpenAsyncSession();
+            session.Advanced.Clear();
+            using var budget = session.IgnoreMaxRequests();
             foreach (var line in message.Lines.Distinct(StringComparer.Ordinal))
-                await BackportAttempts.RecordAsync(fresh, webhooks, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
+                await BackportAttempts.RecordAsync(session, webhooks, repository, message.Number, null, line, BackportAttempt.Failed, null, detail, time.GetUtcNow().UtcDateTime,
                     cancellationToken, logId);
-            await fresh.SaveChangesAsync(cancellationToken);
+            await session.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -317,7 +322,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                         ? Attempt(target.Branch, BackportAttempt.NotRegenerated, opened, $"{notRegenerated.Count} regenerated file(s) are stale")
                         : Attempt(target.Branch, BackportAttempt.Opened, opened));
                     if (enqueue)
-                        await BackportRegenerationEngine.EnqueueAsync(outbox, session, repository.Id.Value, opened, cancellationToken);
+                        await BackportRegenerationEngine.EnqueueAsync(outbox, repository.Id.Value, opened, cancellationToken);
                     await session.SaveChangesAsync(cancellationToken);
                     lines.Add((target.Resolutions is { Count: > 0 } resolved
                         ? $"- `{target.Branch}`: #{opened}, with {resolved.Count} conflict{(resolved.Count == 1 ? "" : "s")} resolved automatically"

@@ -1,5 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Migrations;
+using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Storage.Raven;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
@@ -8,10 +11,11 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Tests.Migrations;
 
 /// <summary>
-/// Integration coverage for <see cref="SparkMigrationRunner"/> against embedded RavenDB:
-/// ordered run, per-version marker documents (idempotent across runs), and fail-fast.
+/// Integration coverage for <see cref="SparkMigrationRunner"/> against embedded RavenDB, through the neutral store and
+/// its lease (#536 S15): ordered run, per-version marker documents (idempotent across runs), and fail-fast. The
+/// pre-seeded locks are bare <see cref="DateTime"/> values, as the runner wrote them before #536.
 /// </summary>
-public class SparkMigrationRunnerTests : SparkTestDriver
+public class SparkMigrationRunnerTests : RavenSparkTestDriver
 {
     // Shared observer so we can see what ran, across DI scopes.
     public sealed class Recorder { public List<long> Applied { get; } = []; }
@@ -56,11 +60,19 @@ public class SparkMigrationRunnerTests : SparkTestDriver
 
     private readonly Recorder _recorder = new();
 
+    private void AddNeutralStore(IServiceCollection services)
+    {
+        services.AddSingleton<ISparkStore>(new RavenSparkStore(Store));
+        services.AddSingleton<ISparkAtomicValues>(new RavenAtomicValues(Store));
+        services.AddSingleton<ISparkStoreLock>(sp => new SparkStoreLock(sp.GetRequiredService<ISparkAtomicValues>(), TimeProvider.System));
+    }
+
     private ServiceProvider BuildProvider(params Type[] migrationTypes)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IDocumentStore>(Store);
         services.AddScoped<IAsyncDocumentSession>(_ => Store.OpenAsyncSession());
+        AddNeutralStore(services);
         services.AddSingleton(_recorder);
 
         var registry = new SparkMigrationRegistry();
@@ -129,6 +141,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         var services = new ServiceCollection();
         services.AddSingleton<IDocumentStore>(Store);
         services.AddScoped<IAsyncDocumentSession>(_ => Store.OpenAsyncSession());
+        AddNeutralStore(services);
         services.AddSingleton(_recorder);
         services.AddSingleton(new SparkMigrationRegistry());
         return services.BuildServiceProvider();
@@ -144,7 +157,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         _recorder.Applied.Should().BeEmpty();
         // No lock was ever taken (early return before acquiring it).
         var current = await Store.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<DateTime>(LockKey));
+            new GetCompareExchangeValueOperation<string>(LockKey));
         current.Should().BeNull();
     }
 
@@ -171,7 +184,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
 
         // The lock is gone — a later run can acquire it fresh.
         var afterFirst = await Store.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<DateTime>(LockKey));
+            new GetCompareExchangeValueOperation<string>(LockKey));
         afterFirst.Should().BeNull("the runner releases the compare-exchange lock after a successful run");
 
         // Second run adds a NEW higher-version migration; it must acquire the lock again and apply it.

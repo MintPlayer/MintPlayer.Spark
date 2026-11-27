@@ -167,7 +167,7 @@ public sealed record I467Host(SparkEndpointFactory<I467Context> Factory, HttpCli
 {
     public static async Task<I467Host> StartAsync(Raven.Client.Documents.IDocumentStore store)
     {
-        var factory = new SparkEndpointFactory<I467Context>(store, I467Models.All(),
+        var factory = new SparkEndpointFactory<I467Context>(store.AsSparkTestDatabase(), I467Models.All(),
             configureServices: services =>
             {
                 services.AddSingleton<I467TouchLog>();

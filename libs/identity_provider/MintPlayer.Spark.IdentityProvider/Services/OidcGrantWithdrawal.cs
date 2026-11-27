@@ -1,7 +1,4 @@
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -15,7 +12,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// <c>openid</c> (or nothing) is a withdrawal of the whole grant.
 /// </para>
 /// </summary>
-internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit, IServiceProvider? services = null)
+internal sealed class OidcGrantWithdrawal(ISparkStore store, OidcAudit audit, IServiceProvider? services = null)
 {
     /// <summary>
     /// Withdraws <paramref name="scopes"/> (or the whole grant when null) that <paramref name="userId"/> gave
@@ -30,8 +27,8 @@ internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit,
         var grantId = OidcGrantReference.DocumentId(userId, applicationId);
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            using var session = store.OpenAsyncSession();
-            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            using var session = store.OpenSession();
+            session.OptimisticConcurrency = true;
             var grant = await session.LoadAsync<OidcGrant>(grantId, ct);
             if (grant is null || grant.Status != "valid")
                 return true;
@@ -69,7 +66,7 @@ internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit,
                     await agentGrants.RemoveAsync(userId, app.ClientId, ct);
                 return true;
             }
-            catch (ConcurrencyException)
+            catch (SparkStoreConcurrencyException)
             {
                 // Someone else wrote the grant in between, most likely the user consenting again in
                 // another tab. Re-read and decide afresh rather than forcing a stale verdict.
@@ -84,12 +81,9 @@ internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit,
     /// tolerable only because it is not the enforcement: issuance and introspection point-load the
     /// grant and compare <see cref="OidcGrant.LastRevokedAt"/>, so a missed token is still refused.
     /// </summary>
-    private static async Task RevokeTokensAsync(IAsyncDocumentSession session, string authorizationId, CancellationToken ct)
+    private static async Task RevokeTokensAsync(ISparkSession session, string authorizationId, CancellationToken ct)
     {
-        var tokens = await session
-            .Query<OidcToken>()
-            .Where(t => t.AuthorizationId == authorizationId && t.Status == "valid")
-            .ToListAsync(ct);
+        var tokens = await OidcTokenSweep.ValidOfAuthorizationAsync(session, authorizationId, ct);
         foreach (var token in tokens)
         {
             token.Status = "revoked";

@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// no delete method), surfaced to every after-delete interceptor so replication forwards a save rather than a
 /// hard delete.
 /// </summary>
-public class PersistentObjectInterceptorTests : SparkTestDriver
+public class PersistentObjectInterceptorTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04600");
 
@@ -27,7 +27,7 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
     {
         await base.InitializeAsync();
         factory = new SparkEndpointFactory<InterceptedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(NoteTypeId)],
             configureServices: services =>
             {

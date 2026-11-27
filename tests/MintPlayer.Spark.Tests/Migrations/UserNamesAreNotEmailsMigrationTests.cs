@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// #264 G-Q22: registration used to set <c>UserName = email</c>, and the user name is shown to other
 /// users. <see cref="M_202610051200_UserNamesAreNotEmails"/> gives every such account a generated handle.
 /// </summary>
-public class UserNamesAreNotEmailsMigrationTests : SparkTestDriver
+public class UserNamesAreNotEmailsMigrationTests : RavenSparkTestDriver
 {
     [Fact]
     public async Task Email_shaped_user_names_get_a_unique_generated_handle_and_others_are_left_alone()

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Mcp;
 
@@ -19,7 +18,7 @@ namespace MintPlayer.Spark.IdentityProvider.Mcp;
 /// <see cref="SparkIdentityProviderMcpOptions.UnusedClientLifetime"/> without use.
 /// </remarks>
 internal sealed class OidcAgentDynamicRegistration(
-    IDocumentStore store,
+    ISparkStore store,
     SparkIdentityProviderOptions options,
     OidcAgentRegistrationLimiter limiter,
     OidcAudit audit)
@@ -63,8 +62,8 @@ internal sealed class OidcAgentDynamicRegistration(
         app.DisplayName = OidcAgentClients.NameOf(metadata.ClientName, "Unnamed agent");
         app.RedirectUris = [.. redirects.Distinct(StringComparer.Ordinal)];
 
-        using var session = store.OpenAsyncSession();
-        await OidcClientIdReservation.ReserveAsync(session, app);
+        using var session = store.OpenSession();
+        await OidcClientIdReservation.ReserveAsync(session, app, ct);
         await session.StoreAsync(app, ct);
         await audit.RecordAsync(session, OidcAuditKinds.DynamicRegistration, actorId: null, app.Id.Value, ipAddress: address,
             details: new Dictionary<string, string> { ["agent"] = "true", ["clientName"] = app.DisplayName }, ct: ct);

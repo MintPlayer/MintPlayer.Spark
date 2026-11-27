@@ -17,8 +17,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// page, their grants narrowing every call, store-backed groups, revocation (deletion, expiry, security stamp,
 /// lockout), and the account endpoints' ownership rule. Real Identity, real RavenDB, the real Mcp gate.
 /// </summary>
-public class McpPersonalAccessTokenTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpPersonalAccessTokenTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private string Name(string localPart) => $"{localPart}-{Scope}";
 

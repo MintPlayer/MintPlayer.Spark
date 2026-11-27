@@ -32,7 +32,7 @@ That's the whole wiring. The source generator discovers your `SparkContext`, `Sp
 
 - **`AddSparkFull`** — registers Spark + every feature it detects in your project (and the discovered Actions/Recipients/Custom Actions/Cron jobs).
 - **`UseSparkFull()`** — adds the Spark middleware pipeline. Model synchronization moved to the
-  builder phase: call `builder.SynchronizeSparkModelsIfRequested(args)` before `builder.Build()`.
+  builder phase: call `app.RunSparkCommandIfRequestedAsync(args)` right after `builder.Build()`.
 - **`MapSparkFull`** — maps all Spark + Identity endpoints.
 
 ## What's bundled
@@ -43,7 +43,7 @@ Referencing `MintPlayer.Spark.AllFeatures` transitively brings in:
 |---------|----------|
 | [`MintPlayer.Spark`](../../spark/MintPlayer.Spark/README.md) | Core CRUD framework, PersistentObject pipeline, endpoints |
 | [`MintPlayer.Spark.Authorization`](../../authorization/MintPlayer.Spark.Authorization/README.md) | ASP.NET Core Identity + `security.json` group-based access control |
-| [`MintPlayer.Spark.Messaging`](../../messaging/MintPlayer.Spark.Messaging/README.md) | Durable RavenDB message bus (pulls in the subscription worker) |
+| [`MintPlayer.Spark.Messaging`](../../messaging/MintPlayer.Spark.Messaging/README.md) | Durable message bus on the app's store (pulls in the subscription worker) |
 | `MintPlayer.Spark.Replication` | Cross-module ETL replication |
 | [`MintPlayer.Spark.Cron`](../../cron/MintPlayer.Spark.Cron/README.md) | Multi-node-safe cron-scheduled background jobs |
 | `MintPlayer.Spark.SourceGenerators` + `…AllFeatures.SourceGenerators` | Compile-time DI registration + the `AddSparkFull`/`UseSparkFull`/`MapSparkFull` emission |
@@ -70,6 +70,7 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 
 | Option | Configures |
 |--------|------------|
+| `Store` | The store: `spark => spark.UseSqlServer(…)`, `spark.UsePostgreSql(…)`, `spark.UseInMemory()` (reference the provider's package). RavenDB when unset. |
 | `Authorization` | Group-based authorization (`security.json` behavior). |
 | `Identity` | ASP.NET Core Identity options (password rules, lockout, …). |
 | `ExternalProviders` | External login providers, on the Spark builder after `AddAuthentication` (`spark => spark.AddExternalProviders(configuration)`, `spark.AddGitHub(…)`, …). |
@@ -79,9 +80,9 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 
 ## Requirements
 
-- .NET 10.0+
-- RavenDB 6.2+
-- An `IDocumentStore` (configured from `Spark:RavenDb` in `appsettings.json`)
+- .NET 11.0+
+- A store: by default RavenDB 6.2+ (configured from `Spark:RavenDb` in `appsettings.json`); any other through
+  `Store`. Replication needs RavenDB.
 
 ## License
 

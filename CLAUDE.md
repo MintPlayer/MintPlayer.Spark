@@ -1,5 +1,17 @@
 # MintPlayer.Spark — repository instructions
 
+## Searching: always exclude `node_modules`
+
+Every recursive search over the repository leaves out `node_modules` (owner, 2026-11-26). The root and every app's
+`ClientApp` have one, and the build output (`bin`, `obj`) and the agent worktrees (`.claude/worktrees`) multiply the files
+again. A `grep -r` over `tests/` that walked them ran past the tool's 2-minute timeout; the same search without them answers
+at once.
+
+- **`grep -r`:** pass `--exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj`, add `--exclude-dir=.claude` for a
+  search from the root, and narrow it with `--include=*.cs` (or the file type you want).
+- **`find`:** prune them: `find . -name node_modules -prune -o -name bin -prune -o -name obj -prune -o -name '*.cs' -print`.
+- **The Grep and Glob tools:** give them a `path` or a `glob` that keeps out of those directories.
+
 ## `apps/` holds applications, and two of them are production
 
 `apps/` (renamed from `Demo/`) holds the five demos **and `apps/CodeCoverage`**, which is not a demo:
@@ -21,6 +33,10 @@ server, and the users are the legacy site's real accounts. Its plan, decisions a
 - **`apps/DemoApp`** is the minimal Spark app: core only, no Authorization, no identity provider. It
   is the guides' running example and the only app on plain `AddSpark` (SPARK030). New features don't
   land there.
+- **`apps/SqlDemo`** is the relational providers' demo (#536): Spark on **PostgreSQL** (`UsePostgreSql`,
+  `ConnectionStrings:Spark`). Its schema is in `Migrations/PostgreSql`, written by `--spark-synchronize-model`, and its
+  book list is a SQL view (`Views/Books_WithAuthor.cs`). Its E2E host (`SqlDemoTestHost`) needs a PostgreSQL server:
+  `SPARK_TEST_POSTGRESQL`, or else the embedded instance the test package starts.
 
 Two consequences worth knowing before editing it:
 
@@ -33,7 +49,7 @@ Two consequences worth knowing before editing it:
 
 ## Running the apps: never start the Angular dev server yourself
 
-Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/QnA`, `apps/SparkId`) hosts its SPA through
+Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/QnA`, `apps/SparkId`, `apps/SqlDemo`) hosts its SPA through
 **`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
 
 - **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second
@@ -98,6 +114,14 @@ parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx 
   a `RAVENDB_LICENSE` that holds the Community licence gives a `LicenseLimitException` ("revisions
   1000 > licensed 2") that CI never sees.
 
+**`MintPlayer.Spark.Tests` references four test databases** (RavenDB, InMemory, SqlServer, PostgreSql; #536 D35),
+so its provider-neutral classes (`SparkTestDriver`, `SparkSharedDatabase`) need `SPARK_TEST_DATABASE` to pick one.
+CI and `npm run test:affected` set `RavenDB`; set it yourself for a single-class `dotnet test`. CI's `SQL Server` and
+`PostgreSQL` jobs (#536 M9) run those classes again, selected by the trait `SparkDatabase=Any`, with
+`MintPlayer.Spark.Relational.Tests`, each on a real server the job starts. A neutral class that takes `SparkSharedDatabase`
+or a `SparkSharedHost<>` without a driver base declares the trait itself; `ProviderNeutralTraitTests` fails otherwise.
+The run is at the 20-job limit with them: a new matrix entry joins an existing job.
+
 ### The local sweep: `npm run test:affected`
 
 One script runs every **affected** test project, unit and E2E together (`tools/test-local.mjs`;
@@ -115,8 +139,10 @@ CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cach
 - **E2E:** when it is affected, the script first builds the apps it hosts (`Fleet`, `QnA`) through
   nx, then sets `SPARK_E2E_SKIP_APP_BUILD=1` so `SparkAppTestHost` skips its own per-app
   `dotnet build`. The variable is opt-in; unset (CI) the host still builds. A new E2E host app must
-  be added to `E2E_APPS` in the script.
-- Every RavenTestDriver base (`SparkTestDriver`, `SparkSharedDatabase`, `CoverageRavenTest`)
+  be added to `E2E_APPS` in the script, and to the E2E project's `project.json`: `implicitDependencies` for the app,
+  the test inputs for its ClientApp. Without them a change to the app alone replays the suite's last result and
+  coverage from the Nx cache, on CI too (#536, run 45814177990).
+- Every RavenTestDriver base (`RavenSparkTestDriver`, `RavenSparkSharedDatabase`, `CoverageRavenTest`)
   deletes its databases without the server's 15 s confirmation wait, through
   `RavenDatabaseDeletion.DeleteOnDispose` in `PreInitialize`. This applies on CI as well.
 

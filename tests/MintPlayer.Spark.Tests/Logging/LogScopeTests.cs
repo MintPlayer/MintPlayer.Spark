@@ -201,7 +201,7 @@ public sealed class RavenLogScopeTests : LogScopeTests
         await driver.DisposeAsync();
     }
 
-    private sealed class Driver : SparkTestDriver
+    private sealed class Driver : RavenSparkTestDriver
     {
         public Raven.Client.Documents.IDocumentStore DocumentStore => Store;
     }

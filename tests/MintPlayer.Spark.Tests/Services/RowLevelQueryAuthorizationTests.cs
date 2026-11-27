@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// the defect was never in the rule — it was in which paths consulted it.
 /// </para>
 /// </summary>
-public class RowLevelQueryAuthorizationTests : SparkTestDriver
+public class RowLevelQueryAuthorizationTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("a5a5a5a5-5555-5555-5555-a5a5a5a5a5a5");
 

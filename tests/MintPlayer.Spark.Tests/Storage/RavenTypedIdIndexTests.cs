@@ -112,7 +112,7 @@ public sealed class RavenTypedIdIndexTests : IAsyncLifetime
         row.CompanyName.Should().Be("Acme");
     }
 
-    private sealed class Driver : SparkTestDriver
+    private sealed class Driver : RavenSparkTestDriver
     {
         public IDocumentStore DocumentStore => Store;
     }

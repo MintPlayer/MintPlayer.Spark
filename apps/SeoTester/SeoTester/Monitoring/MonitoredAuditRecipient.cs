@@ -45,6 +45,8 @@ public partial class MonitoredAuditRecipient : IRecipient<MonitoredAuditMessage>
             var admins = await alerter.MembersAsync(site.OrganizationId, OrganizationRole.Admin, cancellationToken);
             await alerter.NotifyAsync(site, admins, $"The scheduled audit of {site.Origin} was skipped",
                 "The member who set the schedule can no longer start audits. Set the schedule again to take it over.", "seo-monitoring-skipped", cancellationToken);
+            // The notifier writes in the scope's session and never saves (#536 D50).
+            await session.SaveChangesAsync(cancellationToken);
             return;
         }
 
@@ -54,8 +56,12 @@ public partial class MonitoredAuditRecipient : IRecipient<MonitoredAuditMessage>
         }
         catch (Exception ex) when (ex is SparkThrottledException or SparkValidationException)
         {
-            // Not retried: the slot is over, the next one comes on schedule. The starter logged the refusal.
+            // Not retried: the slot is over, the next one comes on schedule. The starter logged the refusal. A start that
+            // lost the cool-down race left its run, cool-down and log entry pending in the session: they must not commit
+            // with the notice.
+            session.Advanced.Clear();
             await alerter.NotifyAsync(site, [userId], $"The scheduled audit of {site.Origin} was skipped", ex.Message, "seo-monitoring-skipped", cancellationToken);
+            await session.SaveChangesAsync(cancellationToken);
         }
     }
 }

@@ -160,7 +160,8 @@ public static class ModelHashVerifier
                          ? Compare(expected.ConfigFiles!, actual.ConfigFiles!, "config", static key => key, expected, actual)
                          : [])
                      .Concat(compareLayers ? DescribeLayerOnlyDrift(expected, actual) : [])
-                     .Concat(compareLayers ? DescribeLibraryDrift(expected, actual) : []))
+                     .Concat(compareLayers ? DescribeLibraryDrift(expected, actual) : [])
+                     .Concat(DescribeStoredGetterDrift(expected, actual)))
         {
             if (reported++ == 12)
             {
@@ -197,6 +198,27 @@ public static class ModelHashVerifier
                 yield return $"{label} {key}: in {ModelHashFile.FileName}{(expectedLayers is null ? string.Empty : $" ({Origin(expectedLayers, expectedFile, "on disk")})")} but missing (removed since the model was generated)";
             else if (!string.Equals(expectedHash, actualHash, StringComparison.Ordinal))
                 yield return $"{label} {key}: expected {Short(expectedHash!)}  actual {Short(actualHash!)}{Moved(expectedLayers, actualLayers, expectedFile, actualFile)}";
+        }
+    }
+
+    /// <summary>
+    /// #536 O13: a stored getter added, removed or with a changed formula. An absent section is "no stored getters":
+    /// a model without them writes none, so a new one reads as added.
+    /// </summary>
+    private static IEnumerable<string> DescribeStoredGetterDrift(ModelHashFile expected, ModelHashFile actual)
+    {
+        var before = expected.StoredGetters ?? [];
+        var after = actual.StoredGetters ?? [];
+        foreach (var key in before.Keys.Concat(after.Keys).Distinct(StringComparer.Ordinal).OrderBy(k => k, StringComparer.Ordinal))
+        {
+            var hasBefore = before.TryGetValue(key, out var was);
+            var hasAfter = after.TryGetValue(key, out var now);
+            if (!hasBefore)
+                yield return $"stored getter {key}: new since the model was generated";
+            else if (!hasAfter)
+                yield return $"stored getter {key}: removed since the model was generated";
+            else if (!string.Equals(was, now, StringComparison.Ordinal))
+                yield return $"stored getter {key}: formula changed ({Short(was!)} -> {Short(now!)}); saved rows keep the old value until saved again";
         }
     }
 

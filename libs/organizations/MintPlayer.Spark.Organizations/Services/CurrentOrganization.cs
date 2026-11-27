@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Organizations.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Organizations.Services;
 
@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Organizations.Services;
 /// Nothing is stored server-side: switching writes no document and adds no load per request.
 /// </para>
 /// </remarks>
-internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccessor, OrganizationMembershipReader memberships, IDocumentStore store)
+internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccessor, OrganizationMembershipReader memberships, ISparkStore store)
 {
     /// <summary>The cookie that holds the chosen organization's id.</summary>
     internal const string CookieName = "spark-organization";
@@ -60,9 +60,9 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
     public async Task<CurrentOrganizationResponse> DescribeAsync(string userId, CancellationToken cancellationToken = default)
     {
         var roles = await memberships.GetAsync(userId, cancellationToken);
-        using var session = store.OpenAsyncSession();
-        var organizations = roles.Count == 0
-            ? new Dictionary<string, Organization>()
+        using var session = store.OpenSession();
+        IReadOnlyDictionary<string, Organization?> organizations = roles.Count == 0
+            ? new Dictionary<string, Organization?>()
             : await session.LoadAsync<Organization>(roles.Keys, cancellationToken);
 
         // Keyed by the membership's own OrganizationId, as GetIdAsync answers: an organization created before #536

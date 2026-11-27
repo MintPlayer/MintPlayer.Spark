@@ -14,7 +14,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
     private async Task<string> SeedRefreshTokenAsync(OidcApplication app, string subject, string[]? scopes = null)
     {
         var value = OidcTokenReference.GenerateValue();
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await StoreInFamilyAsync(session, new OidcToken
         {
             Id = MintPlayer.Spark.Abstractions.Id<OidcToken>.FromTrusted(OidcTokenReference.DocumentId(value)),
@@ -136,7 +136,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
         var (_, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
         var gateway = await SeedApplicationAsync(ClientId("gateway"));
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var stored = await session.LoadAsync<OidcApplication>(gateway.Id.Value);
             stored.MayIntrospectAnyAudience = true;
@@ -209,7 +209,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
         var app = await SeedApplicationAsync(ClientId("resource-a"));
         var token = await SeedRefreshTokenAsync(app, "SparkUsers/alice");
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var doc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(token));
             doc.Status = "revoked";

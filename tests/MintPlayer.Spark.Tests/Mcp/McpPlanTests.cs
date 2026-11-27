@@ -69,8 +69,8 @@ public class McpWtContext : SparkContext
 /// Tokens: <c>Bearer plan:{user}:{client}:{grant}:{rw|r}[:car-r]</c> — the last segment narrows the grant's type choice
 /// for <c>McpWtCar</c> to Read.
 /// </remarks>
-public class McpPlanTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpPlanTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string Scheme = "PlanBearer";
     private const string CarsQuery = "mcpwtcars";
@@ -132,7 +132,7 @@ public class McpPlanTests(SparkSharedDatabase database)
             !resource.EndsWith("/McpWtDriver", StringComparison.OrdinalIgnoreCase) && !denied.Contains(resource));
 
         return new SparkEndpointFactory<McpWtContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             Models(carPermissions),
             configureServices: services =>
             {
@@ -331,7 +331,10 @@ public class McpPlanTests(SparkSharedDatabase database)
         using var session = Store.OpenAsyncSession();
         var plan = await session.LoadAsync<McpPlan>(planId);
         var expires = DateTime.Parse(session.Advanced.GetMetadataFor(plan)[Constants.Documents.Metadata.Expires].ToString()!).ToUniversalTime();
-        expires.Should().BeCloseTo(plan!.CreatedAt + McpPlanner.ProposalLifetime, TimeSpan.FromSeconds(5));
+        plan!.ExpiresAt.Should().BeCloseTo(plan.CreatedAt + McpPlanner.ProposalLifetime, TimeSpan.FromSeconds(5));
+        // #536: the store's housekeeping trails it (McpPlan.HousekeepingGrace), so a store that hides expired rows
+        // still finds a just-expired plan and the agent is told it expired.
+        expires.Should().BeCloseTo(plan.ExpiresAt + McpPlan.HousekeepingGrace, TimeSpan.FromSeconds(5));
     }
 
     [Fact]

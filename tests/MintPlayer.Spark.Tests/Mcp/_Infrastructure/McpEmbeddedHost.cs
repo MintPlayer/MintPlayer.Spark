@@ -36,7 +36,7 @@ internal static class McpEmbeddedHost
         Action<SparkIdentityProviderMcpOptions>? configureIdp = null,
         Action<SparkIdentityProviderOptions>? configureProvider = null)
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             McpAccountHost.Models(),
             configureServices: services =>
             {

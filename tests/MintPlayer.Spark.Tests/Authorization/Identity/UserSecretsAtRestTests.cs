@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// store, a restart over the persisted Raven key ring, legacy plaintext, the backfill's idempotence,
 /// the unreadable-key rule, and the token path CodeCoverage's GitHub refresh uses.
 /// </summary>
-public class UserSecretsAtRestTests : SparkTestDriver
+public class UserSecretsAtRestTests : RavenSparkTestDriver
 {
     /// <summary>
     /// A container resolving Identity over the test store with Spark's own Data Protection wiring —
@@ -31,10 +31,12 @@ public class UserSecretsAtRestTests : SparkTestDriver
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Spark:DataProtection:ApplicationName"] = applicationName,
-            ["Spark:DataProtection:Storage"] = "RavenDb",
+            ["Spark:DataProtection:Storage"] = "Store",
         }).Build());
         services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = "Production", ContentRootPath = Path.GetTempPath() });
         services.AddSingleton(Store);
+
+        services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
         // The key ring and the sessions come from the RavenDB provider (#551 D20).
         services.AddRavenDbSessions();
         services.AddLogging();

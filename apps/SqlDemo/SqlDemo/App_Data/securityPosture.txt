@@ -1,0 +1,31 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | c6fc3af07823
+
+## Reachable without signing in (expanded)
+Query/Author
+Query/Book
+Read/Author
+Read/Book
+
+## Granted to @anonymous
+Anonymous visitors | grant | QueryRead/Author | 5a1dffff-0000-4000-8000-000000000001 | app
+Anonymous visitors | grant | QueryRead/Book | 5a1dffff-0000-4000-8000-000000000002 | app
+
+## Rights
+Administrators | grant | History/Book | 5a1dffff-0000-4000-8000-000000000023 | app
+Administrators | grant | QueryReadEditNewDelete/Author | 5a1dffff-0000-4000-8000-000000000021 | app
+Administrators | grant | QueryReadEditNewDelete/Book | 5a1dffff-0000-4000-8000-000000000022 | app
+Signed-in users | grant | QueryRead/Author | 5a1dffff-0000-4000-8000-000000000011 | app
+Signed-in users | grant | QueryRead/Book | 5a1dffff-0000-4000-8000-000000000012 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+
+## Inert: libraries switched off in "libraries"
+(nothing)

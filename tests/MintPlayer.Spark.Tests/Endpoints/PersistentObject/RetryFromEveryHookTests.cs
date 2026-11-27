@@ -55,7 +55,7 @@ using Po = Abstractions.PersistentObject;
 /// </para>
 /// </remarks>
 public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<RetryFromEveryHookTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<RetryFromEveryHookTests.Host>, IDisposable
 {
     private static readonly Guid ProbeTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000001");
     private static readonly Guid LineTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000002");
@@ -226,7 +226,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
         }
 
         protected override SparkEndpointFactory<RetryProbeContext> CreateFactory() => new(
-            Store,
+            Store.AsSparkTestDatabase(),
             [ProbeModel(), LineModel(), ReadModel()],
             configureServices: services =>
             {

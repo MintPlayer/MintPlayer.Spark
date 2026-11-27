@@ -3,7 +3,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Services;
 
@@ -20,7 +20,7 @@ internal sealed partial class InstallationTokenContributor : IOidcClientCredenti
     public const string TargetClaim = "installation_target";
     public const string AppClaim = "spark_app";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
 
     public async Task<OidcClientCredentialsContribution?> ContributeAsync(OidcClientCredentialsRequest request, CancellationToken cancellationToken)
@@ -34,7 +34,7 @@ internal sealed partial class InstallationTokenContributor : IOidcClientCredenti
         var unknown = OidcClientCredentialsContribution.Refuse("invalid_grant", "Unknown, suspended or removed installation.");
         if (!AppInstallationManager.IsInstallationId(id))
             return unknown;
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var installation = await session.LoadAsync<AppInstallation>(AppInstallation.IdFor(id).Value, cancellationToken);
         if (installation is null || installation.Suspended)
             return unknown;

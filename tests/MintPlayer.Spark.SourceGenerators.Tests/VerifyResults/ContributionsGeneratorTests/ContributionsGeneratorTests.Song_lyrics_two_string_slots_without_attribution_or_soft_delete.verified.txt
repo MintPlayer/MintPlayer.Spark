@@ -88,9 +88,12 @@ namespace TestApp
         /// <summary>Copied from <see cref="global::TestApp.Lyrics.Text"/>.</summary>
         public string Text { get; set; } = "";
 
-        /// <summary><c>{targetId}/LyricsContributions/{Language}/{Script}/User/{userId}</c>; the user id keeps its own slashes.</summary>
+        /// <summary>The lower-case prefix every id of this type starts with: its collection name and a slash.</summary>
+        public const string CollectionPrefix = "songlyricscontributions/";
+
+        /// <summary><c>{collection}/{targetId}/LyricsContributions/{Language}/{Script}/User/{userId}</c>; the user id keeps its own slashes.</summary>
         public static string GetId(string targetId, string language, string script, string userId)
-            => (targetId + "/LyricsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script) + "/User/" + userId).ToLowerInvariant();
+            => (CollectionPrefix + targetId + "/LyricsContributions/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script) + "/User/" + userId).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Language, Script, ContributorId);
     }
@@ -133,9 +136,12 @@ namespace TestApp
         /// <summary>Copied from <see cref="global::TestApp.Lyrics.Text"/>.</summary>
         public string Text { get; set; } = "";
 
-        /// <summary><c>{targetId}/Lyrics/{Language}/{Script}</c>.</summary>
+        /// <summary>The lower-case prefix every id of this type starts with: its collection name and a slash.</summary>
+        public const string CollectionPrefix = "songlyricscurrents/";
+
+        /// <summary><c>{collection}/{targetId}/Lyrics/{Language}/{Script}</c>.</summary>
         public static string GetId(string targetId, string language, string script)
-            => (targetId + "/Lyrics/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script)).ToLowerInvariant();
+            => (CollectionPrefix + targetId + "/Lyrics/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(language) + "/" + global::MintPlayer.Spark.Contributions.ContributionSlotFormat.Format(script)).ToLowerInvariant();
 
         string global::MintPlayer.Spark.Abstractions.IHasNaturalId.GetId() => GetId(TargetId, Language, Script);
     }
@@ -178,9 +184,11 @@ namespace TestApp
         public override string ShapeHash => Shape;
 
         /// <inheritdoc />
-        public override string ContributionPrefix(string targetId) => targetId + "/LyricsContributions/";
+        public override string ContributionCollectionPrefix => global::TestApp.SongLyricsContribution.CollectionPrefix;
         /// <inheritdoc />
-        public override string CurrentPrefix(string targetId) => targetId + "/Lyrics/";
+        public override string ContributionPrefix(string targetId) => global::TestApp.SongLyricsContribution.CollectionPrefix + targetId.ToLowerInvariant() + "/lyricscontributions/";
+        /// <inheritdoc />
+        public override string CurrentPrefix(string targetId) => global::TestApp.SongLyricsCurrent.CollectionPrefix + targetId.ToLowerInvariant() + "/lyrics/";
 
         /// <inheritdoc />
         public override global::System.Collections.Generic.IReadOnlyList<global::TestApp.Lyrics> GetRows(global::TestApp.Song target)

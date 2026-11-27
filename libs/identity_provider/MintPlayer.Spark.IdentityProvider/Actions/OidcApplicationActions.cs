@@ -5,8 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -24,7 +22,7 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 /// </remarks>
 public partial class OidcApplicationActions : DefaultPersistentObjectActions<OidcApplication>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IAccessControl accessControl;
 
@@ -32,7 +30,7 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     public const string ManageAllResource = "ManageAll/IdentityProvider";
 
     /// <summary>Every application, narrowed per caller by <see cref="GetRowFilterAsync"/>.</summary>
-    public IRavenQueryable<OidcApplication> Applications() => session.Query<OidcApplication>();
+    public IQueryable<OidcApplication> Applications() => session.Query<OidcApplication>();
 
     public override async Task<Expression<Func<OidcApplication, bool>>?> GetRowFilterAsync(string action)
     {

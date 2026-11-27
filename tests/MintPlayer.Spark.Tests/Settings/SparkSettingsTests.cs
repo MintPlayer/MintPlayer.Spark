@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Settings;
 /// value never throws; the snapshot is refreshed after the cache duration (a fake clock) and at once on
 /// the instance that invalidates it; the seeder is idempotent and never writes <c>Value</c>.
 /// </summary>
-public class SparkSettingsTests : SparkTestDriver
+public class SparkSettingsTests : RavenSparkTestDriver
 {
     public static class StSettings
     {
@@ -51,7 +51,7 @@ public class SparkSettingsTests : SparkTestDriver
 
     private SparkSettings Service(Dictionary<string, string?>? configuration = null, TimeProvider? clock = null, ILogger<SparkSettings>? logger = null)
         => new(
-            Store,
+            Store.AsSparkStore(),
             Catalog(),
             Options.Create(new SparkSettingsOptions()),
             logger ?? NullLogger<SparkSettings>.Instance,
@@ -187,7 +187,7 @@ public class SparkSettingsTests : SparkTestDriver
     public async Task The_seeder_writes_one_document_per_key_is_idempotent_and_never_touches_Value()
     {
         var catalog = Catalog();
-        var seeder = new SettingsSeeder(Store, catalog, Service(), NullLogger<SettingsSeeder>.Instance);
+        var seeder = new SettingsSeeder(Store.AsSparkStore(), catalog, Service(), NullLogger<SettingsSeeder>.Instance);
 
         (await seeder.SeedAsync(CancellationToken.None)).Should().Be(3);
         await StoreValueAsync(StSettings.MaxPages.Key, "25");

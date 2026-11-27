@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 /// D32(2) spike: which raw session deletes raise <c>OnBeforeDelete</c>? The soft-delete guard can only
 /// refuse what the event reports.
 /// </summary>
-public class Issue467RawDeleteEventSpikeTests : SparkTestDriver
+public class Issue467RawDeleteEventSpikeTests : RavenSparkTestDriver
 {
     private class Widget
     {

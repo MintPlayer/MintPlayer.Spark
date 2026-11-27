@@ -42,7 +42,7 @@ Nothing is exposed until a type opts in, in its model JSON: `"agentPermissions":
 
 Generic tools: `discover`, `describe`, `query`, `get`, and the writes `propose_changes` → `apply_changes`
 (signed-in callers with `Write`; plans in the `McpPlans` collection, which needs document expiration, enabled by
-`UseSpark()`). A plan's saves and deletes commit in one RavenDB transaction or not at all; a custom action is a plan
+`UseSpark()`). A plan's saves and deletes commit in one store transaction or not at all; a custom action is a plan
 of its own. Your own tools use checked services only
 (`IDatabaseAccess` without its `…UncheckedAsync` methods, `IQueryExecutor`, `IPermissionService`; analyzer
 SPARK050 flags a raw RavenDB session) and answer through `SparkMcpResult` (`Json`, `Json(note, value)`, `Rows`, `Text`,

@@ -43,6 +43,34 @@ internal sealed partial class RavenIndexDeployment : ISparkIndexDeployment
                 Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
             }
         }
+
+        DeployViews(assemblies, deploymentFilter);
+    }
+
+    /// <summary>
+    /// The <see cref="Abstractions.Views.SparkView{TRow}"/> declarations (#536 D32), rendered as static indexes. A view
+    /// that a native index of the same name shadows is skipped, as the catalog skips it.
+    /// </summary>
+    private void DeployViews(IReadOnlyList<Assembly> assemblies, Func<Type, bool>? deploymentFilter)
+    {
+        var native = assemblies.SelectMany(DeployableIndexTypes).Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var views = assemblies.SelectMany(Abstractions.Views.SparkViewEntries.ViewTypes)
+                .Where(t => deploymentFilter?.Invoke(t) != false)
+                .Select(Indexes.RavenViewIndexes.Render)
+                .Where(task => !native.Contains(task.IndexName))
+                .ToList();
+            if (views.Count == 0)
+                return;
+
+            IndexCreation.CreateIndexes(views, store);
+            Console.WriteLine($"RavenDB indexes created/updated from {views.Count} Spark view(s): {string.Join(", ", views.Select(v => v.IndexName))}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating RavenDB indexes from Spark views: {ex.Message}");
+        }
     }
 
     /// <summary>

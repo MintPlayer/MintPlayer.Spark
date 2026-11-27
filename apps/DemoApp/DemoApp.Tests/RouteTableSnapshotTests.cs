@@ -12,7 +12,7 @@ namespace DemoApp.Tests;
 /// See <see cref="RouteTableSnapshot"/> for what a line records; set <c>SPARK_UPDATE_ROUTE_SNAPSHOT=1</c>
 /// to accept an intended change, then review the fixture diff like code.
 /// </remarks>
-public class RouteTableSnapshotTests : SparkTestDriver
+public class RouteTableSnapshotTests : RavenSparkTestDriver
 {
     [Fact]
     public Task Route_table_matches_the_committed_snapshot()

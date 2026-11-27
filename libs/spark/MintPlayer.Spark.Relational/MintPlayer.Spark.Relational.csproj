@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<IsPackable>true</IsPackable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Relational</PackageId>
+		<Version>0.0.0-PLACEHOLDER</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The relational core of MintPlayer.Spark's SQL providers: a table per entity mapped by EF Core from the Spark model, the unit of work, versions, child and join tables, and constraint errors as validation messages. Use it through MintPlayer.Spark.SqlServer or MintPlayer.Spark.PostgreSql.</Description>
+		<PackageTags>low-code;framework;efcore;relational;storage-provider</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<!--
+	  #536 D2: one relational core, two dialects. Like the other providers it builds on MintPlayer.Spark.Abstractions only
+	  (D34); the dialect packages add the EF provider and the database's own error codes.
+	-->
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="11.0.0" />
+		<!-- Revisions (#536 S8, O12) hold the document as RavenDB and the in-memory store serialize it: Newtonsoft.Json (MIT). -->
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<Compile Include="..\Shared\Documents\*.cs" Link="Shared\%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.SqlServer" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.PostgreSql" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Relational.Tests" />
+		<!-- The E2E host promotes its seeded admin through a store of its own over the app's database (SqlDemo). -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.E2E.Tests" />
+	</ItemGroup>
+
+</Project>

@@ -63,7 +63,7 @@ public sealed class ErRepoRedirect(IAsyncDocumentSession session) : ISparkEntity
 /// answers exactly as a missing one does, with no <c>Location</c> and nothing of the repository in the page, while a
 /// public one is a 301 to its page.
 /// </summary>
-public class SparkEntityRedirectSecurityTests : SparkTestDriver
+public class SparkEntityRedirectSecurityTests : RavenSparkTestDriver
 {
     private static readonly Guid RepoTypeId = Guid.Parse("e7e00000-0000-4000-8000-00000000e001");
 
@@ -74,7 +74,7 @@ public class SparkEntityRedirectSecurityTests : SparkTestDriver
     {
         await base.InitializeAsync();
         factory = new SparkEndpointFactory<ErContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [RepoModel()],
             configureServices: services => services.AddScoped<ErRepoActions>(),
             configureSpark: spark => spark.AddPrerendering().AddEntityRedirect<ErRepoRedirect>(),

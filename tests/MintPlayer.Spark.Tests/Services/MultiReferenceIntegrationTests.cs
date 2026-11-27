@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
 /// End-to-end coverage for the list-of-references feature through the real
-/// <see cref="IDatabaseAccess"/> pipeline (SparkTestDriver in-memory RavenDB +
+/// <see cref="IDatabaseAccess"/> pipeline (RavenSparkTestDriver in-memory RavenDB +
 /// SparkEndpointFactory host). Exercises the three .NET pieces together:
 /// <list type="bullet">
 ///   <item>ReferenceResolver includes + resolves a breadcrumb per id in the array.</item>
@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Tests.Services;
 ///   <item>EntityMapper inverse path persists an id array back onto the <c>List&lt;string&gt;</c> property.</item>
 /// </list>
 /// </summary>
-public class MultiReferenceIntegrationTests : SparkTestDriver
+public class MultiReferenceIntegrationTests : RavenSparkTestDriver
 {
     private static readonly Guid TaggedTypeId = Guid.Parse("aa11bb22-cc33-dd44-ee55-ff6677889900");
     private static readonly Guid TagTypeId = Guid.Parse("bb22cc33-dd44-ee55-ff66-778899001122");
@@ -27,7 +27,7 @@ public class MultiReferenceIntegrationTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<MultiRefContext>(Store, [TagModel(), TaggedModel()]);
+        _factory = new SparkEndpointFactory<MultiRefContext>(Store.AsSparkTestDatabase(), [TagModel(), TaggedModel()]);
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }
 

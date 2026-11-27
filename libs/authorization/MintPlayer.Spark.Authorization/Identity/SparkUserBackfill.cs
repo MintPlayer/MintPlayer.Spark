@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Authorization.Identity;
@@ -35,6 +35,10 @@ public sealed record SparkUserBackfillResult(int Scanned, int SecretsProtected, 
 /// otherwise — a last-modified date is not a creation date, and a guess would be worse than "unknown".
 /// </para>
 /// <para>
+/// <b>RavenDB only</b> (#536): the documents it rewrites predate every other provider, so on SQL Server, PostgreSQL
+/// and in memory a pass reads nothing and reports <c>Skipped</c>.
+/// </para>
+/// <para>
 /// Runs once in the background after the host starts (<see cref="SparkUserBackfillHostedService{TUser}"/>);
 /// callable directly for tests and maintenance.
 /// </para>
@@ -47,11 +51,11 @@ public sealed class SparkUserBackfill<TUser>
 
     private const int BatchSize = 256;
 
-    private readonly IDocumentStore documentStore;
+    private readonly ISparkStore documentStore;
     private readonly IServiceProvider services;
     private readonly ILogger<SparkUserBackfill<TUser>> logger;
 
-    public SparkUserBackfill(IDocumentStore documentStore, IServiceProvider services, ILogger<SparkUserBackfill<TUser>> logger)
+    public SparkUserBackfill(ISparkStore documentStore, IServiceProvider services, ILogger<SparkUserBackfill<TUser>> logger)
     {
         this.documentStore = documentStore;
         this.services = services;
@@ -60,9 +64,12 @@ public sealed class SparkUserBackfill<TUser>
 
     public async Task<SparkUserBackfillResult> RunAsync(CancellationToken cancellationToken = default)
     {
-        using (var check = documentStore.OpenAsyncSession())
+        if (documentStore.ProviderName != SparkStoreProviders.RavenDb)
+            return new(0, 0, 0, 0, Skipped: true);
+
+        using (var check = documentStore.OpenSession())
         {
-            if (await check.Advanced.ExistsAsync(MarkerId, cancellationToken))
+            if (await check.ExistsAsync(typeof(SparkUserBackfillMarker), MarkerId, cancellationToken))
                 return new(0, 0, 0, 0, Skipped: true);
         }
 
@@ -72,14 +79,10 @@ public sealed class SparkUserBackfill<TUser>
         int scanned = 0, protectedCount = 0, createdCount = 0, conflicts = 0;
         var ids = new List<string>();
 
-        using (var session = documentStore.OpenAsyncSession())
+        using (var session = documentStore.OpenSession())
         {
-            await using var stream = await session.Advanced.StreamAsync(session.Query<TUser>(), cancellationToken);
-            while (await stream.MoveNextAsync())
-            {
-                if (stream.Current.Id is { } id)
-                    ids.Add(id);
-            }
+            await foreach (var row in session.StreamAsync(session.Query<TUser>(), cancellationToken))
+                ids.Add(row.Id);
         }
 
         foreach (var batch in ids.Chunk(BatchSize))
@@ -87,8 +90,8 @@ public sealed class SparkUserBackfill<TUser>
             foreach (var id in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var session = documentStore.OpenAsyncSession();
-                session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+                using var session = documentStore.OpenSession();
+                session.OptimisticConcurrency = true;
 
                 var user = await session.LoadAsync<TUser>(id, cancellationToken);
                 if (user is null)
@@ -97,7 +100,7 @@ public sealed class SparkUserBackfill<TUser>
 
                 var secrets = protector.ProtectLegacySecrets(user);
                 var created = false;
-                if (user.CreatedAtUtc is null && await OldestRevisionAtAsync(session, id, cancellationToken) is { } at)
+                if (user.CreatedAtUtc is null && await OldestRevisionAtAsync((IAsyncDocumentSession)session.Native, id, cancellationToken) is { } at)
                 {
                     user.CreatedAtUtc = at;
                     created = true;
@@ -112,7 +115,7 @@ public sealed class SparkUserBackfill<TUser>
                     if (secrets) protectedCount++;
                     if (created) createdCount++;
                 }
-                catch (Raven.Client.Exceptions.ConcurrencyException)
+                catch (SparkStoreConcurrencyException)
                 {
                     conflicts++;
                 }
@@ -121,7 +124,7 @@ public sealed class SparkUserBackfill<TUser>
 
         if (conflicts == 0)
         {
-            using var marker = documentStore.OpenAsyncSession();
+            using var marker = documentStore.OpenSession();
             await marker.StoreAsync(new SparkUserBackfillMarker
             {
                 CompletedAtUtc = DateTime.UtcNow,

@@ -2,7 +2,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Moderation.Documents;
 
-// Moderation's data are plain RavenDB documents behind /spark/moderation/* (#460, T6), not persistent
+// Moderation's data are plain documents of any Spark store (#536) behind /spark/moderation/* (#460, T6), not persistent
 // objects: an add-on assembly cannot own model JSON or security.json entries. Ids are deterministic
 // wherever "at most one" is a rule (one vote per voter and target, one flag per flagger and target,
 // one reversal per original entry), so the rule is enforced by the id, not by a query.

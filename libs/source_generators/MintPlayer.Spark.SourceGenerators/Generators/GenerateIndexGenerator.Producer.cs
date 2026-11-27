@@ -26,9 +26,14 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
     private readonly IEnumerable<GeneratedIndexInfo> entities;
     private readonly bool knowsSpark;
+    private readonly bool knowsRaven;
+    private readonly bool knowsViews;
     private readonly List<string> languages;
     private readonly HashSet<string> claimedEntities;
 
+    /// <param name="knowsSpark">Whether anything is emitted: the application, with a native index or a view to write.</param>
+    /// <param name="knowsRaven">Whether the native RavenDB index (and <c>[FromIndex]</c>) is emitted.</param>
+    /// <param name="knowsViews">Whether the neutral view is emitted; without RavenDB it claims the default.</param>
     /// <param name="claimedEntities">
     /// Entities (fully-qualified, <c>global::</c>-prefixed) that a hand-written index claims with
     /// <c>[DefaultIndex]</c>; their generated index is emitted without the marker (D5).
@@ -36,6 +41,8 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     public GenerateIndexProducer(
         IEnumerable<GeneratedIndexInfo> entities,
         bool knowsSpark,
+        bool knowsRaven,
+        bool knowsViews,
         List<string> languages,
         HashSet<string> claimedEntities,
         string rootNamespace)
@@ -43,6 +50,8 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     {
         this.entities = entities;
         this.knowsSpark = knowsSpark;
+        this.knowsRaven = knowsRaven;
+        this.knowsViews = knowsViews;
         this.languages = languages;
         this.claimedEntities = claimedEntities;
     }
@@ -220,8 +229,16 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
                 if (i > 0) writer.WriteLine();
                 WriteIndexEntity(writer, list[i]);
-                writer.WriteLine();
-                WriteIndex(writer, list[i], cancellationToken);
+                if (knowsRaven)
+                {
+                    writer.WriteLine();
+                    WriteIndex(writer, list[i], cancellationToken);
+                }
+                if (knowsViews)
+                {
+                    writer.WriteLine();
+                    WriteView(writer, list[i], cancellationToken);
+                }
             }
         }
     }
@@ -231,10 +248,12 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
 
     private void WriteIndexEntity(IndentedTextWriter writer, GeneratedIndexInfo info)
     {
-        writer.WriteLine($"[{SparkAbstractions}.FromIndexAttribute(typeof({info.IndexName}))]");
+        // [FromIndex] binds the row to the native index; a view names its row type itself.
+        if (knowsRaven)
+            writer.WriteLine($"[{SparkAbstractions}.FromIndexAttribute(typeof({info.IndexName}))]");
         using (writer.OpenBlock($"public partial class {info.IndexEntityName}"))
         {
-            // Declared but never assigned in the map: RavenDB supplies the document id for an entity index.
+            // Never assigned in the native map (RavenDB supplies the document id); the view binds it with IdOf.
             writer.WriteLine("public string? Id { get; set; }");
 
             foreach (var property in Fields(info))
@@ -298,6 +317,52 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
             writer.WriteLine("partial void OnInitialize();");
         }
     }
+
+    /// <summary>
+    /// The same projection as a provider-neutral <c>SparkView</c> (#536 D32), under the index's name. On RavenDB the
+    /// native index above shadows it (it carries the analyzers and companions' indexing); a provider without native
+    /// indexes renders this one. The map is the index's, read from <c>s.Set&lt;T&gt;()</c>, with the id through
+    /// <c>s.IdOf</c>. Literals only: a view body takes no parameters.
+    /// </summary>
+    /// <remarks>
+    /// With RavenDB, no <c>[DefaultIndex]</c>: the native index beside it holds the claim and shadows the view. Without
+    /// it (#536 M4d), the view is all there is and claims the default as the index would have.
+    /// </remarks>
+    private void WriteView(IndentedTextWriter writer, GeneratedIndexInfo info, CancellationToken cancellationToken)
+    {
+        if (!knowsRaven && !string.IsNullOrEmpty(info.Description))
+            writer.WriteLine($"[global::System.ComponentModel.Description({Quote(info.Description!)})]");
+        if (!knowsRaven && !claimedEntities.Contains(info.EntityFullName))
+            writer.WriteLine($"[{SparkAbstractions}.DefaultIndexAttribute]");
+        using (writer.OpenBlock($"public sealed partial class {info.IndexName}{ViewSuffix} : {SparkViews}.SparkView<{info.IndexEntityName}>"))
+        {
+            writer.WriteLine($"public override string Name => {Quote(info.IndexName)};");
+            writer.WriteLine();
+            writer.WriteLine($"public override global::System.Linq.Expressions.Expression<global::System.Func<{SparkViews}.ISparkViewSource, global::System.Linq.IQueryable<{info.IndexEntityName}>>> Map => {ViewSource} =>");
+            writer.Indent++;
+            writer.WriteLine($"from {info.ItemVariable} in {ViewSource}.Set<{info.EntityFullName}>()");
+            writer.WriteLine($"select new {info.IndexEntityName}()");
+            writer.WriteLine("{");
+            writer.Indent++;
+            writer.WriteLine($"Id = {ViewSource}.IdOf({info.ItemVariable}),");
+            foreach (var property in Fields(info))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                writer.WriteLine($"{property.Name} = {property.MapExpression},");
+            }
+            writer.Indent--;
+            writer.WriteLine("};");
+            writer.Indent--;
+        }
+    }
+
+    /// <summary>The view class is the index's name plus this; its <c>Name</c> is the index's, so the two bind as one.</summary>
+    internal const string ViewSuffix = "_View";
+
+    private const string SparkViews = "global::MintPlayer.Spark.Abstractions.Views";
+
+    /// <summary>The view's source parameter, named so no entity's item variable can collide with it.</summary>
+    private const string ViewSource = "__spark";
 
     /// <summary>
     /// Attribute lines for one field declaration. A sort companion always carries

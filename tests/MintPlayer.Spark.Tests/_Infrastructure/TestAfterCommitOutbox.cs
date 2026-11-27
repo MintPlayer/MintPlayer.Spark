@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Tests._Infrastructure;
 
@@ -12,7 +11,10 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// <see cref="DrainAsync"/> runs the committed ones through the framework's dispatcher. A refused or
 /// cancelled write commits no document, so its interceptors never run — the property under test.
 /// </summary>
-/// <remarks>Register with <see cref="AddTestAfterCommitOutbox"/>; singleton state, scoped outbox.</remarks>
+/// <remarks>
+/// Register with <see cref="TestAfterCommitOutboxExtensions.AddTestAfterCommitOutbox"/>; singleton state, scoped outbox.
+/// Works on every store (#536): the unit of work is a registered stored type, and the store picks its id.
+/// </remarks>
 public sealed class TestAfterCommitOutbox
 {
     private readonly ConcurrentQueue<string> pending = new();
@@ -29,11 +31,11 @@ public sealed class TestAfterCommitOutbox
     public async Task<int> DrainAsync(IServiceProvider services)
     {
         var ran = 0;
-        var store = services.GetRequiredService<IDocumentStore>();
+        var store = services.GetRequiredService<ISparkStore>();
         while (pending.TryDequeue(out var id))
         {
             SparkAfterCommitWork? work;
-            using (var session = store.OpenAsyncSession())
+            using (var session = store.OpenSession())
                 work = (await session.LoadAsync<Stored>(id))?.Work;
             if (work is null)
                 continue;
@@ -54,13 +56,14 @@ public sealed class TestAfterCommitOutbox
     }
 }
 
-internal sealed class TestAfterCommitOutboxSeam(TestAfterCommitOutbox state) : ISparkAfterCommitOutbox
+/// <summary>Stores each unit of work in the scope's session, which the write saves through (#536 D50).</summary>
+internal sealed class TestAfterCommitOutboxSeam(TestAfterCommitOutbox state, ISparkSession session) : ISparkAfterCommitOutbox
 {
-    public async Task EnqueueAsync(object session, SparkAfterCommitWork work, CancellationToken cancellationToken = default)
+    public async Task EnqueueAsync(SparkAfterCommitWork work, CancellationToken cancellationToken = default)
     {
-        var id = $"TestOutbox/{Guid.NewGuid():N}";
-        await ((IAsyncDocumentSession)session).StoreAsync(new TestAfterCommitOutbox.Stored { Work = work }, id, cancellationToken);
-        state.Add(id);
+        var stored = new TestAfterCommitOutbox.Stored { Work = work };
+        await session.StoreAsync(stored, cancellationToken);
+        state.Add(session.GetId(stored) ?? throw new InvalidOperationException("The store assigned the outbox entry no id."));
     }
 }
 
@@ -70,6 +73,7 @@ public static class TestAfterCommitOutboxExtensions
     {
         services.AddSingleton<TestAfterCommitOutbox>();
         services.AddScoped<ISparkAfterCommitOutbox, TestAfterCommitOutboxSeam>();
+        services.AddSparkStoredType<TestAfterCommitOutbox.Stored>();
         return services;
     }
 }

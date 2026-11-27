@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Expiration;
 /// ~20 findings. Sizes are measured, not estimated; the numbers are written to the test output and
 /// recorded in the PRD (§12 "Spike S6").
 /// </summary>
-public class ExpirationStorageSpikeTests(ITestOutputHelper output) : SparkTestDriver
+public class ExpirationStorageSpikeTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     [Fact]
     public async Task A_page_result_with_twenty_findings_and_a_2000_page_run_stay_small()

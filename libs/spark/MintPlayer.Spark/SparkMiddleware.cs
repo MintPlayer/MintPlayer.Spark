@@ -108,6 +108,16 @@ public static class SparkExtensions
         services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
             options.ModelBinderProviders.Insert(0, new Services.SparkIdModelBinderProvider()));
 
+        // The command-line commands (#536 D34): keyed by their flag, run by app.RunSparkCommandIfRequestedAsync(args).
+        Commands.SparkCoreCommands.AddSparkCoreCommands(services);
+
+        // The lease every provider gets over its atomic values (#536 S6/S15): migrations, and later cron, messaging and
+        // dashboards. A provider registers ISparkAtomicValues; nothing here touches a store until a lease is taken.
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(services, TimeProvider.System);
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<Abstractions.Storage.ISparkStoreLock, SparkStoreLock>(services);
+        // Background services wait on it before their first store access; UseSpark completes it after the schema (D41).
+        Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
+
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.
@@ -285,7 +295,8 @@ public static class SparkExtensions
             // #551 D20: an index binding in the model, on a store without indexes.
             .Concat(Services.SparkIndexBindingStartupCheck.Unmet(
                 app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
-                app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>()))
+                app.ApplicationServices.GetService<MintPlayer.Spark.Abstractions.Storage.ISparkStore>(),
+                Services.SparkViewCatalog.ViewNames(app.ApplicationServices.GetRequiredService<SparkModuleRegistry>().ResolveIndexAssemblies())))
             // #700: malformed fileOptions, a file attribute without spark.AddFiles(), files in AsDetail rows.
             .Concat(Services.SparkFileAttributeStartupCheck.Unmet(
                 app.ApplicationServices.GetRequiredService<Services.IModelLoader>(),
@@ -464,6 +475,21 @@ public static class SparkExtensions
                 await ClientResult.Retry(client, ex).ExecuteAsync(context);
             }
         });
+
+        // The schema first (#536 D33): applied, or refused while pending with ApplyMigrations=false. A store without a
+        // schema (RavenDB, in-memory) registers no migrator and skips it.
+        // Then the background services waiting on ISparkStoreReadiness may start (D41); they see the failure too.
+        var readiness = app.ApplicationServices.GetService<Abstractions.Storage.SparkStoreReadiness>();
+        try
+        {
+            Services.SparkSchemaStartup.RunAsync(app.ApplicationServices, CancellationToken.None).GetAwaiter().GetResult();
+            readiness?.SetReady();
+        }
+        catch (Exception ex)
+        {
+            readiness?.SetFailed(ex);
+            throw;
+        }
 
         // Create RavenDB indexes
         CreateSparkIndexes(app, registry.ResolveIndexAssemblies(), registry.IndexDeploymentFilter);
@@ -791,6 +817,13 @@ public static class SparkExtensions
         IApplicationBuilder app,
         IReadOnlyList<Assembly> assemblies,
         Func<Type, bool>? deploymentFilter)
+        => DeploySparkIndexes(app.ApplicationServices, assemblies, deploymentFilter);
+
+    /// <summary>Also <c>--spark-migrate</c>'s (#536 D33): a data migration may query an index the release adds.</summary>
+    internal static void DeploySparkIndexes(
+        IServiceProvider services,
+        IReadOnlyList<Assembly> assemblies,
+        Func<Type, bool>? deploymentFilter)
     {
         if (assemblies.Count == 0)
         {
@@ -801,12 +834,12 @@ public static class SparkExtensions
         // Catalog population is a correctness precondition, before any database call: the model-hash check runs
         // straight after this and must see a complete catalog even when the store is unreachable and the deployment
         // below fails. Freezing runs the [DefaultIndex] validation, so an ambiguous default fails startup here.
-        var indexCatalog = app.ApplicationServices.GetRequiredService<IIndexCatalog>();
+        var indexCatalog = services.GetRequiredService<IIndexCatalog>();
         indexCatalog.RegisterAssemblies(assemblies);
         indexCatalog.Freeze();
 
         // The provider writes the definitions (#551 D20); a store without indexes has nothing to deploy. A deployment
         // filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows only this step.
-        app.ApplicationServices.GetService<Abstractions.Storage.ISparkIndexDeployment>()?.Deploy(assemblies, deploymentFilter);
+        services.GetService<Abstractions.Storage.ISparkIndexDeployment>()?.Deploy(assemblies, deploymentFilter);
     }
 }

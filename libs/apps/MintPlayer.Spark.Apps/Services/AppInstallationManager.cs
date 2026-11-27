@@ -5,9 +5,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Services;
 
@@ -45,7 +43,8 @@ internal sealed partial class AppInstallationManager
     public const string UnsuspendEvent = "installation.unsuspend";
     public const string PermissionsAcceptedEvent = "installation.new_permissions_accepted";
 
-    [Inject] private readonly IDocumentStore store;
+    /// <summary>The request scope's session: each call is one unit of work, which the scheduler joins (#536 D50).</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly WebhookOwnerResolver owners;
     [Inject] private readonly WebhookScheduler scheduler;
     [Inject] private readonly Catalog.WebhookEventCatalog catalog;
@@ -58,7 +57,6 @@ internal sealed partial class AppInstallationManager
     {
         if (slug is null || !SlugShape.IsMatch(slug))
             return WebhookResult<AppInstallPrompt>.NotFound();
-        using var session = store.OpenAsyncSession();
         if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug).Value, cancellationToken) is not { } app)
             return WebhookResult<AppInstallPrompt>.NotFound();
 
@@ -87,8 +85,7 @@ internal sealed partial class AppInstallationManager
         if (!await owners.CanManageAsync(target, userId, cancellationToken))
             return WebhookResult<AppInstalled>.NotFound();
 
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        session.OptimisticConcurrency = true;
         if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(input.Slug).Value, cancellationToken) is not { } app
             || (!app.Public && app.Owner != target))
             return WebhookResult<AppInstalled>.NotFound();
@@ -120,13 +117,13 @@ internal sealed partial class AppInstallationManager
         registry.InstallationIds.Add(installation.Id.Value);
         // The App document is part of the uniqueness check: two installs of one App on one target race on both.
         app.InstallationIds.Add(installation.Id.Value);
-        await NotifyAppAsync(session, app, installation, CreatedEvent, userId, cancellationToken);
+        await NotifyAppAsync(app, installation, CreatedEvent, userId, cancellationToken);
 
         try
         {
             await session.SaveChangesAsync(cancellationToken);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return WebhookResult<AppInstalled>.Conflict("The App or the target changed meanwhile; try again.");
         }
@@ -144,9 +141,8 @@ internal sealed partial class AppInstallationManager
         var target = new WebhookOwner(targetKind, targetKey);
         if (!await owners.CanManageAsync(target, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<AppInstallationView>>.NotFound();
-        using var session = store.OpenAsyncSession();
         var registry = await session.LoadAsync<WebhookOwnerRegistry>(WebhookOwnerRegistry.IdFor(target).Value, cancellationToken);
-        return WebhookResult<IReadOnlyList<AppInstallationView>>.Ok(await ViewsAsync(session, registry?.InstallationIds ?? [], cancellationToken));
+        return WebhookResult<IReadOnlyList<AppInstallationView>>.Ok(await ViewsAsync(registry?.InstallationIds ?? [], cancellationToken));
     }
 
     /// <summary>An App's installations, to the App's managers (they need the ids for tokens).</summary>
@@ -154,11 +150,10 @@ internal sealed partial class AppInstallationManager
     {
         if (slug is null || !SlugShape.IsMatch(slug))
             return WebhookResult<IReadOnlyList<AppInstallationView>>.NotFound();
-        using var session = store.OpenAsyncSession();
         if (await session.LoadAsync<SparkApp>(SparkApp.IdFor(slug).Value, cancellationToken) is not { } app
             || !await owners.CanManageAsync(app.Owner, userId, cancellationToken))
             return WebhookResult<IReadOnlyList<AppInstallationView>>.NotFound();
-        return WebhookResult<IReadOnlyList<AppInstallationView>>.Ok(await ViewsAsync(session, app.InstallationIds, cancellationToken));
+        return WebhookResult<IReadOnlyList<AppInstallationView>>.Ok(await ViewsAsync(app.InstallationIds, cancellationToken));
     }
 
     /// <summary>
@@ -166,7 +161,7 @@ internal sealed partial class AppInstallationManager
     /// stops its events; resuming does not bring those tokens back.
     /// </summary>
     public Task<WebhookResult<AppInstallationView>> SetSuspendedAsync(string? id, bool suspended, string userId, CancellationToken cancellationToken)
-        => WithInstallationAsync(id, userId, async (session, installation, app) =>
+        => WithInstallationAsync(id, userId, async (installation, app) =>
         {
             if (installation.Suspended == suspended)
                 return WebhookResult<AppInstallationView>.Ok(View(installation, app));
@@ -174,29 +169,29 @@ internal sealed partial class AppInstallationManager
             installation.SuspendedUtc = suspended ? time.GetUtcNow().UtcDateTime : null;
             if (suspended)
                 await OidcMachineClients.WithdrawGrantAsync(session, installation.GrantId, revoke: false, cancellationToken);
-            await NotifyAppAsync(session, app, installation, suspended ? SuspendEvent : UnsuspendEvent, userId, cancellationToken);
+            await NotifyAppAsync(app, installation, suspended ? SuspendEvent : UnsuspendEvent, userId, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             return WebhookResult<AppInstallationView>.Ok(View(installation, app));
         }, cancellationToken);
 
     /// <summary>The installer accepts what the App asks for now (GitHub's "Review request").</summary>
     public Task<WebhookResult<AppInstallationView>> AcceptPermissionsAsync(string? id, string userId, CancellationToken cancellationToken)
-        => WithInstallationAsync(id, userId, async (session, installation, app) =>
+        => WithInstallationAsync(id, userId, async (installation, app) =>
         {
             if (Pending(installation, app).Count == 0)
                 return WebhookResult<AppInstallationView>.Ok(View(installation, app));
             installation.Permissions = [.. app.Permissions];
-            await NotifyAppAsync(session, app, installation, PermissionsAcceptedEvent, userId, cancellationToken);
+            await NotifyAppAsync(app, installation, PermissionsAcceptedEvent, userId, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             return WebhookResult<AppInstallationView>.Ok(View(installation, app));
         }, cancellationToken);
 
     /// <summary>Removes the installation; its grant is revoked, so every token it holds stops working.</summary>
     public Task<WebhookResult<AppInstallationView>> UninstallAsync(string? id, string userId, CancellationToken cancellationToken)
-        => WithInstallationAsync(id, userId, async (session, installation, app) =>
+        => WithInstallationAsync(id, userId, async (installation, app) =>
         {
             await RemoveAsync(session, installation, app, cancellationToken);
-            await NotifyAppAsync(session, app, installation, DeletedEvent, userId, cancellationToken);
+            await NotifyAppAsync(app, installation, DeletedEvent, userId, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             return WebhookResult<AppInstallationView>.Ok(View(installation, app));
         }, cancellationToken);
@@ -205,7 +200,7 @@ internal sealed partial class AppInstallationManager
     /// The App asks for less: each installation drops what the App no longer asks for, at once, and the tokens issued
     /// under the wider grant end. Asking for more changes nothing until the installer accepts. In the caller's session.
     /// </summary>
-    internal static async Task NarrowAsync(IAsyncDocumentSession session, SparkApp app, CancellationToken cancellationToken)
+    internal static async Task NarrowAsync(ISparkSession session, SparkApp app, CancellationToken cancellationToken)
     {
         if (app.InstallationIds.Count == 0)
             return;
@@ -222,7 +217,7 @@ internal sealed partial class AppInstallationManager
     }
 
     /// <summary>Removes every installation of an App that is being deleted (its client's grants go with the client). In the caller's session.</summary>
-    internal static async Task RemoveAllAsync(IAsyncDocumentSession session, SparkApp app, CancellationToken cancellationToken)
+    internal static async Task RemoveAllAsync(ISparkSession session, SparkApp app, CancellationToken cancellationToken)
     {
         if (app.InstallationIds.Count == 0)
             return;
@@ -233,7 +228,7 @@ internal sealed partial class AppInstallationManager
         }
     }
 
-    private static async Task RemoveAsync(IAsyncDocumentSession session, AppInstallation installation, SparkApp app, CancellationToken cancellationToken)
+    private static async Task RemoveAsync(ISparkSession session, AppInstallation installation, SparkApp app, CancellationToken cancellationToken)
     {
         await OidcMachineClients.WithdrawGrantAsync(session, installation.GrantId, revoke: true, cancellationToken);
         // Ignoring case: an installation listed before #536 is "AppInstallations/…" there, its loaded id lower case.
@@ -250,10 +245,10 @@ internal sealed partial class AppInstallationManager
         => app.Permissions.Where(p => !SparkAppManager.Covers(installation.Permissions, p)).ToList();
 
     /// <summary>
-    /// An <c>installation.*</c> event on the App's webhook (if it has an enabled one), in the session. It is sent whatever
-    /// events the App subscribed to: an App always learns where it is installed.
+    /// An <c>installation.*</c> event on the App's webhook (if it has an enabled one), in the scope's session. It is sent
+    /// whatever events the App subscribed to: an App always learns where it is installed.
     /// </summary>
-    private async Task NotifyAppAsync(IAsyncDocumentSession session, SparkApp app, AppInstallation installation, string type, string userId, CancellationToken cancellationToken)
+    private async Task NotifyAppAsync(SparkApp app, AppInstallation installation, string type, string userId, CancellationToken cancellationToken)
     {
         if (app.WebhookEndpointId is not { } ep || await session.LoadAsync<WebhookEndpoint>(WebhookEndpoint.IdFor(ep).Value, cancellationToken) is not { Enabled: true } hook)
             return;
@@ -282,31 +277,30 @@ internal sealed partial class AppInstallationManager
             CreatedUtc = now.UtcDateTime,
             ExpiresAtUtc = now.UtcDateTime + options.Value.DeliveryRetention,
         };
-        await scheduler.ScheduleAsync(session, delivery, bypassChain: false, cancellationToken);
+        await scheduler.ScheduleAsync(delivery, bypassChain: false, cancellationToken);
     }
 
     private async Task<WebhookResult<AppInstallationView>> WithInstallationAsync(
-        string? id, string userId, Func<IAsyncDocumentSession, AppInstallation, SparkApp, Task<WebhookResult<AppInstallationView>>> action, CancellationToken cancellationToken)
+        string? id, string userId, Func<AppInstallation, SparkApp, Task<WebhookResult<AppInstallationView>>> action, CancellationToken cancellationToken)
     {
         if (!IsInstallationId(id))
             return WebhookResult<AppInstallationView>.NotFound();
-        using var session = store.OpenAsyncSession();
-        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-        var installation = await session.Include<AppInstallation>(i => i.GrantId).LoadAsync<AppInstallation>(AppInstallation.IdFor(id!).Value, cancellationToken);
+        session.OptimisticConcurrency = true;
+        var installation = (await session.LoadAsync<AppInstallation>([AppInstallation.IdFor(id!).Value], [nameof(AppInstallation.GrantId)], cancellationToken)).Values.SingleOrDefault();
         if (installation is null || !await owners.CanManageAsync(installation.Target, userId, cancellationToken)
             || await session.LoadAsync<SparkApp>(SparkApp.IdFor(installation.AppSlug).Value, cancellationToken) is not { } app)
             return WebhookResult<AppInstallationView>.NotFound();
         try
         {
-            return await action(session, installation, app);
+            return await action(installation, app);
         }
-        catch (ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             return WebhookResult<AppInstallationView>.Conflict("The installation changed meanwhile; reload and try again.");
         }
     }
 
-    private async Task<IReadOnlyList<AppInstallationView>> ViewsAsync(IAsyncDocumentSession session, IReadOnlyCollection<string> ids, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<AppInstallationView>> ViewsAsync(IReadOnlyCollection<string> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0)
             return [];

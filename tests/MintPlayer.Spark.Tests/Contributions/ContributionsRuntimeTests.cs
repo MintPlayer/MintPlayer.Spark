@@ -28,9 +28,9 @@ namespace MintPlayer.Spark.Tests.Contributions;
 /// project imports <c>spark-contributions.targets</c>. Fixture names start with <c>Co</c>, because the
 /// actions resolver matches by simple name across the assembly.
 /// </remarks>
-public class ContributionsRuntimeTests : SparkTestDriver
+public class ContributionsRuntimeTests : RavenSparkTestDriver
 {
-    private static readonly Guid SongTypeId = Guid.Parse("c0d10000-0000-4000-8000-c0d100000001");
+    internal static readonly Guid SongTypeId = Guid.Parse("c0d10000-0000-4000-8000-c0d100000001");
     private static readonly Guid LyricsTypeId = Guid.Parse("c0d10000-0000-4000-8000-c0d100000002");
     private static readonly Guid ContributionTypeId = Guid.Parse("c0d10000-0000-4000-8000-c0d100000003");
     private const string SongId = "CoSongs/1";
@@ -60,7 +60,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         var probe = new CoProbe();
         var race = new CoRace(Store);
         var factory = new SparkEndpointFactory(
-            Store,
+            Store.AsSparkTestDatabase(),
             [SongModel(), LyricsModel(), ContributionModel()],
             configureServices: s =>
             {
@@ -249,7 +249,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         var current = await ReadAsync<CoSongLyricsCurrent>(CurrentId("en", "Latn"));
         current!.ContributorId.Should().Be(Bob);
         current.ContributionCount.Should().Be(2);
-        (await IdsStartingWithAsync(SongId + "/LyricsContributions/")).Should().HaveCount(2);
+        (await IdsStartingWithAsync(CoSongLyricsContributionMetadata.Instance.ContributionPrefix(SongId))).Should().HaveCount(2);
     }
 
     // ---- Q3: withdraw ---------------------------------------------------------------------------------
@@ -514,7 +514,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
 
     // ---- models ---------------------------------------------------------------------------------------
 
-    private static EntityTypeFile SongModel() => new()
+    internal static EntityTypeFile SongModel() => new()
     {
         PersistentObject = new EntityTypeDefinition
         {
@@ -530,7 +530,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         },
     };
 
-    private static EntityTypeFile LyricsModel() => new()
+    internal static EntityTypeFile LyricsModel() => new()
     {
         PersistentObject = new EntityTypeDefinition
         {
@@ -547,7 +547,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         },
     };
 
-    private static EntityTypeFile ContributionModel() => new()
+    internal static EntityTypeFile ContributionModel() => new()
     {
         PersistentObject = new EntityTypeDefinition
         {
@@ -640,7 +640,7 @@ public sealed class CoProbeBefore(CoProbe probe) : IAfterMaterialize
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
     {
         if (context.Reason == MaterializeReason.Load)
-            probe.Before(context.Entity, context.GetSession().Advanced.NumberOfRequests);
+            probe.Before(context.Entity, context.Session.AsRavenSession().Advanced.NumberOfRequests);
         return ValueTask.CompletedTask;
     }
 }
@@ -652,7 +652,7 @@ public sealed class CoProbeAfter(CoProbe probe) : IAfterMaterialize
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
     {
         if (context.Reason == MaterializeReason.Load)
-            probe.After(context.Entity, context.GetSession().Advanced.NumberOfRequests);
+            probe.After(context.Entity, context.Session.AsRavenSession().Advanced.NumberOfRequests);
         return ValueTask.CompletedTask;
     }
 }

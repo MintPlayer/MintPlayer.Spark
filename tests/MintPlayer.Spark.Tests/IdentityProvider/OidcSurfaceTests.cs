@@ -23,7 +23,7 @@ public class OidcSurfaceTests(SparkSharedDatabase database)
     [Fact]
     public async Task The_default_provider_keeps_every_flow_and_endpoint()
     {
-        await using var factory = OidcTestHost.CreateFactory(Store);
+        await using var factory = OidcTestHost.CreateFactory(Database);
         var client = factory.CreateClient();
 
         var discovery = (await client.GetFromJsonAsync<JsonObject>("/.well-known/openid-configuration"))!;
@@ -54,7 +54,7 @@ public class OidcSurfaceTests(SparkSharedDatabase database)
     [Fact]
     public async Task A_chosen_set_is_mapped_and_advertised_and_nothing_else()
     {
-        await using var factory = OidcTestHost.CreateFactory(Store, idp =>
+        await using var factory = OidcTestHost.CreateFactory(Database, idp =>
         {
             idp.Flows = SparkIdentityProviderFlows.AuthorizationCode | SparkIdentityProviderFlows.ClientCredentials;
             idp.Endpoints = SparkIdentityProviderEndpoints.Introspection | SparkIdentityProviderEndpoints.UserInfo;
@@ -101,7 +101,7 @@ public class OidcSurfaceTests(SparkSharedDatabase database)
     [InlineData(SparkIdentityProviderFlows.All, SparkIdentityProviderEndpoints.DeveloperRegistration, "Endpoints.DeveloperRegistration needs Endpoints.DeveloperPortal")]
     public void A_combination_that_cannot_work_refuses_startup(SparkIdentityProviderFlows flows, SparkIdentityProviderEndpoints endpoints, string expected)
     {
-        var act = () => OidcTestHost.CreateFactory(Store, idp =>
+        var act = () => OidcTestHost.CreateFactory(Database, idp =>
         {
             idp.Flows = flows;
             idp.Endpoints = endpoints;

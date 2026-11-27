@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// MintPlayer.Spark.Tests and contributes to coverage. Uses <see cref="SparkClient"/>, so the
 /// test body reads as domain operations (get the PO, update it) rather than hand-built JSON.
 /// </summary>
-public class UpdateEndpointConcurrencyTests : SparkTestDriver
+public class UpdateEndpointConcurrencyTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("c0cc1111-eeee-eeee-eeee-c0cc1111eeee");
 
@@ -28,7 +28,7 @@ public class UpdateEndpointConcurrencyTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

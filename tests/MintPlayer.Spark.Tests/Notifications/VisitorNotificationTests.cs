@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Notifications;
@@ -31,7 +32,14 @@ public class VisitorNotificationTests : OrganizationsTestHost
         ExtraSpark = spark => spark.AddNotifications(o => o.PublicBaseUrl = PublicBaseUrl);
     }
 
-    private ISparkNotifier Notifier() => Factory.CreateScope().ServiceProvider.GetRequiredService<ISparkNotifier>();
+    /// <summary>Notifies in a scope of its own and saves it, as a caller's unit of work does: the notifier never saves (#536 D50).</summary>
+    private async Task<SparkNotifyReceipt> NotifyAsync(SparkNotification notification)
+    {
+        using var scope = Factory.CreateScope();
+        var receipt = await scope.ServiceProvider.GetRequiredService<ISparkNotifier>().NotifyAsync(notification);
+        await scope.ServiceProvider.GetRequiredService<ISparkSession>().SaveChangesAsync();
+        return receipt;
+    }
 
     [Fact]
     public async Task A_visitor_notification_is_read_only_by_its_visitor_and_expires_with_the_visitor()
@@ -41,7 +49,7 @@ public class VisitorNotificationTests : OrganizationsTestHost
         var ann = await SeedUserAsync("ann");
 
         var before = DateTime.UtcNow;
-        var receipt = await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "Your report is ready", Url = "/reports/1" });
+        var receipt = await NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "Your report is ready", Url = "/reports/1" });
 
         (receipt.Mails, receipt.Pushes).Should().Be((0, 0), "visitors get in-app only");
         var id = receipt.NotificationIds.Should().ContainSingle().Which;
@@ -67,7 +75,7 @@ public class VisitorNotificationTests : OrganizationsTestHost
         var a = NewVisitor();
         var ann = await SeedUserAsync("ann");
 
-        var id = (await Notifier().NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "x" })).NotificationIds.Single();
+        var id = (await NotifyAsync(new SparkNotification { UserIds = [ann.Id!], Title = "x" })).NotificationIds.Single();
 
         (await QueryIdsAsync(Wire.Query(NotificationTests.MyNotificationsQueryId), null!, a.Cookie)).Should().BeEmpty();
         (await SendAsync("/spark/po/load", Wire.Typed(NotificationTests.NotificationTypeId, id: id), null, a.Cookie)).Status.Should().Be(HttpStatusCode.Unauthorized, "an anonymous denial is the uniform 401");
@@ -78,7 +86,7 @@ public class VisitorNotificationTests : OrganizationsTestHost
     [InlineData("0123456789abcdef0123456789abcdef")]
     public async Task A_visitor_id_without_its_prefix_addresses_nobody(string id)
     {
-        var receipt = await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [id], Title = "x" });
+        var receipt = await NotifyAsync(new SparkNotification { VisitorIds = [id], Title = "x" });
 
         receipt.NotificationIds.Should().BeEmpty("a user id can never be addressed as a visitor");
     }
@@ -88,7 +96,7 @@ public class VisitorNotificationTests : OrganizationsTestHost
     {
         var a = NewVisitor();
         var b = NewVisitor();
-        var aId = (await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "a" })).NotificationIds.Single();
+        var aId = (await NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "a" })).NotificationIds.Single();
         var bId = (await NotifyTwiceAsync(b.Id))[0];
 
         var (status, body) = await SendAsync("/spark/notifications/read", new { ids = new[] { aId, bId } }, null, a.Cookie);
@@ -118,7 +126,7 @@ public class VisitorNotificationTests : OrganizationsTestHost
     public async Task Mark_read_by_a_visitor_needs_the_antiforgery_token()
     {
         var a = NewVisitor();
-        var aId = (await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "a" })).NotificationIds.Single();
+        var aId = (await NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "a" })).NotificationIds.Single();
 
         using var client = Factory.CreateClient();
         var request = new HttpRequestMessage(HttpMethod.Post, "/spark/notifications/read") { Content = JsonContent.Create(new { ids = new[] { aId } }) };
@@ -151,8 +159,8 @@ public class VisitorNotificationTests : OrganizationsTestHost
         first.GetProperty("result").GetProperty("totalItems").GetInt32().Should().Be(0);
 
         // A's notification first: had it leaked to B's socket, its frame would arrive before B's own.
-        await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "for-visitor-a" });
-        await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [b.Id], Title = "for-visitor-b" });
+        await NotifyAsync(new SparkNotification { VisitorIds = [a.Id], Title = "for-visitor-a" });
+        await NotifyAsync(new SparkNotification { VisitorIds = [b.Id], Title = "for-visitor-b" });
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         var seen = new List<string>();
@@ -177,7 +185,7 @@ public class VisitorNotificationTests : OrganizationsTestHost
         var other = NewVisitor();
         var ann = await SeedUserAsync("ann");
         var ids = await NotifyTwiceAsync(a.Id);
-        var othersId = (await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [other.Id], Title = "other" })).NotificationIds.Single();
+        var othersId = (await NotifyAsync(new SparkNotification { VisitorIds = [other.Id], Title = "other" })).NotificationIds.Single();
 
         var setCookies = await SignInAsync(ann, a.Cookie);
 
@@ -226,8 +234,8 @@ public class VisitorNotificationTests : OrganizationsTestHost
 
     private async Task<List<string>> NotifyTwiceAsync(string visitorId)
     {
-        var first = await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [visitorId], Title = "one" });
-        var second = await Notifier().NotifyAsync(new SparkNotification { VisitorIds = [visitorId], Title = "two" });
+        var first = await NotifyAsync(new SparkNotification { VisitorIds = [visitorId], Title = "one" });
+        var second = await NotifyAsync(new SparkNotification { VisitorIds = [visitorId], Title = "two" });
         return [.. first.NotificationIds, .. second.NotificationIds];
     }
 

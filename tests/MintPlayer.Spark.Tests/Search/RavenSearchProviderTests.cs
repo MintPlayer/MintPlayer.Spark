@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Search;
 /// (<c>SearchIndexGeneratorTests.The_search_tests_index</c>), compiled at run time and deployed to the server, which
 /// is what shows that the generated index compiles on RavenDB.
 /// </summary>
-public class RavenSearchProviderTests : SparkTestDriver
+public class RavenSearchProviderTests : RavenSparkTestDriver
 {
     private SparkEndpointFactory<SrchContext> _factory = null!;
     private HttpClient _client = null!;
@@ -29,7 +29,7 @@ public class RavenSearchProviderTests : SparkTestDriver
         await GeneratedIndex().ExecuteAsync(Store);
         WaitForIndexing(Store);
 
-        _factory = new SparkEndpointFactory<SrchContext>(Store, [SparkSearchTests.SongModel(fuzzy: true)],
+        _factory = new SparkEndpointFactory<SrchContext>(Store.AsSparkTestDatabase(), [SparkSearchTests.SongModel(fuzzy: true)],
             configureSpark: spark => spark.AddSearch(),
             security: SparkTestSecurity.Permissive);
         _client = _factory.CreateClient();

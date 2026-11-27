@@ -1,24 +1,15 @@
-using System.Net.Http;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Conventions;
-using Raven.Client.Documents.Operations;
-using Raven.Client.Documents.Operations.Revisions;
-using Raven.Client.Http;
-using Raven.Client.ServerWide.Operations;
-using Sparrow.Json;
+using StoreRevisionLimits = MintPlayer.Spark.Abstractions.Storage.SparkRevisionLimits;
 
 namespace MintPlayer.Spark.History;
 
 /// <summary>
-/// Applies the revisions each model type asks for (T10) to the database at startup, by <b>merging</b>:
-/// <c>ConfigureRevisionsOperation</c> replaces the whole configuration — a collection or default it
-/// does not mention is gone (measured, spike H4) — so the current configuration is read first, only
-/// the configured collections are set, and nothing is sent when they already match (sending an unchanged
-/// configuration is still a database-record write, H4).
+/// Applies the revisions each model type asks for (T10) to the store at startup, through
+/// <see cref="ISparkRevisions.ConfigureAsync"/> (#536 S8), which merges: a collection it does not name keeps what it has,
+/// and nothing is written when the named ones already match.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,27 +20,23 @@ namespace MintPlayer.Spark.History;
 /// "unset", so it defers to the default. A limit of <c>0</c> means "none" (RavenDB's null).
 /// </para>
 /// <para>
-/// Kept as is: the <c>Default</c>, every collection no model type configures, and every setting History
-/// does not express (<c>MaximumRevisionsToDeleteUponDocumentUpdate</c>). A type without either source
-/// leaves its collection alone — removing the block does not disable revisions (model synchronization
-/// never deletes either, #253).
+/// A type without either source leaves its collection alone: removing the block does not disable revisions (model
+/// synchronization never deletes either, #253).
 /// </para>
 /// <para>
-/// ⚠️ RavenDB's licence caps what a collection may ask for — measured on Community (spike H1): at most
-/// 2 <c>minimumRevisionsToKeep</c>, at most 45 days <c>minimumRevisionAgeToKeep</c>, and no
-/// <b>enabled</b> default configuration. When the server reports a Community licence the limits are
-/// checked <b>before</b> anything is sent, and startup refuses naming every type, setting and source;
-/// any other refusal (a licence type this check does not know) is RavenDB's own, also naming the escape
-/// hatch <c>Spark:History:ConfigureRevisions=false</c>.
+/// ⚠️ A store may cap what a collection asks for (<see cref="ISparkRevisions.GetLimitsAsync"/>): RavenDB's Community
+/// licence allows at most 2 <c>minimumRevisionsToKeep</c> and 45 days <c>minimumRevisionAgeToKeep</c> (spike H1). The
+/// caps are checked <b>before</b> anything is sent, and startup refuses naming every type, setting and source; any other
+/// refusal is the store's own, also naming the escape hatch <c>Spark:History:ConfigureRevisions=false</c>.
 /// </para>
 /// </remarks>
 internal static class RevisionsConfigurator
 {
-    public static void Apply(IDocumentStore store, IModelLoader modelLoader, SparkHistoryOptions options, ILogger logger)
-        => ApplyAsync(store, modelLoader, options, logger).GetAwaiter().GetResult();
+    public static void Apply(ISparkRevisions revisions, ISparkStore store, IModelLoader modelLoader, SparkHistoryOptions options, ILogger logger)
+        => ApplyAsync(revisions, store, modelLoader, options, logger).GetAwaiter().GetResult();
 
     /// <summary>Returns the collections it changed (empty when everything already matched).</summary>
-    internal static async Task<IReadOnlyList<string>> ApplyAsync(IDocumentStore store, IModelLoader modelLoader, SparkHistoryOptions options, ILogger logger)
+    internal static async Task<IReadOnlyList<string>> ApplyAsync(ISparkRevisions revisions, ISparkStore store, IModelLoader modelLoader, SparkHistoryOptions options, ILogger logger)
     {
         var types = modelLoader.GetEntityTypes().ToList();
         foreach (var name in options.Types.Keys.Where(k => !types.Any(t => string.Equals(t.Name, k, StringComparison.OrdinalIgnoreCase))))
@@ -58,7 +45,7 @@ internal static class RevisionsConfigurator
         var wanted = new List<WantedRevisions>();
         foreach (var definition in types)
         {
-            if (Resolve(definition, options) is not { } revisions)
+            if (Resolve(definition, options) is not { } effective)
                 continue;
             var clrType = HistoryTypes.Resolve(definition.ClrType);
             if (clrType is null)
@@ -66,64 +53,33 @@ internal static class RevisionsConfigurator
                 logger.LogWarning("Model type {Type} declares revisions but its CLR type {ClrType} was not found; skipped.", definition.Name, definition.ClrType);
                 continue;
             }
-            wanted.Add(new(store.Conventions.FindCollectionName(clrType), definition.Name, revisions));
+            wanted.Add(new(store.GetCollectionName(clrType), definition.Name, effective));
         }
 
         if (wanted.Count == 0)
             return [];
 
-        RevisionsConfiguration configuration;
+        // Checked before sending, so the refusal names every type, setting and source at once instead of the store's
+        // first "exceeds the licensed one".
+        if (await revisions.GetLimitsAsync() is { } limits
+            && LicenceProblems(wanted, limits) is { Count: > 0 } problems)
+            throw LicenceRefusal(limits, problems);
+
+        IReadOnlyList<string> changed;
         try
         {
-            configuration = await store.Maintenance.SendAsync(new GetRevisionsConfigurationOperation()) ?? new RevisionsConfiguration();
+            changed = await revisions.ConfigureAsync([.. wanted.Select(w => new SparkRevisionCollection(w.Collection, w.Label, w.Revisions.Settings))]);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw Refused("read the database's revisions configuration", ex);
-        }
-
-        configuration.Collections ??= new Dictionary<string, RevisionsCollectionConfiguration>();
-        var changed = new List<WantedRevisions>();
-        foreach (var item in wanted)
-        {
-            // Collection names compare case-insensitively in RavenDB; reuse the stored key's spelling.
-            var key = configuration.Collections.Keys.FirstOrDefault(k => string.Equals(k, item.Collection, StringComparison.OrdinalIgnoreCase)) ?? item.Collection;
-            configuration.Collections.TryGetValue(key, out var existing);
-            if (existing is not null && Matches(existing, item.Revisions))
-                continue;
-
-            existing ??= new RevisionsCollectionConfiguration();
-            existing.Disabled = !item.Revisions.Enabled;
-            existing.MinimumRevisionsToKeep = item.Revisions.MinimumRevisionsToKeep;
-            existing.MinimumRevisionAgeToKeep = item.Revisions.MinimumRevisionAgeToKeep;
-            existing.PurgeOnDelete = item.Revisions.PurgeOnDelete;
-            configuration.Collections[key] = existing;
-            changed.Add(item with { Collection = key });
+            throw Refused($"configure revisions for {string.Join(", ", wanted.Select(c => c.Label))}", ex);
         }
 
         if (changed.Count == 0)
-        {
             logger.LogDebug("Revisions configuration already matches ({Count} collection(s)).", wanted.Count);
-            return [];
-        }
-
-        // Checked before sending, so the refusal names every type, setting and source at once instead of
-        // RavenDB's first "exceeds the licensed one".
-        if (await ReadLicenceLimitsAsync(store, logger) is { } limits
-            && LicenceProblems(changed, limits) is { Count: > 0 } problems)
-            throw LicenceRefusal(limits, problems);
-
-        try
-        {
-            await store.Maintenance.SendAsync(new ConfigureRevisionsOperation(configuration));
-        }
-        catch (Exception ex)
-        {
-            throw Refused($"configure revisions for {string.Join(", ", changed.Select(c => c.Label))}", ex);
-        }
-
-        logger.LogInformation("Revisions configured for {Collections}.", string.Join(", ", changed.Select(c => c.Label)));
-        return changed.Select(c => c.Label).ToList();
+        else
+            logger.LogInformation("Revisions configured for {Collections}.", string.Join(", ", changed));
+        return changed;
     }
 
     /// <summary>One collection's wanted configuration.</summary>
@@ -137,7 +93,10 @@ internal static class RevisionsConfigurator
         bool Enabled,
         long? MinimumRevisionsToKeep, string? MinimumRevisionsToKeepSource,
         TimeSpan? MinimumRevisionAgeToKeep, string? MinimumRevisionAgeToKeepSource,
-        bool PurgeOnDelete);
+        bool PurgeOnDelete)
+    {
+        public SparkRevisionSettings Settings => new(Enabled, MinimumRevisionsToKeep, MinimumRevisionAgeToKeep, PurgeOnDelete);
+    }
 
     /// <summary>
     /// What <paramref name="definition"/> asks for: <c>Spark:History:Types:{type}</c> → the model's block →
@@ -175,24 +134,15 @@ internal static class RevisionsConfigurator
         return (null, null);
     }
 
-    private static bool Matches(RevisionsCollectionConfiguration existing, EffectiveRevisions revisions)
-        => existing.Disabled == !revisions.Enabled
-           && existing.MinimumRevisionsToKeep == revisions.MinimumRevisionsToKeep
-           && existing.MinimumRevisionAgeToKeep == revisions.MinimumRevisionAgeToKeep
-           && existing.PurgeOnDelete == revisions.PurgeOnDelete;
-
-    /// <summary>A licence's caps on a collection's revision limits.</summary>
-    internal sealed record LicenceLimits(string LicenceType, long MaxRevisionsToKeep, TimeSpan MaxRevisionAgeToKeep);
-
-    /// <summary>Community's caps, measured in spike H1 ("exceeds the licensed one '2'" / "'45'").</summary>
-    internal static readonly LicenceLimits Community = new("Community", 2, TimeSpan.FromDays(45));
+    /// <summary>RavenDB Community's caps, measured in spike H1 (what its <see cref="ISparkRevisions"/> reports).</summary>
+    internal static readonly StoreRevisionLimits Community = new("RavenDB Community licence", 2, TimeSpan.FromDays(45));
 
     /// <summary>
     /// Every enabled collection whose limits exceed <paramref name="limits"/>, as "Type (Collection):
     /// Setting = value (from source)". A collection with <b>no</b> limit is within them — H1 measured
     /// Community accepting a collection without limits.
     /// </summary>
-    internal static IReadOnlyList<string> LicenceProblems(IEnumerable<WantedRevisions> wanted, LicenceLimits limits)
+    internal static IReadOnlyList<string> LicenceProblems(IEnumerable<WantedRevisions> wanted, StoreRevisionLimits limits)
     {
         var problems = new List<string>();
         foreach (var item in wanted.Where(w => w.Revisions.Enabled))
@@ -207,85 +157,17 @@ internal static class RevisionsConfigurator
     }
 
     /// <summary>The startup refusal for <see cref="LicenceProblems"/>: every problem, and the three ways out.</summary>
-    internal static InvalidOperationException LicenceRefusal(LicenceLimits limits, IReadOnlyList<string> problems) => new(
-        $"History refuses to start: the RavenDB {limits.LicenceType} licence allows at most {limits.MaxRevisionsToKeep} revisions " +
+    internal static InvalidOperationException LicenceRefusal(StoreRevisionLimits limits, IReadOnlyList<string> problems) => new(
+        $"History refuses to start: the {limits.Name} allows at most {limits.MaxRevisionsToKeep} revisions " +
         $"and {limits.MaxRevisionAgeToKeep.TotalDays:0} days of revision age per collection, and the configured revisions ask for more — " +
         string.Join("; ", problems) + ". Lower them (Spark:History:Types:{type}, the model's \"revisions\" block, or " +
         "Spark:History:Revisions), use a licence that allows them, or set Spark:History:ConfigureRevisions=false and manage " +
         "revisions by hand.");
 
-    /// <summary>
-    /// The caps for the server's licence: <see cref="Community"/> when <c>GET /license/status</c> reports
-    /// <c>Type: Community</c>, else none (the other tiers measured here — Developer, and AGPL before a licence
-    /// is applied — accepted every limit). An unreadable status checks nothing: RavenDB still refuses on send.
-    /// </summary>
-    private static async Task<LicenceLimits?> ReadLicenceLimitsAsync(IDocumentStore store, ILogger logger)
-    {
-        try
-        {
-            var type = await store.Maintenance.Server.SendAsync(new GetLicenceTypeOperation());
-            return string.Equals(type, "Community", StringComparison.OrdinalIgnoreCase) ? Community : null;
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "The RavenDB licence status could not be read; the revision limits are left to RavenDB to check.");
-            return null;
-        }
-    }
-
     private static InvalidOperationException Refused(string what, Exception inner) => new(
         $"History could not {what}: {inner.Message.Split('\n')[0].Trim()} " +
-        "Configuring revisions is a RavenDB database-admin operation, and the licence caps the limits a " +
+        "On RavenDB, configuring revisions is a database-admin operation, and the licence caps the limits a " +
         "collection may ask for (Community: 2 revisions, 45 days, no enabled default). Fix the limits " +
         "(Spark:History:Types:{type}, the model's \"revisions\" block, Spark:History:Revisions) or the certificate, " +
         "or set Spark:History:ConfigureRevisions=false and manage revisions by hand.", inner);
-
-    /// <summary><c>GET /license/status</c> → its <c>Type</c> (<c>Community</c>, <c>Developer</c>, …).</summary>
-    internal sealed class GetLicenceTypeOperation : IServerOperation<string?>
-    {
-        public RavenCommand<string?> GetCommand(DocumentConventions conventions, JsonOperationContext context) => new Command();
-
-        private sealed class Command : RavenCommand<string?>
-        {
-            public override bool IsReadRequest => true;
-
-            public override HttpRequestMessage CreateRequest(JsonOperationContext ctx, ServerNode node, out string url)
-            {
-                url = $"{node.Url}/license/status";
-                return new HttpRequestMessage { Method = HttpMethod.Get };
-            }
-
-            public override void SetResponse(JsonOperationContext context, BlittableJsonReaderObject? response, bool fromCache)
-            {
-                if (response is null) return;
-                using var json = JsonDocument.Parse(response.ToString());
-                Result = json.RootElement.TryGetProperty("Type", out var type) ? type.ToString() : null;
-            }
-        }
-    }
-
-    /// <summary>
-    /// <c>GET /databases/{db}/revisions/config</c> — the database-level read of the revisions
-    /// configuration (RavenDB 7.2.6's client has no operation for it; <c>GetDatabaseRecordOperation</c>
-    /// is a server-wide one). 404 (no configuration yet) reads as <see langword="null"/>. Measured in H4.
-    /// </summary>
-    internal sealed class GetRevisionsConfigurationOperation : IMaintenanceOperation<RevisionsConfiguration?>
-    {
-        public RavenCommand<RevisionsConfiguration?> GetCommand(DocumentConventions conventions, JsonOperationContext context)
-            => new Command(conventions);
-
-        private sealed class Command(DocumentConventions conventions) : RavenCommand<RevisionsConfiguration?>
-        {
-            public override bool IsReadRequest => false;
-
-            public override HttpRequestMessage CreateRequest(JsonOperationContext ctx, ServerNode node, out string url)
-            {
-                url = $"{node.Url}/databases/{node.Database}/revisions/config";
-                return new HttpRequestMessage { Method = HttpMethod.Get };
-            }
-
-            public override void SetResponse(JsonOperationContext context, BlittableJsonReaderObject? response, bool fromCache)
-                => Result = response is null ? null : conventions.Serialization.DefaultConverter.FromBlittable<RevisionsConfiguration>(response);
-        }
-    }
 }

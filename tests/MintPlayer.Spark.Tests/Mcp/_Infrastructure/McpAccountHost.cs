@@ -38,7 +38,7 @@ internal static class McpAccountHost
 
     public static SparkEndpointFactory<GuardedContext> Create(IDocumentStore store, Action<SparkMcpOptions>? configure = null)
         => new(
-            store,
+            store.AsSparkTestDatabase(),
             Models(),
             configureSpark: spark =>
             {

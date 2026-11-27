@@ -30,7 +30,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client.Authorization\MintPlayer.Spark.Client.Authorization.csproj" />
-    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\MintPlayer.Spark.Testing.RavenDB.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.RavenDB\MintPlayer.Spark.RavenDB.csproj" />
@@ -42,5 +42,6 @@
     this for free.
   -->
   <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing\Targets\spark-testing.targets" />
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing.RavenDB\Targets\spark-testing-ravendb.targets" />
 
 </Project>

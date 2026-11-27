@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// gate, the per-row <c>Can</c> flags under a non-visibility filter policy (spike S5), and the base
 /// after-save WITH CHECK rerouted through row security (D1), none of which the Actions class states.
 /// </summary>
-public class RowPolicyPipelineTests : SparkTestDriver
+public class RowPolicyPipelineTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("46a1c7e0-4601-4601-4601-46a1c7e04601");
 
@@ -24,7 +24,7 @@ public class RowPolicyPipelineTests : SparkTestDriver
     {
         await base.InitializeAsync();
         factory = new SparkEndpointFactory<PolicedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [PolicedDocModel.For(DocTypeId)],
             configureSpark: spark => spark
                 .AddSparkRowPolicy<PolicedSoftDeletePolicy>()

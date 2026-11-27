@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Files;
 /// one type, <see cref="FiCar"/>: <c>Photos</c> (a list of images, at most 3) and <c>Document</c> (a PDF of at most
 /// <see cref="DocumentMaxBytes"/>). Fixture names start with <c>Fi</c>: actions classes are matched by simple name.
 /// </summary>
-public abstract class FilesTestHost : SparkTestDriver
+public abstract class FilesTestHost : RavenSparkTestDriver
 {
     internal static readonly Guid CarTypeId = Guid.Parse("0f11e000-0000-4000-8000-000000000001");
     internal const long DocumentMaxBytes = 4096;
@@ -34,7 +34,7 @@ public abstract class FilesTestHost : SparkTestDriver
     }
 
     internal SparkEndpointFactory<FiContext> Factory => factory ??= new SparkEndpointFactory<FiContext>(
-        Store,
+        Store.AsSparkTestDatabase(),
         [WithExtraModel(CarModel()), ServiceModel()],
         configureServices: services =>
         {

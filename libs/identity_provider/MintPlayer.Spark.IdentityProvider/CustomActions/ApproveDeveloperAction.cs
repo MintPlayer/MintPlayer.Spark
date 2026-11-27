@@ -6,7 +6,6 @@ using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 
@@ -18,7 +17,7 @@ namespace MintPlayer.Spark.IdentityProvider.CustomActions;
 internal sealed partial class ApproveDeveloperAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly OidcDevelopers developers;
     [Inject] private readonly OidcAudit audit;
@@ -40,7 +39,7 @@ internal sealed partial class ApproveDeveloperAction : ICustomAction
 internal sealed partial class RejectDeveloperAction : ICustomAction
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly OidcDevelopers developers;
     [Inject] private readonly OidcAudit audit;
@@ -66,7 +65,7 @@ internal static class OidcDeveloperDecision
         CustomActionArgs args,
         bool approve,
         IManager manager,
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IHttpContextAccessor httpContextAccessor,
         OidcDevelopers developers,
         OidcAudit audit,
@@ -92,7 +91,7 @@ internal static class OidcDeveloperDecision
             developer.Status = approve ? OidcDeveloperStatuses.Approved : OidcDeveloperStatuses.Rejected;
             developer.DecidedAt = DateTime.UtcNow;
             developer.DecidedBy = adminId;
-            OidcDevelopers.Set(session, userId, developer);
+            await OidcDevelopers.SetAsync(session, userId, developer, ct);
             await audit.RecordAsync(session,
                 approve ? OidcAuditKinds.DeveloperApproved : OidcAuditKinds.DeveloperRejected,
                 adminId, subjectId: userId, ipAddress: http?.Connection.RemoteIpAddress?.ToString(), ct: ct);

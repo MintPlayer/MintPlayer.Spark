@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// suspected defect: too plausible to ignore and too unproven to act on. This is the measurement.
 /// </para>
 /// </remarks>
-public class DateTimeOffsetFilterTests : SparkTestDriver
+public class DateTimeOffsetFilterTests : RavenSparkTestDriver
 {
     private static readonly Guid SlotTypeId = Guid.Parse("eeee6666-eeee-eeee-eeee-eeee66666666");
 
@@ -90,7 +90,7 @@ public class DateTimeOffsetFilterTests : SparkTestDriver
     private IQueryExecutor Executor()
     {
         _factory = new SparkEndpointFactory<TestContext>(
-            Store, [SlotModel()],
+            Store.AsSparkTestDatabase(), [SlotModel()],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Slots_Overview)));
 
         return _factory.GetService<IQueryExecutor>();

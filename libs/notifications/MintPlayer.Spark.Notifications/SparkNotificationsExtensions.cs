@@ -28,6 +28,7 @@ namespace MintPlayer.Spark.Notifications;
 /// });
 /// // App_Data/security.json: "bindings": { "notifications:users": [ "Users" ] }
 /// await notifier.NotifyAsync(new SparkNotification { UserIds = [userId], Title = "Score dropped", Url = "/runs/42" });
+/// await session.SaveChangesAsync(); // the scope's ISparkSession: the notifier never saves (#536 D50)
 /// </code>
 /// </summary>
 public static class SparkNotificationsExtensions
@@ -39,15 +40,13 @@ public static class SparkNotificationsExtensions
     /// Registers <see cref="ISparkNotifier"/>, the <c>/spark/notifications</c> endpoints, the Web Push queue and
     /// its SSRF-safe client, the save rules and the account deletion and export hooks. Works without accounts
     /// (in-app only, for visitors and for user ids taken at their word); mail and Web Push need an
-    /// <see cref="ISparkAccountDirectory"/> (<c>AddAuthentication&lt;TUser&gt;()</c> registers one), and Web Push
-    /// also needs <c>AddMessaging()</c> (startup says so).
+    /// <see cref="ISparkAccountDirectory"/> (<c>AddAuthentication&lt;TUser&gt;()</c> registers one) and
+    /// <c>AddMessaging()</c>: both go out from an outbox message once the caller's save commits the notification
+    /// (startup says so for Web Push; MailManager requires Messaging itself).
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Notifications", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddNotifications(this ISparkBuilder builder, Action<SparkNotificationsOptions>? configure = null)
     {
-        // #551 D13: notifications are kept in RavenDB, through its own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Notifications", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
-
+        // #536: notifications run on any store (ISparkStore); Web Push needs Messaging, which brings its own requirement.
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(NotificationsMarker)))
         {
@@ -87,6 +86,8 @@ public static class SparkNotificationsExtensions
             messaging.Queues.TryAdd(SparkNotificationQueues.WebPush, new SparkQueueOptions { MaxAttempts = 8, Backoff = backoff, MaxConcurrency = 4 });
         });
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRecipient<WebPushDeliveryMessage>, WebPushDeliveryHandler>());
+        // A notification's pushes and mails, once the caller's save committed it (#536 D50): the notifier never saves.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRecipient<NotificationFanOutMessage>, NotificationFanOutHandler>());
 
         builder.AddInterceptor<NotificationInterceptors>();
         builder.AddInterceptor<NotificationPreferenceInterceptors>();
@@ -122,7 +123,9 @@ public static class SparkNotificationsExtensions
         }
         if (push.TimeToLive < TimeSpan.Zero || push.TimeToLive > TimeSpan.FromDays(28))
             throw new InvalidOperationException("Spark:Notifications:WebPush:TimeToLive must be between 0 and 28 days.");
-        if (services.GetService<IMessageOutbox>() is null)
+        // Asks for the registration and builds nothing: the outbox is scoped (over the scope's session, #536 D50), and this
+        // runs on the root provider.
+        if (!services.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IMessageOutbox)))
             throw new InvalidOperationException(
                 "Web Push is configured (Spark:Notifications:WebPush) but Messaging is not: call spark.AddMessaging(). "
                 + "Each push is a durable message, retried while the push service is unavailable.");

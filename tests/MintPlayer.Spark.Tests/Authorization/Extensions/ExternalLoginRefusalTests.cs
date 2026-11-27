@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// 4g and 4h — the verified-email gate, and the three places the callback used to carry on when it
 /// should have stopped.
 /// </summary>
-public class ExternalLoginRefusalTests : SparkTestDriver
+public class ExternalLoginRefusalTests : RavenSparkTestDriver
 {
     private SignInManager<SparkUser> _signInManager = null!;
     private UserManager<SparkUser> _userManager = null!;
@@ -39,6 +39,8 @@ public class ExternalLoginRefusalTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     // The mode MapSparkIdentityApi's former parameter defaulted to.
                     services.Configure<MintPlayer.Spark.Authorization.Configuration.SparkAuthenticationOptions>(

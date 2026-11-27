@@ -24,11 +24,11 @@
       "type": "parameter",
       "datatype": "choice",
       "displayName": "Store",
-      "description": "Where the data lives. Most features need RavenDB.",
+      "description": "Where the data lives. A few features (dashboards, search, replication, the identity provider) still need RavenDB.",
       "defaultValue": "RavenDB",
       "choices": [
         { "choice": "RavenDB", "displayName": "RavenDB", "description": "A RavenDB server (Spark:RavenDb in appsettings.json)." },
-        { "choice": "InMemory", "displayName": "In memory", "description": "No database: data resets on every restart. Core features only." }
+        { "choice": "InMemory", "displayName": "In memory", "description": "No database: data resets on every restart." }
       ]
     },
     "IsRaven": { "type": "computed", "value": "(Store == \"RavenDB\")" },
@@ -38,9 +38,8 @@
       "type": "parameter",
       "datatype": "choice",
       "displayName": "Sign-in",
-      "description": "Accounts and group-based access control (MintPlayer.Spark.Authorization). Needs RavenDB.",
+      "description": "Accounts and group-based access control (MintPlayer.Spark.Authorization).",
       "defaultValue": "none",
-      "isEnabled": "Store == \"RavenDB\"",
       "choices": [
         { "choice": "none", "displayName": "None", "description": "No accounts: every visitor is anonymous." },
         { "choice": "authorization", "displayName": "Local accounts", "description": "Password accounts and security.json groups." },
@@ -57,7 +56,7 @@
       "defaultValue": "",
       "replaces": "OIDC_AUTHORITY_PLACEHOLDER"
     },
-    "HasOidc": { "type": "computed", "value": "(IsRaven && AuthMode == \"oidc\")" },
+    "HasOidc": { "type": "computed", "value": "(AuthMode == \"oidc\")" },
 
     "NoClient": {
       "type": "parameter",

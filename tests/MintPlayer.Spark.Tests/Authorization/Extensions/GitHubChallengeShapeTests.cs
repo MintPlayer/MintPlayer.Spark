@@ -32,8 +32,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// permissions actually match. Those live on github.com.
 /// </para>
 /// </remarks>
-public class GitHubChallengeShapeTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class GitHubChallengeShapeTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string ClientId = "test-client-id";
 
@@ -45,6 +45,8 @@ public class GitHubChallengeShapeTests(SparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     TestSparkAuth.Builder(services).AddGitHub(options =>
                     {
@@ -146,6 +148,8 @@ public class GitHubChallengeShapeTests(SparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     TestSparkAuth.Builder(services).AddGitHub(options =>
                     {

@@ -15,8 +15,8 @@ namespace MintPlayer.Spark.Testing;
 /// </para>
 /// <para>
 /// This is the fallback for work with no observable signal. Prefer a real one where it exists:
-/// <see cref="SparkTestDriver.SeedAsync"/> for writes that must be queryable, and
-/// <see cref="RavenIndexingExtensions.WaitForIndexingAsync"/> for indexing.
+/// <see cref="RavenSparkTestDriver.SeedAsync"/> for writes that must be queryable, and
+/// <c>RavenIndexingExtensions.WaitForIndexingAsync</c> (MintPlayer.Spark.Testing.RavenDB) for indexing.
 /// </para>
 /// </summary>
 public static class AsyncWait

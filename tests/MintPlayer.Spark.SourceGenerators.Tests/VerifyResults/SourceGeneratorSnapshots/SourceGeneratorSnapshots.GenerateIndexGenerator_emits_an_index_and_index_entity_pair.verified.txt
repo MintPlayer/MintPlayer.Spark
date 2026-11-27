@@ -42,4 +42,19 @@ namespace TestApp.Indexes
         /// <summary>Called at the end of the generated constructor. Implement in a hand-written partial to add index configuration.</summary>
         partial void OnInitialize();
     }
+    
+    public sealed partial class Cars_Overview_View : global::MintPlayer.Spark.Abstractions.Views.SparkView<VCar>
+    {
+        public override string Name => "Cars_Overview";
+        
+        public override global::System.Linq.Expressions.Expression<global::System.Func<global::MintPlayer.Spark.Abstractions.Views.ISparkViewSource, global::System.Linq.IQueryable<VCar>>> Map => __spark =>
+            from car in __spark.Set<global::TestApp.Entities.Car>()
+            select new VCar()
+            {
+                Id = __spark.IdOf(car),
+                LicensePlate = car.LicensePlate,
+                Model = car.Model,
+                Year = car.Year,
+            };
+    }
 }

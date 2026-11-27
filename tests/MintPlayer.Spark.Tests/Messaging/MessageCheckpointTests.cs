@@ -2,7 +2,7 @@ using System.Reflection;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using NSubstitute;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Tests.Messaging;
 
@@ -22,14 +22,14 @@ public class MessageCheckpointTests
     [Fact]
     public async Task SaveAsync_writes_the_checkpoint_onto_the_HandlerExecution_and_calls_SaveChangesAsync()
     {
-        var session = Substitute.For<IAsyncDocumentSession>();
+        var session = Substitute.For<ISparkSession>();
         var handler = new HandlerExecution { HandlerType = "X.Y.Handler" };
         var checkpoint = new MessageCheckpoint();
 
         // SetContext is internal — invoke via the same-assembly-visible API.
         typeof(MessageCheckpoint)
             .GetMethod("SetContext", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(checkpoint, [session, handler]);
+            .Invoke(checkpoint, [new MessageSession(Substitute.For<ISparkStore>(), session, new SparkMessage { Id = "SparkMessages/1" }, "owner"), handler]);
 
         await checkpoint.SaveAsync("step-a-done");
 
@@ -40,13 +40,13 @@ public class MessageCheckpointTests
     [Fact]
     public async Task Consecutive_SaveAsync_calls_overwrite_the_previous_checkpoint_value()
     {
-        var session = Substitute.For<IAsyncDocumentSession>();
+        var session = Substitute.For<ISparkSession>();
         var handler = new HandlerExecution { HandlerType = "X.Y.Handler" };
         var checkpoint = new MessageCheckpoint();
 
         typeof(MessageCheckpoint)
             .GetMethod("SetContext", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(checkpoint, [session, handler]);
+            .Invoke(checkpoint, [new MessageSession(Substitute.For<ISparkStore>(), session, new SparkMessage { Id = "SparkMessages/1" }, "owner"), handler]);
 
         await checkpoint.SaveAsync("step-a-done");
         await checkpoint.SaveAsync("step-b-done");

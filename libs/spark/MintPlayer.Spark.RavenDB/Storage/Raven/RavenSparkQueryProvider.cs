@@ -24,9 +24,26 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
         => typeof(IRavenQueryable<>).MakeGenericType(source.ElementType).IsInstanceOfType(source);
 
     public IQueryable OpenIndex(Type entityType, Type indexType, bool narrowToCollection)
-        => narrowToCollection
-            ? CollectionNarrowedIndex(entityType, indexType)
-            : IndexWithType(entityType, indexType);
+        => typeof(Abstractions.Views.ISparkView).IsAssignableFrom(indexType)
+            ? ViewIndex(entityType, Abstractions.Views.SparkViewEntries.Instantiate(indexType).Name)
+            : narrowToCollection
+                ? CollectionNarrowedIndex(entityType, indexType)
+                : IndexWithType(entityType, indexType);
+
+    /// <summary>
+    /// <c>session.Query&lt;entityType&gt;(indexName)</c>: a <c>SparkView</c> deployed as a static index of its name (#536
+    /// D32). The executor's <see cref="Project"/> then reads its stored fields into the row type.
+    /// </summary>
+    private IQueryable ViewIndex(Type entityType, string indexName)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("RavenSparkQueryProvider.SessionQueryByIndexName", entityType),
+            static k => typeof(IAsyncDocumentSession).GetMethods()
+                .Single(m => m.Name == "Query" && m.IsGenericMethod && m.GetGenericArguments().Length == 1
+                    && m.GetParameters() is [{ ParameterType: var p }, ..] && p == typeof(string))
+                .MakeGenericMethod(k.Entity));
+        return (IQueryable)method.Invoke(Session, [indexName, null, false])!;
+    }
 
     /// <summary><c>session.Query&lt;resultType, indexType&gt;()</c>.</summary>
     private IQueryable IndexWithType(Type resultType, Type indexType)
@@ -166,7 +183,20 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
 
     private static readonly IReadOnlySet<string> EmptyFieldSet = new HashSet<string>(StringComparer.Ordinal);
 
-    /// <summary>One <c>Search</c> clause per property.</summary>
+    /// <summary>
+    /// RavenDB's term for <paramref name="words"/>: each wrapped in <c>*</c>, so a word matches as a substring, also on
+    /// a plain default-indexed field whose whole value is one term (measured on RavenDB 7.2.5).
+    /// </summary>
+    /// <remarks>
+    /// Matched with <see cref="SearchOperator.And"/>, every word must appear somewhere in the field. A term query
+    /// alone would not match <c>olkswag</c> against <c>Volkswagen</c>; the in-memory <c>Contains</c> this replaced did.
+    /// Each word is wrapped on its own, so a match can span a space: <c>*olf* *gt*</c> matches <c>Volkswagen Golf GTI</c>.
+    /// That is slightly wider than <c>Contains</c>: the words need not be adjacent or in order. No caller loses a
+    /// result. The term is not lower-cased, because RavenDB lower-cases it.
+    /// </remarks>
+    internal static string WildcardTerm(IReadOnlyList<string> words) => string.Join(' ', words.Select(static word => $"*{word}*"));
+
+    /// <summary>One <c>Search</c> clause per property, for <see cref="WildcardTerm"/> of the words.</summary>
     /// <remarks>
     /// <para>
     /// <see cref="SearchOptions"/> is never passed explicitly. That is a safety requirement rather than a style
@@ -179,8 +209,9 @@ internal sealed partial class RavenSparkQueryProvider : ISparkQueryProvider
     /// </para>
     /// <para>Every argument is passed because <see cref="MethodInfo.Invoke"/> does not apply optional parameter defaults.</para>
     /// </remarks>
-    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, string term)
+    public IQueryable? Search(IQueryable source, IReadOnlyList<PropertyInfo> properties, IReadOnlyList<string> words)
     {
+        var term = WildcardTerm(words);
         var elementType = source.ElementType;
         var searchMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
             ("RavenSparkQueryProvider.LinqSearch", elementType),

@@ -2,7 +2,7 @@ namespace MintPlayer.Spark.Services;
 
 /// <summary>
 /// A fresh <see cref="IIndexCatalog"/> for the offline paths (#551 D20), which run before any container is built: the
-/// implementation the store provider registered (RavenDB's classifies its index types), else the empty catalog.
+/// implementation the store provider registered (RavenDB's classifies its index types), else core's view catalog.
 /// </summary>
 internal static class SparkIndexCatalogs
 {
@@ -13,8 +13,8 @@ internal static class SparkIndexCatalogs
     public static IIndexCatalog CreateOffline(IServiceCollection? services)
     {
         var implementation = services?.LastOrDefault(d => d.ServiceType == typeof(IIndexCatalog))?.ImplementationType;
-        return implementation is not null && implementation != typeof(EmptyIndexCatalog)
+        return implementation is not null && implementation != typeof(SparkViewCatalog)
             ? (IIndexCatalog)Activator.CreateInstance(implementation)!
-            : new EmptyIndexCatalog();
+            : new SparkViewCatalog();
     }
 }

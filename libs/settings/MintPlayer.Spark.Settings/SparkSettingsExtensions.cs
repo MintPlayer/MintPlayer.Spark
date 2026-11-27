@@ -31,11 +31,13 @@ public static class SparkSettingsExtensions
     /// or module) to declare more.
     /// </summary>
     /// <exception cref="InvalidOperationException">A type declares no setting, a key is malformed, or one key is declared twice differently.</exception>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Settings", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Settings")]
     public static ISparkBuilder AddSettings(this ISparkBuilder builder, params Type[] declaringTypes)
     {
-        // #551 D13: settings and quotas are RavenDB documents, through its own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Settings", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536 M6: settings and quotas go through ISparkSession, so any store provider keeps them.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Settings");
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Models.Setting>(builder.Services);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Quotas.SparkQuotaUsage>(builder.Services);
 
         var services = builder.Services;
         var catalog = services.FirstOrDefault(d => d.ServiceType == typeof(SparkSettingsCatalog))?.ImplementationInstance as SparkSettingsCatalog;
@@ -65,7 +67,7 @@ public static class SparkSettingsExtensions
     /// <see cref="Quotas.ISparkQuotas"/> and the gate that applies <c>[SparkQuota]</c> to custom actions. Startup
     /// refuses a <c>[SparkQuota]</c> naming a quota nobody declared.
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Settings", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Settings")]
     public static ISparkBuilder AddQuotas(this ISparkBuilder builder, params Type[] declaringTypes)
     {
         var services = builder.Services;
@@ -98,7 +100,7 @@ public static class SparkSettingsExtensions
     }
 
     /// <summary>As <see cref="AddSettings(ISparkBuilder, Type[])"/>, with options in code (applied after <c>Spark:Settings</c>).</summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Settings", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Settings")]
     public static ISparkBuilder AddSettings(this ISparkBuilder builder, Action<SparkSettingsOptions> configure, params Type[] declaringTypes)
     {
         builder.AddSettings(declaringTypes);

@@ -18,7 +18,7 @@ public class Issue467ModerationBatchTests : SparkTestDriver
     [Fact]
     public async Task S8_a_locked_row_in_a_delete_many_batch_refuses_the_lot_and_the_message_names_it()
     {
-        await using var host = await MoHost.StartAsync(Store);
+        await using var host = await MoHost.StartAsync(Database);
         foreach (var user in new[] { Alice, "users/mod" })
             await host.SeedUserAsync(user);
 
@@ -29,10 +29,10 @@ public class Issue467ModerationBatchTests : SparkTestDriver
 
         // As the list shows them after the lock (D14): each row at its stored version.
         object[] items;
-        using (var session = Store.OpenAsyncSession())
+        using (var session = host.Store.OpenSession())
         {
             var rows = await session.LoadAsync<MoPost>([free, locked]);
-            items = [.. new[] { free, locked }.Select(id => (object)new { id, etag = session.Advanced.GetChangeVectorFor(rows[id]) })];
+            items = [.. new[] { free, locked }.Select(id => (object)new { id, etag = session.GetVersion(rows[id]!) })];
         }
 
         var (status, body) = await host.SendAsync("/spark/po/delete-many", Wire.Typed(MoHost.PostTypeId, new

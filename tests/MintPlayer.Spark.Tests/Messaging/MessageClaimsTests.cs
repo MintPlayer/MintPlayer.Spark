@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
@@ -10,7 +11,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// Another owner is simulated by writing its id onto the message — the same data another host
 /// would leave behind.
 /// </summary>
-public class MessageClaimsTests : SparkTestDriver
+public class MessageClaimsTests : MessagingRavenTestDriver
 {
     private const string Us = "this-node/0001";
     private const string Them = "other-node/0002";
@@ -43,7 +44,7 @@ public class MessageClaimsTests : SparkTestDriver
         var id = await SeedMessageAsync(Us);
         var before = (await LoadAsync(id)).ClaimExpiresAtUtc;
 
-        (await MessageClaims.TryRenewAsync(Store, id, Us, TimeSpan.FromMinutes(5), CancellationToken.None)).Should().BeTrue();
+        (await MessageClaims.TryRenewAsync(Store.SparkStore(), id, Us, TimeSpan.FromMinutes(5), CancellationToken.None)).Should().BeTrue();
 
         (await LoadAsync(id)).ClaimExpiresAtUtc!.Value.Should().BeAfter(before!.Value);
     }
@@ -63,7 +64,7 @@ public class MessageClaimsTests : SparkTestDriver
     {
         var id = await SeedMessageAsync(owner, status);
 
-        (await MessageClaims.WasReclaimedAsync(Store, id, Us, CancellationToken.None)).Should().Be(reclaimed);
+        (await MessageClaims.WasReclaimedAsync(Store.SparkStore(), id, Us, CancellationToken.None)).Should().Be(reclaimed);
     }
 
     [Theory]
@@ -75,14 +76,14 @@ public class MessageClaimsTests : SparkTestDriver
         var id = await SeedMessageAsync(owner, status);
         var before = (await LoadAsync(id)).ClaimExpiresAtUtc;
 
-        (await MessageClaims.TryRenewAsync(Store, id, Us, TimeSpan.FromMinutes(5), CancellationToken.None)).Should().BeFalse();
+        (await MessageClaims.TryRenewAsync(Store.SparkStore(), id, Us, TimeSpan.FromMinutes(5), CancellationToken.None)).Should().BeFalse();
 
         ((await LoadAsync(id)).ClaimExpiresAtUtc == before).Should().BeTrue("nothing was written");
     }
 
     [Fact]
     public async Task Renewing_a_deleted_message_reports_the_claim_lost()
-        => (await MessageClaims.TryRenewAsync(Store, "SparkMessages/gone", Us, TimeSpan.FromMinutes(5), CancellationToken.None))
+        => (await MessageClaims.TryRenewAsync(Store.SparkStore(), "SparkMessages/gone", Us, TimeSpan.FromMinutes(5), CancellationToken.None))
             .Should().BeFalse();
 
     [Fact]
@@ -90,7 +91,7 @@ public class MessageClaimsTests : SparkTestDriver
     {
         var id = await SeedMessageAsync(Us, attempts: 2);
 
-        await MessageClaims.ReleaseUnstartedAsync(Store, id, Us, CancellationToken.None);
+        await MessageClaims.ReleaseUnstartedAsync(Store.SparkStore(), id, Us, CancellationToken.None);
 
         var message = await LoadAsync(id);
         message.Status.Should().Be(EMessageStatus.Pending);
@@ -105,7 +106,7 @@ public class MessageClaimsTests : SparkTestDriver
     {
         var id = await SeedMessageAsync(Us, attempts: 0);
 
-        await MessageClaims.ReleaseUnstartedAsync(Store, id, Us, CancellationToken.None);
+        await MessageClaims.ReleaseUnstartedAsync(Store.SparkStore(), id, Us, CancellationToken.None);
 
         (await LoadAsync(id)).AttemptCount.Should().Be(0);
     }
@@ -115,8 +116,8 @@ public class MessageClaimsTests : SparkTestDriver
     {
         var id = await SeedMessageAsync(Them);
 
-        await MessageClaims.ReleaseUnstartedAsync(Store, id, Us, CancellationToken.None);
-        await MessageClaims.ReleaseUnstartedAsync(Store, "SparkMessages/gone", Us, CancellationToken.None);
+        await MessageClaims.ReleaseUnstartedAsync(Store.SparkStore(), id, Us, CancellationToken.None);
+        await MessageClaims.ReleaseUnstartedAsync(Store.SparkStore(), "SparkMessages/gone", Us, CancellationToken.None);
 
         var message = await LoadAsync(id);
         message.OwnerId.Should().Be(Them);
@@ -135,8 +136,8 @@ public class MessageClaimsTests : SparkTestDriver
         var a = await first.LoadAsync<SparkMessage>(id);
         var b = await second.LoadAsync<SparkMessage>(id);
 
-        var won = await MessageClaims.TryClaimAsync(first, a, Us, TimeSpan.FromMinutes(1), CancellationToken.None);
-        var lost = await MessageClaims.TryClaimAsync(second, b, Them, TimeSpan.FromMinutes(1), CancellationToken.None);
+        var won = await MessageClaims.TryClaimAsync(first.AsSparkSession(), a, Us, TimeSpan.FromMinutes(1), CancellationToken.None);
+        var lost = await MessageClaims.TryClaimAsync(second.AsSparkSession(), b, Them, TimeSpan.FromMinutes(1), CancellationToken.None);
 
         won.Should().BeTrue();
         lost.Should().BeFalse("the second writer read a version the first has already replaced");
@@ -153,7 +154,7 @@ public class MessageClaimsTests : SparkTestDriver
         {
             var message = await session.LoadAsync<SparkMessage>(id);
             message.WakeUp = true;
-            (await MessageClaims.DeferUnstartedAsync(session, message, slot, CancellationToken.None)).Should().BeTrue();
+            (await MessageClaims.DeferUnstartedAsync(session.AsSparkSession(), message, slot, CancellationToken.None)).Should().BeTrue();
             session.Advanced.NumberOfRequests.Should().Be(2, "one load, one write");
         }
 
@@ -164,7 +165,7 @@ public class MessageClaimsTests : SparkTestDriver
         parked.WakeUp.Should().BeFalse("true would redeliver it at once, in a tight loop");
         parked.NextAttemptAtUtc.Should().Be(slot);
         parked.AttemptCount.Should().Be(1, "the pickup that did not start is not an attempt");
-        (await MessageClaims.WasReclaimedAsync(Store, id, Us, CancellationToken.None))
+        (await MessageClaims.WasReclaimedAsync(Store.SparkStore(), id, Us, CancellationToken.None))
             .Should().BeFalse("the owner deferred it itself; that is not a lost claim");
     }
 
@@ -181,7 +182,7 @@ public class MessageClaimsTests : SparkTestDriver
             await sweeper.SaveChangesAsync();
         }
 
-        (await MessageClaims.DeferUnstartedAsync(session, message, DateTime.UtcNow.AddMinutes(1), CancellationToken.None))
+        (await MessageClaims.DeferUnstartedAsync(session.AsSparkSession(), message, DateTime.UtcNow.AddMinutes(1), CancellationToken.None))
             .Should().BeFalse();
         (await LoadAsync(id)).OwnerId.Should().Be(Them, "the reclaim wins");
     }

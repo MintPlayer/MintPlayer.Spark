@@ -16,11 +16,11 @@ public static class SparkMigrationsExtensions
     /// Prefer the generated <c>spark.AddMigrations()</c> (no argument), which auto-discovers every
     /// <see cref="ISparkMigration"/> in the project. This overload is the manual escape hatch.
     /// </remarks>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Migrations", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Migrations")]
     public static ISparkBuilder AddMigrations(this ISparkBuilder builder, Action<ISparkMigrationsBuilder> configure)
     {
-        // #551 D13: migrations run against RavenDB's own client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Migrations", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #536 S15: the runner needs only the neutral store and its lease; a migration takes whatever its own code needs.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Migrations");
 
         var registry = GetOrAddInfrastructure(builder);
         configure(new SparkMigrationsBuilder(builder.Services, registry));
@@ -42,11 +42,17 @@ public static class SparkMigrationsExtensions
 
             var registry = new SparkMigrationRegistry();
             builder.Services.AddSingleton(registry);
+            // The runner's marker per applied migration: a store with a schema keeps a table for it (#536).
+            global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<SparkMigrationRecord>(builder.Services);
 
             // Run pending migrations once at startup. Registry middleware actions execute during
             // UseSpark, after CreateSparkIndexes and before the request pipeline serves traffic —
             // the same "do once at startup against the store" slot index creation uses.
             builder.Registry.AddMiddleware(app => SparkMigrationRunner.RunAtStartup(app.ApplicationServices));
+
+            // The same run for --spark-migrate (#536 D33), after the schema.
+            builder.Services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkDataMigrations>(
+                sp => new SparkDataMigrations(sp));
 
             return registry;
         }

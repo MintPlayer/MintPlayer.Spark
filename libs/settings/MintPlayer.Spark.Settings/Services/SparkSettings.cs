@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Settings.Models;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Settings.Services;
 
@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Settings.Services;
 /// read configuration-only values until the store existed. Only declared keys are read here.
 /// </remarks>
 internal sealed class SparkSettings(
-    IDocumentStore store,
+    ISparkStore store,
     SparkSettingsCatalog catalog,
     IOptions<SparkSettingsOptions> options,
     ILogger<SparkSettings> logger,
@@ -65,10 +65,10 @@ internal sealed class SparkSettings(
 
         // No lock: two concurrent loads read the same documents, and the later one wins harmlessly.
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         for (var start = 0; ; start += PageSize)
         {
-            var page = await session.Advanced.LoadStartingWithAsync<Setting>(Setting.IdFor(string.Empty).Value, start: start, pageSize: PageSize, token: cancellationToken);
+            var page = await session.LoadStartingWithAsync<Setting>(Setting.IdFor(string.Empty).Value, start, PageSize, cancellationToken: cancellationToken);
             var count = 0;
             foreach (var setting in page)
             {

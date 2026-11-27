@@ -22,7 +22,7 @@ public class QnAContributionsTests
 
     public QnAContributionsTests(QnAE2ECollectionFixture fixture) => host = fixture.Host;
 
-    private static string CurrentId(string questionId, string language, string script) => $"{questionId}/Translations/{language}/{script}";
+    private static string CurrentId(string questionId, string language, string script) => $"questiontranslationscurrents/{questionId}/translations/{language}/{script}".ToLowerInvariant(); // #536 D23 rule 12
 
     /// <summary>
     /// A member who is not the author saves a translation of the question; the title they also posted is
@@ -141,7 +141,7 @@ public class QnAContributionsTests
 
         await host.WaitForIndexingAsync();
         var queue = (await moderator.PostJsonAsync("/spark/moderation/cases", new { take = 200 })).Result();
-        queue.EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().Contain($"moderationcases/flag/{version}".ToLowerInvariant()); // As ModerationIds writes it (#536 D7).
+        queue.EnumerateArray().Select(c => c.GetProperty("id").GetString()).Should().Contain($"reviewcases/flag/{version}".ToLowerInvariant()); // As ModerationIds writes it (#536 D7).
     }
 
     /// <summary>Anonymous visitors read translations but cannot write one: the save is refused, nothing is stored.</summary>

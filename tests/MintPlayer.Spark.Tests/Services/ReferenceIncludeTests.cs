@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// includes now actually emit into the query (a cache hit for the referenced doc) and that a
 /// consumer's <c>GetDefaultIncludes()</c> paths are merged with the <c>[Reference]</c> ones.
 /// </summary>
-public class ReferenceIncludeTests : SparkTestDriver
+public class ReferenceIncludeTests : RavenSparkTestDriver
 {
     public class Author
     {

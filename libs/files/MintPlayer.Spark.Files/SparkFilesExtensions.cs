@@ -34,14 +34,11 @@ public static class SparkFilesExtensions
 {
     /// <summary>
     /// Registers the upload endpoints (<c>/spark/files/prepare</c>, <c>/upload</c>, <c>/commit</c>), the save-path claim
-    /// (<see cref="ISparkFileValueHandler"/>), the sniffer and the RavenDB attachment store. Without it a model with a
+    /// (<see cref="ISparkFileValueHandler"/>), the sniffer and the file store: RavenDB attachments by default, which a store with a schema (SQL Server, PostgreSQL) does not have, so there a file store package is required. Without it a model with a
     /// stored-file attribute refuses to start (D2b).
     /// </summary>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Files", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
     public static ISparkBuilder AddFiles(this ISparkBuilder builder, Action<FilesBuilder>? configure = null)
     {
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Files", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
-
         var services = builder.Services;
         if (services.Any(d => d.ServiceType == typeof(FilesMarker)))
             throw new InvalidOperationException("AddFiles() is called twice; configure files in one call.");
@@ -63,12 +60,20 @@ public static class SparkFilesExtensions
         if (files.StoreFactory is { } factory)
             services.AddSingleton(factory);
         else
-            services.AddSingleton(typeof(IFileStore), files.StoreType ?? typeof(RavenAttachmentFileStore));
+            if (files.StoreType is { } storeType)
+            services.AddSingleton(typeof(IFileStore), storeType);
+        else
+            services.AddSingleton<IFileStore>(sp => DefaultStore(sp.GetRequiredService<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>()));
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoredTypeServiceCollectionExtensions.AddSparkStoredType<Staging.SparkFileUpload>(services);
         services.AddSparkFilesServices();
+        global::MintPlayer.Spark.Abstractions.Commands.SparkCommandServiceCollectionExtensions.AddSparkCommand<Images.SparkImageVariantCommand>(
+            services, Images.SparkImageVariantCommand.Flag,
+            "--spark-regenerate-variants [--force]: remakes the stored images' variants that no longer match the configuration.");
         builder.AddInterceptor<FileStoreInterceptor>();
         // A store outside RavenDB is swept for what a crash between commit and store left behind; the service idles otherwise.
         services.AddHostedService<FilesReconcileService>();
-        // Deferred scanning only (D6); idles otherwise.
+        // Deferred scanning only (D6); idles otherwise. Its first sweep waits for the schema (#536 D41).
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreReadinessServiceCollectionExtensions.AddSparkStoreReadiness(services);
         services.AddHostedService<DeferredFileScanService>();
 
         // Staging documents expire (IExpiring), and their RavenDB attachments with them.
@@ -77,6 +82,15 @@ public static class SparkFilesExtensions
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkFilesEndpoints());
         return builder;
     }
+
+    /// <summary>
+    /// #536: RavenDB keeps the bytes as attachments of the documents. A store with a schema has no attachments, so it needs
+    /// a store outside the database.
+    /// </summary>
+    internal static IFileStore DefaultStore(global::MintPlayer.Spark.Abstractions.Storage.ISparkStore store)
+        => string.Equals(store.ProviderName, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb, StringComparison.OrdinalIgnoreCase)
+            ? new RavenAttachmentFileStore(store.AsRavenStore())
+            : throw new InvalidOperationException($"Spark.Files keeps files as RavenDB attachments by default, and the {store.ProviderName} provider has none: choose a file store in AddFiles, such as files.UseFileSystem(path), files.UseAzureBlob(...) or files.UseS3(...).");
 
     /// <summary>The meaning of every <c>fileOptions</c> (core checked its shape): limits within the ceiling, types the sniffer recognises.</summary>
     internal static void ValidateStartup(IServiceProvider services)

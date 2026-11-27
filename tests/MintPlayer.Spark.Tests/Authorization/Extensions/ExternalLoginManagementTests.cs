@@ -30,7 +30,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// silent: Identity does it without complaint, and the person finds out at their next sign-in, by
 /// which point there is no self-service way back.
 /// </remarks>
-public class ExternalLoginManagementTests : SparkTestDriver
+public class ExternalLoginManagementTests : RavenSparkTestDriver
 {
     private const string TestScheme = "TestCookie";
 
@@ -76,6 +76,8 @@ public class ExternalLoginManagementTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddRouting();

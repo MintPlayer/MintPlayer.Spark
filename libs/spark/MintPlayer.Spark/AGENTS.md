@@ -56,12 +56,13 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // spark.AddExpiration(); // only for options in code; IExpiring types need nothing (docs/guide-expiration.md)
 });
 
-// Build-time commands. Each returns true when it handled the invocation and the host should stop.
-if (builder.SynchronizeSparkModelsIfRequested(args)) return;    // --spark-synchronize-model / --spark-verify-model / --spark-describe
-if (builder.InitializeSparkSecurityIfRequested(args)) return;   // --spark-init-security
-if (builder.VerifySparkSecurityIfRequested(args)) return;       // --spark-verify-security / --spark-synchronize-security
-
 var app = builder.Build();
+
+// Spark's commands (ISparkCommand, registered by AddSpark and each package; --spark-help lists them):
+// --spark-synchronize-model / --spark-verify-model / --spark-describe / --spark-init-security /
+// --spark-verify-security / --spark-synchronize-security, and the packages' own. True means the host should stop.
+if (await app.RunSparkCommandIfRequestedAsync(args)) return;
+
 app.UseRouting();
 app.UseSpark();                            // authn, authz, antiforgery, XSRF cookie — in order
 app.UseEndpoints(e => e.MapSpark());

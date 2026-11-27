@@ -1,8 +1,8 @@
 {
   "$schema": "../../../../../schemas/model.schema.json",
   "_comment": [
-    "The package's own dashboard (docs/spark_dashboards_PRD.md, D13): the RavenDB statistics. Virtual (no clrType,",
-    "no documents) and live: DatabaseStatisticsActions fills it from RavenStatisticsProvider, and the package pushes it",
+    "The package's own dashboard (docs/spark_dashboards_PRD.md, D13): the store's statistics. Virtual (no clrType,",
+    "no documents) and live: DatabaseStatisticsActions fills it from StoreStatisticsProvider, and the package pushes it",
     "every 15 s. Read/DatabaseStatistics is the dashboards:administrators slot's (security.json).",
     "",
     "HAND-AUTHORED. Ids are UUIDv5 of 'dashboards:DatabaseStatistics[...]', written by 'npm run stamp:library-model-ids'."

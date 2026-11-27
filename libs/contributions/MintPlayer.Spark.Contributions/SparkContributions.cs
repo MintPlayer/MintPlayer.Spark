@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Contributions;
 
@@ -8,7 +7,7 @@ namespace MintPlayer.Spark.Contributions;
 /// <see cref="IContributions"/>: repairs the current-document cache from the contributions. Each run uses
 /// its own session (never the request's), and a concurrent write is retried with fresh reads.
 /// </summary>
-internal sealed class SparkContributions(IDocumentStore store, ContributionCatalog catalog, ILogger<SparkContributions> logger) : IContributions
+internal sealed class SparkContributions(ISparkStore store, ContributionCatalog catalog, ILogger<SparkContributions> logger) : IContributions
 {
     /// <summary>Attempts per unit of work when a concurrent write moves a current document (S-C4).</summary>
     internal const int MaxAttempts = 3;
@@ -21,14 +20,14 @@ internal sealed class SparkContributions(IDocumentStore store, ContributionCatal
     }
 
     /// <summary>Rebuilds <paramref name="targetIds"/> for one declaration in one session, retried on a conflict.</summary>
-    internal static async Task RebuildAsync(IDocumentStore store, IContributionHandler handler, IReadOnlyCollection<string> targetIds, ILogger logger, CancellationToken cancellationToken)
+    internal static async Task RebuildAsync(ISparkStore store, IContributionHandler handler, IReadOnlyCollection<string> targetIds, ILogger logger, CancellationToken cancellationToken)
     {
         for (var attempt = 1; ; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var session = store.OpenAsyncSession();
+            using var session = store.OpenSession();
             // A prefix load per target and per slot: allow what the batch needs, not the default 30.
-            session.Advanced.MaxNumberOfRequestsPerSession = Math.Max(30, targetIds.Count * 8);
+            session.MaxNumberOfRequests = Math.Max(30, targetIds.Count * 8);
             try
             {
                 foreach (var targetId in targetIds)
@@ -36,7 +35,7 @@ internal sealed class SparkContributions(IDocumentStore store, ContributionCatal
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
-            catch (ConcurrencyException) when (attempt < MaxAttempts)
+            catch (SparkStoreConcurrencyException) when (attempt < MaxAttempts)
             {
                 logger.LogDebug("Contribution rebuild of {Count} {Target} target(s) met a concurrent write; retrying ({Attempt}/{Max}).",
                     targetIds.Count, handler.Descriptor.TargetType.Name, attempt, MaxAttempts);

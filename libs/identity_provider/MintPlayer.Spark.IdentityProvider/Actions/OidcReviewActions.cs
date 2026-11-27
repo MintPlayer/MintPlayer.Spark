@@ -2,8 +2,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -24,25 +22,25 @@ internal sealed partial class OidcScopeApprovalActions : ISparkOwnsRowSecurity
 
     public const string QueryAlias = "oidc-scope-approvals";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly OidcPortalAccess access;
 
     public async Task<IQueryable<OidcScopeApproval>> ScopeApprovals()
     {
-        var apps = await session.Query<OidcApplication>()
-            .Where(a => a.Scopes.Any(s => s.Status == OidcScopeStatuses.Pending))
-            .ToListAsync();
+        // From the scopes view, not a query of the collection (#536 D47, D42).
+        var apps = await session.ApplicationsWithPendingScopesAsync(CancellationToken.None);
+        var pending = apps.SelectMany(a => a.Scopes.Where(s => s.Status == OidcScopeStatuses.Pending)).ToList();
+        // The APIs in one round trip (a session allows 30 requests).
+        var resources = await session.LoadExistingAsync<OidcResource>(
+            pending.Select(s => OidcScopeCatalog.ApiResourceNameOf(s.Name)).OfType<string>().Select(OidcScopeCatalog.ResourceId), CancellationToken.None);
 
         var rows = new List<OidcScopeApproval>();
-        var resources = new Dictionary<string, OidcResource?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var app in apps)
+        foreach (var app in apps.OrderBy(a => a.Id.Value, StringComparer.Ordinal))
         {
             foreach (var scope in app.Scopes.Where(s => s.Status == OidcScopeStatuses.Pending))
             {
                 if (OidcScopeCatalog.ApiResourceNameOf(scope.Name) is not { } apiName) continue;
-                if (!resources.TryGetValue(apiName, out var api))
-                    resources[apiName] = api = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(apiName));
-                if (api is null || !await access.OwnsAsync(api)) continue;
+                if (!resources.TryGetValue(OidcScopeCatalog.ResourceId(apiName), out var api) || !await access.OwnsAsync(api)) continue;
                 rows.Add(new OidcScopeApproval($"{app.Id}|{scope.Name}", app.DisplayName, scope.Name, api.Name, scope.Review?.RequestedAt));
             }
         }
@@ -62,13 +60,13 @@ internal sealed partial class OidcGoLiveReviewActions : ISparkOwnsRowSecurity
 
     public const string QueryAlias = "oidc-golive-reviews";
 
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     public async Task<IQueryable<OidcGoLiveReview>> GoLiveReviews()
     {
-        var apps = await session.Query<OidcApplication>()
-            .Where(a => a.GoLiveReview != null && a.GoLiveReview.Status == OidcScopeStatuses.Pending)
-            .ToListAsync();
-        return apps.Select(a => new OidcGoLiveReview(a.Id.Value, a.DisplayName, a.ClientId, a.GoLiveReview?.RequestedAt)).AsQueryable();
+        // From the go-live view, not a query of the collection (#536 D47, D42).
+        var apps = await session.ApplicationsAwaitingGoLiveAsync(CancellationToken.None);
+        return apps.OrderBy(a => a.Id.Value, StringComparer.Ordinal)
+            .Select(a => new OidcGoLiveReview(a.Id.Value, a.DisplayName, a.ClientId, a.GoLiveReview?.RequestedAt)).AsQueryable();
     }
 }

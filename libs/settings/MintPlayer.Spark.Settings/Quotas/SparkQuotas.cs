@@ -3,8 +3,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
-using Raven.Client.Documents;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Settings.Quotas;
 
@@ -31,7 +30,7 @@ public interface ISparkQuotas
             : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
 }
 
-internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings, SparkQuotaCatalog catalog, TimeProvider timeProvider, ILogger<SparkQuotas> logger) : ISparkQuotas
+internal sealed class SparkQuotas(ISparkStore store, ISparkSettings settings, SparkQuotaCatalog catalog, TimeProvider timeProvider, ILogger<SparkQuotas> logger) : ISparkQuotas
 {
     private const int Attempts = 8;
 
@@ -45,10 +44,10 @@ internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings,
         var id = SparkQuotaUsage.IdFor(quota.Name, key);
         for (var attempt = 1; ; attempt++)
         {
-            using var session = store.OpenAsyncSession();
+            using var session = store.OpenSession();
             // Two concurrent uses must not both see the last free slot: the write fails if the document changed
             // since it was read (or appeared, for a new one), and the use is decided again.
-            session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+            session.OptimisticConcurrency = true;
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var usage = await session.LoadAsync<SparkQuotaUsage>(id.Value, cancellationToken);
             var isNew = usage is null;
@@ -70,7 +69,7 @@ internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings,
                 await session.SaveChangesAsync(cancellationToken);
                 return new SparkQuotaDecision(true, limit, limit - usage.Uses.Count, null);
             }
-            catch (ConcurrencyException) when (attempt < Attempts)
+            catch (SparkStoreConcurrencyException) when (attempt < Attempts)
             {
                 logger.LogDebug("Quota {Quota} for {Key}: concurrent use, deciding again (attempt {Attempt}).", quota.Name, key, attempt);
             }
@@ -91,7 +90,7 @@ internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings,
     {
         catalog.Require(quota);
         var (_, window) = await LimitsAsync(quota, cancellationToken);
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var usage = await session.LoadAsync<SparkQuotaUsage>(SparkQuotaUsage.IdFor(quota.Name, key).Value, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         return usage?.Uses.Count(u => u > now - window) ?? 0;

@@ -32,7 +32,7 @@ public sealed class ComposedQueryHost : SharedSparkHost<TestSparkContext>
             .. ComposedQueryTests.DashboardModel(source: "Custom.GetPagedRows", queryId: PagedQueryId).Queries
                 .Select(q => { q.Name = "DashboardPagedRows"; return q; }),
         ];
-        return new SparkEndpointFactory(Store, [model]);
+        return new SparkEndpointFactory(Store.AsSparkTestDatabase(), [model]);
     }
 }
 
@@ -48,7 +48,7 @@ public sealed class ComposedQueryHost : SharedSparkHost<TestSparkContext>
 /// </para>
 /// </summary>
 public class ComposedQueryTests(ComposedQueryHost host)
-    : SparkSharedTestDriver(host), IClassFixture<ComposedQueryHost>
+    : RavenSparkSharedTestDriver(host), IClassFixture<ComposedQueryHost>
 {
     private static readonly Guid DashboardTypeId = Guid.Parse("77777777-cccc-cccc-cccc-777777777777");
     private static readonly Guid DashboardQueryId = Guid.Parse("88888888-cccc-cccc-cccc-888888888888");
@@ -160,7 +160,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
         perms.EnsureAuthorizedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(x => Task.FromException(new SparkAccessDeniedException($"{x.ArgAt<string>(0)}/{x.ArgAt<string>(1)}")));
 
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel()], services =>
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [DashboardModel()], services =>
         {
             services.RemoveAll<IPermissionService>();
             services.AddSingleton(perms);
@@ -182,7 +182,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
             typeId: Guid.Parse("99999999-cccc-cccc-cccc-999999999999"),
             queryId: Guid.Parse("aaaaaaaa-cccc-cccc-cccc-aaaaaaaaaaaa"));
 
-        await using var factory = new SparkEndpointFactory(Store, [orphan]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [orphan]);
 
         var ex = (await new Func<Task>(() => ExecuteAsync(factory, Guid.Parse("aaaaaaaa-cccc-cccc-cccc-aaaaaaaaaaaa"))).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 

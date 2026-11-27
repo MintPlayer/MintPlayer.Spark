@@ -25,8 +25,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// #490 M1, D4 — a failure at the provider hop (the user cancels, the correlation fails) is reported
 /// the way every other outcome is, instead of as an unhandled exception inside the popup.
 /// </summary>
-public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class SparkExternalLoginRemoteFailureTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string ValidNonce = "AbCdEfGhIjKlMnOpQrStUvWxYz012-_9";
     private const string AccessDeniedMessage = "Access was denied by the resource owner or by the remote server.";
@@ -229,6 +229,8 @@ public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     TestSparkAuth.Builder(services).AddGitHub(o =>
                     {

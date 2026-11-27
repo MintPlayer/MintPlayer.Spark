@@ -6,10 +6,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.Revisions;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.SoftDelete;
 
@@ -32,7 +30,7 @@ namespace MintPlayer.Spark.SoftDelete;
 internal sealed partial class SoftDeleteInterceptor
     : IDeleteReplacement, IBeforeDelete, IAfterDelete, IBeforeSave, INaturalIdCollision
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
@@ -80,7 +78,7 @@ internal sealed partial class SoftDeleteInterceptor
 
         // After the document, never before: deleting revisions first and the document second writes a
         // fresh delete revision (measured, #460 spike H1). Force-created revisions only go with the flag.
-        var deleted = await revisions.DeleteAsync(context.Id);
+        var deleted = await revisions.DeleteAsync(context.EntityType, context.Id);
         logger.LogInformation("Purged {EntityType} {Id} and {Revisions} revision(s).", context.EntityType.Name, context.Id, deleted);
 
         state.Purged.Add(context.Id);
@@ -170,25 +168,14 @@ internal sealed partial class SoftDeleteInterceptor
         }
     }
 
+    /// <remarks>Typed by <paramref name="targetType"/>: an untyped RavenDB load of a document without
+    /// <c>@Raven-Clr-Type</c> is a JObject, which is not ISoftDeletable and would read as "not deleted".</remarks>
     private async Task<IReadOnlyList<string>> LoadDeletedAsync(Type targetType, IReadOnlyCollection<string> ids)
     {
-        var load = LoadDeletedMethod.MakeGenericMethod(targetType);
-        using var session = documentStore.OpenAsyncSession();
-        return await (Task<IReadOnlyList<string>>)load.Invoke(null, [session, ids])!;
+        using var session = store.OpenSession();
+        var loaded = await session.LoadAsync(targetType, ids);
+        return [.. loaded.Where(pair => pair.Value is ISoftDeletable { IsDeleted: true }).Select(pair => pair.Key)];
     }
-
-    private static readonly MethodInfo LoadDeletedMethod =
-        typeof(SoftDeleteInterceptor).GetMethod(nameof(LoadDeletedTypedAsync), BindingFlags.NonPublic | BindingFlags.Static)!;
-
-    // Typed, never LoadAsync<object>: an untyped load of a document without @Raven-Clr-Type returns a
-    // JObject, which is not ISoftDeletable and would read as "not deleted".
-    private static async Task<IReadOnlyList<string>> LoadDeletedTypedAsync<T>(IAsyncDocumentSession session, IReadOnlyCollection<string> ids)
-        where T : class
-    {
-        var loaded = await session.LoadAsync<T>(ids);
-        return loaded.Where(pair => pair.Value is ISoftDeletable { IsDeleted: true }).Select(pair => pair.Key).ToList();
-    }
-
 }
 
 /// <summary>The <c>[Reference]</c> properties of a type that point at a soft-deletable type.</summary>

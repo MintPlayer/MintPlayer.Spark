@@ -14,11 +14,11 @@ namespace MintPlayer.Spark.Tests.Webhooks.GitHub;
 /// WebSocket upgrades (R2-H5, <c>SparkMiddleware</c>) refuses a cross-origin handshake before the
 /// generator endpoint runs, exactly as it did for the hand-mapped route it replaced.
 /// </summary>
-public class DevWebSocketOriginGuardTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class DevWebSocketOriginGuardTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private SparkEndpointFactory<TestSparkContext> Factory() => new(
-        Store,
+        Store.AsSparkTestDatabase(),
         models: [],
         configureSpark: spark => spark.AddMessaging().AddGithubWebhooks(o =>
         {

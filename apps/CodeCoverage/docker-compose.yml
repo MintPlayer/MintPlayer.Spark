@@ -266,7 +266,7 @@ services:
       # Data Protection key ring (auth + antiforgery cookies decrypt with it). Kept on the
       # dataprotection-keys volume so a redeploy does not sign everyone out; Spark refuses to
       # start in Production without a location. appsettings.json deliberately sets no
-      # Storage, because KeysPath and Storage=RavenDb together also refuse startup.
+      # Storage, because KeysPath and Storage=Store together also refuse startup.
       - Spark__DataProtection__KeysPath=/var/lib/codecoverage/dataprotection-keys
       # OIDC audience: workflows must request an id-token with this audience
       - Coverage__BaseUrl=https://coverage.mintplayer.com

@@ -2,9 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.CompareExchange;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Security.Cryptography;
 using System.Text;
 using System.Security.Claims;
@@ -12,8 +10,10 @@ using System.Security.Claims;
 namespace MintPlayer.Spark.Authorization.Identity;
 
 /// <summary>
-/// RavenDB-backed user store implementing all ASP.NET Core Identity store interfaces.
-/// Adapted from RavenDB.Identity (MIT licensed) for MintPlayer.Spark's infrastructure.
+/// The user store implementing all ASP.NET Core Identity store interfaces, on any Spark store (#536). Adapted from
+/// RavenDB.Identity (MIT licensed) for MintPlayer.Spark's infrastructure. Emails and passkey credential ids are unique
+/// through the store's reservations (<see cref="ISparkSession.Reserve"/>): compare exchange on RavenDB, under the same
+/// keys as before, and a table written in the documents' transaction elsewhere.
 /// </summary>
 public partial class UserStore<TUser> :
     IUserStore<TUser>,
@@ -33,9 +33,11 @@ public partial class UserStore<TUser> :
     IQueryableUserStore<TUser>
     where TUser : SparkUser
 {
-    private const string EmailReservationKeyPrefix = "emails/";
+    private const string EmailReservationKeyPrefix = SparkUserReservations.EmailPrefix;
+    private const string UserNameReservationKeyPrefix = SparkUserReservations.UserNamePrefix;
+    private const string LoginReservationKeyPrefix = SparkUserReservations.LoginPrefix;
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     // All [Inject] fields live in this file: the generator emits one constructor per partial
     // declaration, so a field injected from UserStore.Secrets.cs produced a second, ambiguous one.
     [Inject] private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtectionProvider;
@@ -44,10 +46,16 @@ public partial class UserStore<TUser> :
     // The groups security.json declares, whose names roles keep (see IUserRoleStore below). Absent without core's loader
     // (a bare AddSparkAuthentication, the store's unit tests): a role then keeps the name the store was handed.
     [Inject] private readonly ISecurityConfigurationLoader? securityConfiguration;
-    private IAsyncDocumentSession? session;
+    private ISparkSession? session;
     private bool disposed;
 
-    private IAsyncDocumentSession Session
+    // Each user as this store handed it out: the lookup keys (email, user name, logins) it held, which UpdateAsync moves
+    // the reservations from, and its version, which re-attaches it after a failed save dropped the session.
+    private readonly Dictionary<string, Handout> handouts = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record Handout(HashSet<string> Keys, string? Version);
+
+    private ISparkSession Session
     {
         get
         {
@@ -56,7 +64,7 @@ public partial class UserStore<TUser> :
             if (session != null)
                 return session;
 
-            session = documentStore.OpenAsyncSession();
+            session = store.OpenSession();
 
             // Identity's stores are read-modify-write over a whole user document: load the user,
             // mutate a field, save. Without optimistic concurrency the last save wins silently,
@@ -67,12 +75,56 @@ public partial class UserStore<TUser> :
             //
             // Identity models this outcome already: UpdateAsync answers ConcurrencyFailure, which
             // UserManager surfaces as a failed IdentityResult rather than an exception.
-            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            session.OptimisticConcurrency = true;
             return session;
         }
     }
 
-    private string DatabaseName => documentStore.Database;
+    /// <summary>Remembers <paramref name="user"/>'s lookup keys as stored, for <see cref="UpdateAsync"/>.</summary>
+    private TUser? Loaded(TUser? user)
+    {
+        if (user?.Id is { } id && !handouts.ContainsKey(id))
+            handouts[id] = new(LookupKeysOf(user), Session.GetVersion(user));
+        return user;
+    }
+
+    /// <summary>
+    /// Drops the session after a save failed on a taken key or a concurrent write. The session would keep the failed
+    /// reservations and retry them on every later save; a fresh one starts clean, and <see cref="AttachAsync"/> brings
+    /// back a user handed out before.
+    /// </summary>
+    private void ResetSession()
+    {
+        session?.Dispose();
+        session = null;
+    }
+
+    /// <summary>Tracks <paramref name="user"/> again after <see cref="ResetSession"/>, at the version it was handed out with.</summary>
+    private async Task AttachAsync(TUser user, CancellationToken cancellationToken)
+    {
+        if (user.Id is { } id && !Session.IsLoaded(id) && handouts.TryGetValue(id, out var handout))
+            await Session.StoreAsync(user, handout.Version, id, cancellationToken);
+    }
+
+    private IList<TUser> Loaded(IList<TUser> users)
+    {
+        foreach (var user in users)
+            Loaded(user);
+        return users;
+    }
+
+    /// <summary>The lookup keys <paramref name="user"/> holds in the store: as handed out, else read now.</summary>
+    private async Task<HashSet<string>> StoredKeysAsync(TUser user, CancellationToken cancellationToken)
+    {
+        if (user.Id is null)
+            return new(StringComparer.OrdinalIgnoreCase);
+        if (handouts.TryGetValue(user.Id, out var handout))
+            return handout.Keys;
+        using var probe = store.OpenSession();
+        return await probe.LoadAsync<TUser>(user.Id, cancellationToken) is { } stored
+            ? LookupKeysOf(stored)
+            : new(StringComparer.OrdinalIgnoreCase);
+    }
 
     #region IUserStore
 
@@ -92,36 +144,30 @@ public partial class UserStore<TUser> :
                 : SparkRegistrationMethods.Other;
 
         // StoreAsync assigns the id without writing anything, so the reservation names the real user
-        // from the start. It used to hold "" until the save, and a save that failed left that
-        // placeholder blocking the address forever.
+        // from the start.
         await Session.StoreAsync(user, cancellationToken);
+        var userId = Session.GetId(user)!;
+        user.Id ??= userId;
 
-        var normalizedEmail = user.Email is null ? null : user.NormalizedEmail ?? user.Email.ToUpperInvariant();
-        if (normalizedEmail != null)
-        {
-            // Reserve email via compare/exchange (cluster-safe uniqueness)
-            if (!await CreateEmailReservationAsync(normalizedEmail, user.Id!, cancellationToken))
-            {
-                Session.Advanced.Evict(user);
-                return IdentityResult.Failed(new IdentityError
-                {
-                    Code = "DuplicateEmail",
-                    Description = $"Email '{user.Email}' is already taken."
-                });
-            }
-        }
+        // The email, the user name and every login are claimed with the document, in one save (#536 S6): a taken key
+        // fails the save and nothing is written. Every passkey the new user already holds is claimed the same way.
+        var keys = LookupKeysOf(user);
+        foreach (var key in keys)
+            Session.Reserve(key, userId);
+        foreach (var passkey in user.Passkeys)
+            Session.Reserve(PasskeyKeyFor(passkey.CredentialId), userId);
 
         try
         {
             await Session.SaveChangesAsync(cancellationToken);
         }
-        catch
+        catch (SparkReservationTakenException ex)
         {
-            if (normalizedEmail != null)
-                await DeleteEmailReservationAsync(normalizedEmail, user.Id!, CancellationToken.None);
-            throw;
+            ResetSession();
+            return ReservationTaken(user, ex);
         }
 
+        handouts[userId] = new(keys, Session.GetVersion(user));
         return IdentityResult.Success;
     }
 
@@ -130,49 +176,31 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        // Detect email changes
-        string? oldEmail = null;
-        string? newEmail = null;
-        var changes = Session.Advanced.WhatChanged();
-        if (user.Id != null && changes.TryGetValue(user.Id, out var documentChanges))
+        // The reservations move with the email, the user name and the logins, in the same save: a new key is claimed
+        // and an old one released only if the user document is written. A change of case keeps the same key.
+        await AttachAsync(user, cancellationToken);
+        var oldKeys = await StoredKeysAsync(user, cancellationToken);
+        var newKeys = LookupKeysOf(user);
+        if (user.Id is { } id)
         {
-            var emailChange = documentChanges.FirstOrDefault(c =>
-                string.Equals(c.FieldName, nameof(SparkUser.NormalizedEmail), StringComparison.OrdinalIgnoreCase));
-
-            if (emailChange != null)
-            {
-                oldEmail = emailChange.FieldOldValue?.ToString();
-                newEmail = user.NormalizedEmail;
-                // A change of case only keeps the same reservation key: nothing to move.
-                if (oldEmail != null && newEmail != null && CompareExchangeKeyFor(oldEmail) == CompareExchangeKeyFor(newEmail))
-                    oldEmail = newEmail = null;
-            }
-        }
-
-        // The new address is reserved first and the old one released only after the user document
-        // is saved: a refused save (ConcurrencyFailure) used to leave the old address unreserved and
-        // the new one held by a user who never got it, blocking it for everyone.
-        if (newEmail != null && !await CreateEmailReservationAsync(newEmail, user.Id!, cancellationToken))
-        {
-            return IdentityResult.Failed(new IdentityError
-            {
-                Code = "DuplicateEmail",
-                Description = $"Email '{user.Email}' is already taken."
-            });
+            foreach (var key in newKeys.Except(oldKeys, StringComparer.OrdinalIgnoreCase))
+                Session.Reserve(key, id);
+            foreach (var key in oldKeys.Except(newKeys, StringComparer.OrdinalIgnoreCase))
+                Session.Release(key, id);
         }
 
         try
         {
             await Session.SaveChangesAsync(cancellationToken);
         }
-        catch (Exception ex)
+        catch (SparkReservationTakenException ex)
         {
-            if (newEmail != null)
-                await DeleteEmailReservationAsync(newEmail, user.Id!, CancellationToken.None);
-
-            if (ex is not Raven.Client.Exceptions.ConcurrencyException)
-                throw;
-
+            ResetSession();
+            return ReservationTaken(user, ex);
+        }
+        catch (SparkStoreConcurrencyException)
+        {
+            ResetSession();
             // Someone else wrote this user while we held it. Losing is a normal outcome, not a
             // fault: the caller re-reads and retries, and a single-use credential stays single-use.
             return IdentityResult.Failed(new IdentityError
@@ -182,9 +210,8 @@ public partial class UserStore<TUser> :
             });
         }
 
-        if (oldEmail != null)
-            await DeleteEmailReservationAsync(oldEmail, user.Id!, cancellationToken);
-
+        if (user.Id is not null)
+            handouts[user.Id] = new(newKeys, Session.GetVersion(user));
         return IdentityResult.Success;
     }
 
@@ -193,44 +220,43 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        // Passkeys hold reservations of their own. Skipping this would burn every one of the user's
-        // credential ids permanently and leave them pointing at a deleted document.
-        await DeleteAllPasskeyReservationsAsync(user, cancellationToken);
-
-        // The document and its email reservation go in one cluster-wide transaction: deleted
+        // The document and all its reservations (email, user name, logins, passkeys) go in one save: deleted
         // separately, a user removed without its reservation blocked the address for good
-        // (MCP live checks, round 1: "account could not be created" on every external sign-in).
-        using (var clusterSession = documentStore.OpenAsyncSession(new Raven.Client.Documents.Session.SessionOptions
-        {
-            Database = DatabaseName,
-            TransactionMode = TransactionMode.ClusterWide,
-            // Users are written by ordinary sessions, so they carry no atomic guard to check.
-            DisableAtomicDocumentWritesInClusterWideTransaction = true,
-        }))
-        {
-            clusterSession.Delete(user.Id!);
-            if (user.NormalizedEmail != null)
-            {
-                var key = CompareExchangeKeyFor(user.NormalizedEmail);
-                var reservation = await clusterSession.Advanced.ClusterTransaction
-                    .GetCompareExchangeValueAsync<string>(key, cancellationToken);
-                // Only the user's own reservation: another account's must never be released by this one.
-                if (reservation != null && (reservation.Value == user.Id || string.IsNullOrEmpty(reservation.Value)))
-                    clusterSession.Advanced.ClusterTransaction.DeleteCompareExchangeValue(key, reservation.Index);
-            }
-            await clusterSession.SaveChangesAsync(cancellationToken);
-        }
+        // (MCP live checks, round 1: "account could not be created" on every external sign-in). Only the user's own
+        // reservations are released: another account's must never be freed by this one.
+        var id = user.Id!;
+        var stored = await StoredKeysAsync(user, cancellationToken);
+        foreach (var key in stored.Union(LookupKeysOf(user), StringComparer.OrdinalIgnoreCase))
+            Session.Release(key, id);
+        foreach (var passkey in user.Passkeys)
+            Session.Release(PasskeyKeyFor(passkey.CredentialId), id);
 
-        if (Session.Advanced.IsLoaded(user.Id!))
-            Session.Advanced.Evict(user);
+        Session.Delete(user.GetType(), id);
+        await Session.SaveChangesAsync(cancellationToken);
+        handouts.Remove(id);
         return IdentityResult.Success;
+    }
+
+    /// <summary>
+    /// The failure for a key another user holds. A passkey's never names its holder: that would turn enrollment into a
+    /// lookup oracle over a value the caller already controls.
+    /// </summary>
+    private static IdentityResult ReservationTaken(TUser user, SparkReservationTakenException taken)
+    {
+        if (taken.Key.StartsWith(EmailReservationKeyPrefix, StringComparison.OrdinalIgnoreCase))
+            return IdentityResult.Failed(new IdentityError { Code = "DuplicateEmail", Description = $"Email '{user.Email}' is already taken." });
+        if (taken.Key.StartsWith(UserNameReservationKeyPrefix, StringComparison.OrdinalIgnoreCase))
+            return IdentityResult.Failed(new IdentityError { Code = "DuplicateUserName", Description = $"Username '{user.UserName}' is already taken." });
+        if (taken.Key.StartsWith(LoginReservationKeyPrefix, StringComparison.OrdinalIgnoreCase))
+            return IdentityResult.Failed(new IdentityError { Code = "LoginAlreadyAssociated", Description = "A user with this login already exists." });
+        return IdentityResult.Failed(new IdentityError { Code = "DuplicatePasskey", Description = "This passkey is already registered." });
     }
 
     public async Task<TUser?> FindByIdAsync(string userId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
-        return await Session.LoadAsync<TUser>(userId, cancellationToken);
+        return Loaded(await Session.LoadAsync<TUser>(userId, cancellationToken));
     }
 
     public async Task<TUser?> FindByNameAsync(string normalizedUserName, CancellationToken cancellationToken)
@@ -238,8 +264,17 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        return await Session.Query<TUser>()
-            .FirstOrDefaultAsync(u => u.NormalizedUserName == normalizedUserName, cancellationToken);
+        // The reservation, then a load by id: strongly consistent on every store, and no index (D42). The check after
+        // the load ignores a reservation its holder no longer matches (a rename that has not been saved yet).
+        // ⚠️ A user written around this store (a raw seed, an import) holds no reservation and is not found here: such
+        // code claims the keys with SparkUserReservations.ClaimAsync.
+        var userId = await Session.GetReservationAsync(UserNameKeyFor(normalizedUserName), cancellationToken);
+        if (string.IsNullOrEmpty(userId))
+            return null;
+        var user = await Session.LoadAsync<TUser>(userId, cancellationToken);
+        return user is not null && string.Equals(user.NormalizedUserName, normalizedUserName, StringComparison.OrdinalIgnoreCase)
+            ? Loaded(user)
+            : null;
     }
 
     public Task<string?> GetNormalizedUserNameAsync(TUser user, CancellationToken cancellationToken)
@@ -306,18 +341,9 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        // Use compare/exchange for consistent read (no stale index issues)
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var result = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-
-        if (result?.Value == null || string.IsNullOrEmpty(result.Value))
-        {
-            return null;
-        }
-
-        return await Session.LoadAsync<TUser>(result.Value, cancellationToken);
+        // The reservation, read now: consistent, never a stale index.
+        var userId = await Session.GetReservationAsync(EmailKeyFor(normalizedEmail), cancellationToken);
+        return string.IsNullOrEmpty(userId) ? null : Loaded(await Session.LoadAsync<TUser>(userId, cancellationToken));
     }
 
     public Task<string?> GetNormalizedEmailAsync(TUser user, CancellationToken cancellationToken)
@@ -382,11 +408,10 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        // Ignores case: RavenDB matches an equality on an auto-index field case-insensitively, so the normalized name
-        // UserManager passes finds a role stored in any casing (UserRoleNameTests).
-        return await Session.Query<TUser>()
-            .Where(u => u.Roles.Contains(roleName))
-            .ToListAsync(cancellationToken);
+        // Ignores case: the normalized name UserManager passes finds a role stored in any casing (UserRoleNameTests). A
+        // rare, administrative read: it streams the users unfiltered (a collection scan, no auto index on RavenDB, #536
+        // D42) and matches in memory, the same on every store.
+        return Loaded(await StreamUsersAsync(u => u.Roles.Contains(roleName, StringComparer.OrdinalIgnoreCase), cancellationToken));
     }
 
     /// <summary>
@@ -451,15 +476,8 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        // RavenDB can't auto-index .Any() with multiple fields. Filter by one field in
-        // the query, then verify the second in memory — same pattern as FindByLoginAsync.
-        var candidates = await Session.Query<TUser>()
-            .Where(u => u.Claims.Any(c => c.ClaimValue == claim.Value))
-            .ToListAsync(cancellationToken);
-
-        return candidates
-            .Where(u => u.Claims.Any(c => c.ClaimType == claim.Type && c.ClaimValue == claim.Value))
-            .ToList();
+        // A rare, administrative read, as GetUsersInRoleAsync: streamed and matched in memory.
+        return Loaded(await StreamUsersAsync(u => u.Claims.Any(c => c.ClaimType == claim.Type && c.ClaimValue == claim.Value), cancellationToken));
     }
 
     #endregion
@@ -608,14 +626,17 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        // RavenDB can't auto-index .Any() with multiple fields.
-        // Filter by one field in the query, then verify the second in memory.
-        var candidates = await Session.Query<TUser>()
-            .Where(u => u.Logins.Any(l => l.ProviderKey == providerKey))
-            .ToListAsync(cancellationToken);
-
-        return candidates.FirstOrDefault(u =>
-            u.Logins.Any(l => l.LoginProvider == loginProvider && l.ProviderKey == providerKey));
+        // The reservation (#536), then a load by id: no index (D42), and a relational store keeps the logins in a JSON
+        // column no query can filter. The check after the load ignores a stale holder.
+        // ⚠️ A user written around this store (a raw seed, an import) holds no reservation and is not found here: such
+        // code claims the keys with SparkUserReservations.ClaimAsync.
+        var userId = await Session.GetReservationAsync(LoginKeyFor(loginProvider, providerKey), cancellationToken);
+        if (string.IsNullOrEmpty(userId))
+            return null;
+        var user = await Session.LoadAsync<TUser>(userId, cancellationToken);
+        return user is not null && user.Logins.Any(l => l.LoginProvider == loginProvider && l.ProviderKey == providerKey)
+            ? Loaded(user)
+            : null;
     }
 
     #endregion
@@ -691,63 +712,30 @@ public partial class UserStore<TUser> :
 
     #endregion
 
-    #region Compare/Exchange helpers
+    #region Reservation helpers
 
-    private static string CompareExchangeKeyFor(string normalizedEmail)
-        => EmailReservationKeyPrefix + normalizedEmail.ToLowerInvariant();
+    private static string EmailKeyFor(string normalizedEmail) => SparkUserReservations.EmailKey(normalizedEmail);
 
-    private async Task<bool> CreateEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
+    private static string UserNameKeyFor(string normalizedUserName) => SparkUserReservations.UserNameKey(normalizedUserName);
+
+    private static string LoginKeyFor(string loginProvider, string providerKey) => SparkUserReservations.LoginKey(loginProvider, providerKey);
+
+    private static HashSet<string> LookupKeysOf(SparkUser user) => SparkUserReservations.KeysOf(user);
+
+    /// <summary>Every user matching <paramref name=match/>, streamed from the whole collection (no index).</summary>
+    private async Task<IList<TUser>> StreamUsersAsync(Func<TUser, bool> match, CancellationToken cancellationToken)
     {
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var result = await operations.SendAsync(
-            new PutCompareExchangeValueOperation<string>(key, userId, 0),
-            token: cancellationToken);
-        if (result.Successful)
-            return true;
-
-        // Self-healing: a reservation whose user document no longer exists is stale (the user was
-        // removed without releasing it) and is taken over — atomically, against the index just read,
-        // so two claimants cannot both win. Never while the user it names exists. An empty value is a
-        // creation in flight under the old protocol and is left alone.
-        var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-        if (existing is null)
-            return (await operations.SendAsync(
-                new PutCompareExchangeValueOperation<string>(key, userId, 0), token: cancellationToken)).Successful;
-        if (existing.Value == userId)
-            return true;
-        if (string.IsNullOrEmpty(existing.Value))
-            return false;
-
-        using (var probe = documentStore.OpenAsyncSession(DatabaseName))
+        var ids = new List<string>();
+        await foreach (var row in Session.StreamAsync(Session.Query<TUser>(), cancellationToken))
         {
-            if (await probe.Advanced.ExistsAsync(existing.Value, cancellationToken))
-                return false;
+            if (match(row.Document))
+                ids.Add(row.Id);
         }
-
-        logger?.LogWarning("Taking over a stale email reservation whose user document no longer exists.");
-        var takeover = await operations.SendAsync(
-            new PutCompareExchangeValueOperation<string>(key, userId, existing.Index),
-            token: cancellationToken);
-        return takeover.Successful;
-    }
-
-    /// <summary>Releases <paramref name="normalizedEmail"/>'s reservation, but only while it is <paramref name="userId"/>'s.</summary>
-    private async Task DeleteEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
-    {
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key),
-            token: cancellationToken);
-
-        if (existing != null && existing.Value == userId)
-        {
-            await operations.SendAsync(
-                new DeleteCompareExchangeValueOperation<string>(key, existing.Index),
-                token: cancellationToken);
-        }
+        if (ids.Count == 0)
+            return [];
+        // Tracked, as every user this store hands out, so UpdateAsync can save it: one batched load.
+        var loaded = await Session.LoadAsync<TUser>(ids, cancellationToken);
+        return [.. ids.Select(id => loaded.GetValueOrDefault(id)).OfType<TUser>()];
     }
 
     #endregion

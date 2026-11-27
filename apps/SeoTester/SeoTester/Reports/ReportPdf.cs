@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Diagnostics;
 using System.Security.Claims;
 using MintPlayer.AspNetCore.Endpoints;
@@ -104,6 +105,8 @@ public partial class PdfRecipient : IRecipient<PdfMessage>
                     OrganizationId = run.OrganizationId,
                     Category = "report-ready",
                 }, cancellationToken);
+                // The notifier writes in the scope's session and never saves (#536 D50); the report is committed above.
+                await session.SaveChangesAsync(cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -164,7 +167,7 @@ public partial class ExportReportAction : SparkCustomAction
             return;
         }
         var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        await outbox.EnqueueAsync(session, new PdfMessage(run.Id.Value, culture, userId), cancellationToken: cancellationToken);
+        await outbox.EnqueueAsync(new PdfMessage(run.Id.Value, culture, userId), cancellationToken: cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         args.SetResult(new { url, ready = false });
         manager.Client.Notify(manager.GetTranslatedMessage("seo.reportBeingPrinted", run.Origin), MintPlayer.Spark.Abstractions.ClientOperations.NotificationKind.Info);

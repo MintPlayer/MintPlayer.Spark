@@ -52,7 +52,7 @@ public class PeContext : SparkContext
 /// because it runs the same endpoints, authorization and serializer. Anything a visitor may not read is therefore
 /// absent from the page, `ng-state` included, as it is from the API.
 /// </summary>
-public class SparkPrerenderEquivalenceTests : SparkTestDriver
+public class SparkPrerenderEquivalenceTests : RavenSparkTestDriver
 {
     private static readonly Guid CarTypeId = Guid.Parse("a77e0000-0000-4000-8000-00000000e001");
     private static readonly Guid DriverTypeId = Guid.Parse("a77e0000-0000-4000-8000-00000000e002");
@@ -69,7 +69,7 @@ public class SparkPrerenderEquivalenceTests : SparkTestDriver
     {
         await base.InitializeAsync();
         factory = new SparkEndpointFactory<PeContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [CarModel(), DriverModel()],
             configureServices: services =>
             {

@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,12 +20,10 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// batch that delivered it (the no-starvation argument), the admission decision taken before the
 /// claim, and configuration beating code for <c>Priority</c>.
 /// </summary>
-public class QueuePriorityTests(ITestOutputHelper output) : SparkTestDriver
+public class QueuePriorityTests(ITestOutputHelper output) : MessagingRavenTestDriver
 {
     private static readonly DateTime T0 = new(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
 
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
 
     private static MessageFeeder.Candidate C(string id, string queue, int priority, int sequence)
         => new(id, queue, priority, T0.AddTicks(sequence));
@@ -81,12 +80,32 @@ public class QueuePriorityTests(ITestOutputHelper output) : SparkTestDriver
     }
 
     [Fact]
-    public void The_sequence_of_a_document_in_hand_is_the_captured_time_else_the_servers_last_modified()
+    public void A_captured_sequence_is_kept_and_an_uncaptured_one_is_assigned_after_it_in_delivery_order()
     {
-        var metadata = new Raven.Client.Json.MetadataAsDictionary { ["@last-modified"] = "2026-09-29T12:00:01.2345678Z" };
+        var now = T0.AddMinutes(5);
+        static SparkMessage M(string id, DateTime created, DateTime? queuedAt = null)
+            => new() { Id = id, QueueName = "q", CreatedAtUtc = created, QueuedAtUtc = queuedAt };
 
-        MessageFeeder.SequenceOf(new SparkMessage(), metadata).Should().Be(new DateTime(2026, 9, 29, 12, 0, 1, DateTimeKind.Utc).AddTicks(2345678));
-        MessageFeeder.SequenceOf(new SparkMessage { QueuedAtUtc = T0 }, metadata).Should().Be(T0);
+        var captured = M("captured", T0, queuedAt: T0);
+        var delivered1 = M("delivered1", T0.AddSeconds(3));
+        var delivered2 = M("delivered2", T0.AddSeconds(1));
+        var pageOnlyLate = M("pageOnlyLate", T0.AddSeconds(9));
+        var pageOnlyEarly = M("pageOnlyEarly", T0.AddSeconds(2));
+
+        // The page sorts uncaptured messages first (nulls first, D4); the batch is in commit order.
+        var (page, batch) = MessageFeeder.AssignSequences(
+            [pageOnlyLate, delivered1, pageOnlyEarly, captured],
+            [delivered1, delivered2, captured],
+            now);
+
+        var sequence = page.Concat(batch).GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.Select(c => c.Sequence).Distinct().Single());
+        sequence["captured"].Should().Be(T0, "a message the feeder wrote keeps the place it captured then");
+        sequence["delivered1"].Should().Be(now, "the batch comes first, in delivery order");
+        sequence["delivered2"].Should().Be(now.AddTicks(1), "delivery order, not CreatedAtUtc: the producer's clock is not trusted");
+        sequence["pageOnlyEarly"].Should().Be(now.AddTicks(2), "then what only the page holds, by CreatedAtUtc");
+        sequence["pageOnlyLate"].Should().Be(now.AddTicks(3));
+        page.Should().HaveCount(4);
+        batch.Should().HaveCount(3);
     }
 
     [Fact]
@@ -161,6 +180,7 @@ public class QueuePriorityTests(ITestOutputHelper output) : SparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(new TestOutputLoggerProvider(output)));
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSingleton(seen);
         services.AddSparkMessaging(o =>
         {

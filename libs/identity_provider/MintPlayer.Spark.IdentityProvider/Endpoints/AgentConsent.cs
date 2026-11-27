@@ -7,7 +7,6 @@ using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Mcp;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -38,7 +37,8 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 /// </para>
 /// </remarks>
 internal sealed class AgentConsent(
-    AgentRequestUser users, OidcMcpResources resources, OidcAgentGrants grants, OidcSurface surface, IAgentExposure? exposure = null)
+    AgentRequestUser users, OidcMcpResources resources, OidcAgentGrants grants, OidcSurface surface, ISparkStore store,
+    IAgentExposure? exposure = null)
 {
     /// <summary>Whether the stored authorization request is an agent's request for an MCP endpoint.</summary>
     public static bool Applies(OidcToken request) => request.Properties.ContainsKey(OidcAgentClients.RequestProperty);
@@ -197,7 +197,7 @@ internal sealed class AgentConsent(
     /// the OAuth grant (and, for this application's own endpoint, the agent grant), and answers the code.
     /// </summary>
     public async Task<IResult> AllowAsync(
-        HttpContext context, IAsyncDocumentSession session, ConnectText text, SparkIdentityProviderOptions options, OidcAudit audit,
+        HttpContext context, ISparkSession session, ConnectText text, SparkIdentityProviderOptions options, OidcAudit audit,
         string issuer, OidcApplication app, OidcToken request, Authorization.Identity.SparkUser user, Choice choice, CancellationToken ct)
     {
         if (EndpointOf(request) is not { } endpoint)
@@ -245,7 +245,7 @@ internal sealed class AgentConsent(
             .ToList();
 
         request.Scopes = scopes;
-        request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, user.Id!, scopes, remember: false, ct);
+        request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(store, app, user.Id!, scopes, remember: false, ct);
         if (endpoint.IsLocal)
         {
             await grants

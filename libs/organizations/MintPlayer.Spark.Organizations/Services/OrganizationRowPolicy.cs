@@ -3,7 +3,6 @@ using System.Security.Claims;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Organizations.Models;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Organizations.Services;
 
@@ -14,16 +13,16 @@ namespace MintPlayer.Spark.Organizations.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The predicate is <c>x.OrganizationId.In(ids)</c> (for an organization, <c>o.Id.In(ids)</c>): the ids
+/// The predicate is <c>ids.Contains(x.OrganizationId)</c> (for an organization, <c>typedIds.Contains(o.Id)</c>): the ids
 /// of the caller's memberships whose role is at least <see cref="RequiresOrganizationRoleAttribute.For"/>
 /// the type and action, read once per request (<see cref="OrganizationMembershipReader"/>). It is pushed
 /// into the query as <c>OrganizationId in ($p0, …)</c>, ANDed with the type's own rule and every other
 /// policy (expiration, soft delete). Measured in §12 "Spike S13".
 /// </para>
 /// <para>
-/// ⚠️ <c>In()</c>, never <c>Contains</c>: RavenDB's provider cannot translate <c>Contains</c> on an array
-/// or list (CodeCoverage's <c>ApiTokenActions</c>). A row without <c>OrganizationId</c> matches no
-/// <c>in</c>, so it is visible to nobody; that is the safe direction.
+/// Store-neutral (#536 M6): RavenDB's session rewrites <c>Contains</c> into its own <c>In()</c>, which its
+/// translator needs; SQL Server, PostgreSQL and InMemory take <c>Contains</c> as it is. A row without
+/// <c>OrganizationId</c> matches no <c>in</c>, so it is visible to nobody; that is the safe direction.
 /// </para>
 /// <para>
 /// A caller with no membership of the needed role, and an anonymous caller, get a constant
@@ -79,7 +78,7 @@ internal sealed class OrganizationRowPolicy(OrganizationMembershipReader members
             return organization;
         }
 
-        Expression<Func<IOrganizationOwned, bool>> owned = ids.Length == 0 ? x => false : x => x.OrganizationId.In(ids);
+        Expression<Func<IOrganizationOwned, bool>> owned = ids.Length == 0 ? x => false : x => ids.Contains(x.OrganizationId);
         return owned;
     }
 

@@ -187,7 +187,7 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "A RavenDB Changes watch for live updates was not confirmed; the subscription relies on this process's writes and revalidation until it is");
+            logger.LogWarning(ex, "A store change watch for live updates was not confirmed; the subscription relies on this process's writes and revalidation until it is");
         }
     }
 

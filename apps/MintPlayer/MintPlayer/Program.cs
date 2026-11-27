@@ -5,6 +5,7 @@ using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Media;
 using MintPlayer.Services;
 using MintPlayer.Spark;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -110,16 +111,12 @@ builder.Services.AddResponseCompression(options =>
 });
 builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 
-if (builder.SynchronizeSparkModelsIfRequested(args))
-    return;
-
-if (builder.InitializeSparkSecurityIfRequested(args))
-    return;
-
-if (builder.VerifySparkSecurityIfRequested(args))
-    return;
-
 var app = builder.Build();
+
+// Spark's commands (--spark-help lists them): model synchronization, security, and every package's own. Building the
+// host constructs no service and opens no connection, so the ones that need no database run in CI.
+if (await app.RunSparkCommandIfRequestedAsync(args))
+    return;
 
 if (!app.Environment.IsDevelopment())
     app.UseHsts();

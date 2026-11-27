@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 /// RED by design: these assert what the PRD decided. Tests marked CONTROL pin today's behaviour that
 /// the spike relies on and are expected to pass.
 /// </remarks>
-public class Issue467DeleteManyGateTests : SparkTestDriver
+public class Issue467DeleteManyGateTests : RavenSparkTestDriver
 {
     private I467Host _host = null!;
 

@@ -10,7 +10,7 @@ using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History.Endpoints;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.History;
 
@@ -31,11 +31,11 @@ public static class SparkHistoryExtensions
     /// Grant per type in <c>security.json</c>: <c>History/T</c> to read revisions, <c>Revert/T</c>
     /// (with <c>Edit/T</c>) to revert (see <see cref="HistoryRights"/>).
     /// </remarks>
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.History", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions, Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.History", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions)]
     public static ISparkBuilder AddHistory(this ISparkBuilder builder, Action<SparkHistoryOptions>? configure = null)
     {
-        // #551 D13: history is read from RavenDB revisions.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.History", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions, global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        // #551 D13, #536 S8: history is read from the store's revisions (ISparkRevisions), on any store that keeps them.
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.History", global::MintPlayer.Spark.Abstractions.Storage.SparkStoreCapabilities.Revisions);
 
         var section = builder.Configuration?.GetSection(ConfigurationSection);
         builder.Services.AddOptions<SparkHistoryOptions>().Configure(options =>
@@ -59,7 +59,8 @@ public static class SparkHistoryExtensions
             if (!options.ConfigureRevisions)
                 return;
             RevisionsConfigurator.Apply(
-                services.GetRequiredService<IDocumentStore>(),
+                services.GetRequiredService<ISparkRevisions>(),
+                services.GetRequiredService<ISparkStore>(),
                 services.GetRequiredService<IModelLoader>(),
                 options,
                 services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(RevisionsConfigurator).FullName!));

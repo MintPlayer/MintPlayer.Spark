@@ -12,8 +12,7 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
-using MintPlayer.Spark.Tests._Infrastructure;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -43,25 +42,31 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// A class that changes database-wide state (disabling a scope every client shares) uses the
 /// parameterless constructor instead, which gives each case a host and database of its own.
 /// </para>
+/// <para>
+/// Provider-neutral (#536 M8b): the database is the test assembly's (<c>SPARK_TEST_DATABASE</c>), so the whole suite
+/// runs on RavenDB, SQL Server, PostgreSQL and InMemory. A case about RavenDB's own behaviour (indexing paused, the
+/// token time series) checks <see cref="IsRavenDb"/>. The trait puts every class on it in CI's SQL legs (M9).
+/// </para>
 /// </summary>
-public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
+[Trait(SparkTestTraits.Database, SparkTestTraits.Any)]
+public abstract class OidcTestHost : IAsyncLifetime
 {
     private readonly OidcSharedHost host;
     private readonly bool ownsHost;
 
     /// <summary>Runs the case on the class's shared host.</summary>
-    protected OidcTestHost(OidcSharedHost host) : base(host) => this.host = host;
+    protected OidcTestHost(OidcSharedHost host) => this.host = host;
 
     /// <summary>Runs the case on a host and database of its own, booted and torn down with it.</summary>
     protected OidcTestHost() : this(new OidcSharedHost()) => ownsHost = true;
 
-    async Task IAsyncLifetime.InitializeAsync()
+    public virtual async Task InitializeAsync()
     {
         if (ownsHost)
             await host.InitializeAsync();
     }
 
-    async Task IAsyncLifetime.DisposeAsync()
+    public virtual async Task DisposeAsync()
     {
         if (ownsHost)
             await host.DisposeAsync();
@@ -69,9 +74,45 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
 
     protected const string Issuer = "https://idp.test";
 
+    /// <summary>A prefix unique to this test case, for the client ids and e-mail addresses it seeds.</summary>
+    protected string Scope { get; } = $"t{Guid.NewGuid().ToString("N")[..8]}";
+
+    /// <summary>The class's database.</summary>
+    protected ISparkTestDatabase Database => host.Database;
+
+    /// <summary>Whether the suite runs on RavenDB, for the cases about RavenDB's own behaviour.</summary>
+    protected bool IsRavenDb => Database.ProviderName == SparkStoreProviders.RavenDb;
+
+    /// <summary>The host's store.</summary>
+    protected ISparkStore Store => Factory.GetService<ISparkStore>();
+
+    /// <summary>Writes in a session of its own, then waits until every query sees it.</summary>
+    protected Task SeedAsync(Func<ISparkSession, Task> seed) => Factory.SeedAsync(seed);
+
+    /// <summary>Returns once every query sees what the host wrote: RavenDB's indexes are up to date.</summary>
+    protected Task WaitForIndexesAsync() => Factory.WaitForConsistencyAsync();
+
+    /// <summary>
+    /// Stops RavenDB's indexing until the result is disposed, so a case can prove a path reads no index. Nothing on
+    /// another store: a relational view or the in-memory store is never stale.
+    /// </summary>
+    protected async Task<IAsyncDisposable> PauseIndexingAsync()
+    {
+        if (!IsRavenDb)
+            return new Resumed(() => Task.CompletedTask);
+        var raven = Store.AsRavenStore();
+        await raven.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
+        return new Resumed(() => raven.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation()));
+    }
+
+    private sealed class Resumed(Func<Task> resume) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() => await resume();
+    }
+
     /// <summary>
     /// A client id unique to this test case: <paramref name="name"/> plus the case's
-    /// <see cref="SparkSharedTestDriver.Scope"/>. The cases of a class share one database, so two
+    /// <see cref="Scope"/>. The cases of a class share one database, so two
     /// cases both seeding <c>"webapp"</c> would leave two applications behind one client id.
     /// The default redirect URI follows it (<c>https://{clientId}.test/cb</c>).
     /// </summary>
@@ -90,11 +131,11 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// boots it once per class for the classes that write nothing.
     /// </summary>
     internal static SparkEndpointFactory<OidcTestContext> CreateFactory(
-        IDocumentStore store,
+        ISparkTestDatabase database,
         Action<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>? configureIdentityProvider = null,
         Action<IServiceCollection>? configureServices = null) =>
         new SparkEndpointFactory<OidcTestContext>(
-            store,
+            database,
             models: [],
             configureServices: configureServices,
             configureSpark: spark =>
@@ -166,14 +207,15 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         string consentType = "explicit",
         string clientType = "confidential")
     {
-        // Boot the host before seeding: the IdP deploys OidcApplications_ByClientId from its
-        // startup middleware, and waiting for an index that does not exist yet returns
-        // immediately — which is why the suite failed a different test on each run depending on
-        // which class happened to seed before anything booted.
+        // Boot the host before seeding: the host deploys the identity provider's views, and waiting
+        // for an index that does not exist yet returns immediately — which is why the suite failed a
+        // different test on each run depending on which class happened to seed before anything booted.
         _ = Factory;
 
         var app = new OidcApplication
         {
+            // Natural ids (#536 D49): the provider sets every application's id, so the seed does too.
+            Id = Id<OidcApplication>.FromTrusted("oidcapplications/" + Guid.NewGuid().ToString("N")),
             ClientId = clientId,
             DisplayName = clientId,
             ClientType = clientType,
@@ -192,16 +234,14 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         if (secret != null)
             app.Secrets.Add(new ClientSecret { Hash = ClientSecretHasher.Hash(secret) });
 
-        // Client lookup rides OidcApplications_ByClientId, which is eventually consistent, so a
-        // just-seeded application is not immediately findable — SeedAsync holds the write until
-        // the indexes covering it have caught up. Without that the suite failed a different pair
-        // of tests on each run, under full-suite load only.
-        //
-        // Worth carrying into M12.7: whatever registers an application cannot assume it is
-        // usable the instant it returns.
+        // The provider finds an application by its client id through the client-id reservation
+        // (#536 D47), which the application's own save claims: a seed that skipped it would leave
+        // an application no endpoint can find. SeedAsync still waits for the views (the admin and
+        // review screens read them).
         await SeedAsync(async session =>
         {
             await session.StoreAsync(app);
+            session.Reserve(OidcClientIdReservation.Key(app.ClientId), app.Id.Value);
 
             // Define every scope the client is allowed to ask for. A real deployment does this; a
             // fixture that skipped it produced tokens whose `scope` claim was silently empty, because
@@ -272,21 +312,21 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// Issued tokens only. Pending authorization requests, pushed requests and sessions are stored as
     /// <see cref="OidcToken"/>s too (D1), but they are bookkeeping, not something a client holds.
     /// </remarks>
-    protected async Task<List<OidcToken>> CaseTokensAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+    protected async Task<List<OidcToken>> CaseTokensAsync(ISparkSession session)
         => [.. (await CaseRecordsAsync(session)).Where(t => t.Type is not (OidcTokenTypes.AuthorizationRequest or OidcTokenTypes.PushedRequest or OidcTokenTypes.Session))];
 
     /// <summary>The authorization requests (<see cref="OidcTokenTypes.AuthorizationRequest"/> tokens) counterpart of <see cref="CaseTokensAsync"/>.</summary>
-    protected async Task<List<OidcToken>> CaseAuthorizationRequestsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+    protected async Task<List<OidcToken>> CaseAuthorizationRequestsAsync(ISparkSession session)
         => [.. (await CaseRecordsAsync(session)).Where(t => t.Type == OidcTokenTypes.AuthorizationRequest)];
 
-    private async Task<List<OidcToken>> CaseRecordsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
+    private async Task<List<OidcToken>> CaseRecordsAsync(ISparkSession session)
+        => [.. (await session.ToListAsync(session.Query<OidcToken>())).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
 
     /// <summary>
     /// Stores a seeded refresh token in the family every refresh token is issued into (MCP PRD decision log, "Refresh-token
     /// families exact"). Without one the token endpoint and introspection refuse it before the check a case is about.
     /// </summary>
-    protected static async Task StoreInFamilyAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, OidcToken refreshToken)
+    protected static async Task StoreInFamilyAsync(ISparkSession session, OidcToken refreshToken)
     {
         var family = new OidcRefreshFamily
         {
@@ -687,7 +727,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
             ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(10),
         };
 
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         await session.StoreAsync(request);
         await session.SaveChangesAsync();
         return handle;
@@ -709,7 +749,7 @@ public sealed class OidcTestContext : SparkContext
 /// <see cref="ConfigureIdentityProvider"/> / <see cref="ConfigureServices"/>, then takes that host
 /// through <c>IClassFixture&lt;TheDerivedHost&gt;</c>.
 /// </remarks>
-public class OidcSharedHost : SharedSparkHost<OidcTestContext>
+public class OidcSharedHost : MintPlayer.Spark.Tests._Infrastructure.SparkSharedHost<OidcTestContext>
 {
     /// <summary>Runs after the defaults (issuer, signing key) inside <c>AddIdentityProvider</c>.</summary>
     protected virtual void ConfigureIdentityProvider(MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions options) { }
@@ -717,6 +757,6 @@ public class OidcSharedHost : SharedSparkHost<OidcTestContext>
     /// <summary>Runs last on the host's services: swap a service for a stub here.</summary>
     protected virtual void ConfigureServices(IServiceCollection services) { }
 
-    protected override SparkEndpointFactory<OidcTestContext> CreateFactory()
-        => OidcTestHost.CreateFactory(Store, ConfigureIdentityProvider, ConfigureServices);
+    protected override SparkEndpointFactory<OidcTestContext> CreateFactory(ISparkTestDatabase database)
+        => OidcTestHost.CreateFactory(database, ConfigureIdentityProvider, ConfigureServices);
 }

@@ -97,7 +97,7 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
 
             // #691 D41: keyed by the backport pull request, so a redelivered merge sends nothing twice.
             await webhooks.PublishAsync(new BackportMerged(repository.FullName, repository.Provider.ToString().ToLowerInvariant(), pull.Number, number, pull.BaseRef,
-                time.GetUtcNow()), repository, $"{repository.Id}/{pull.Number}/merged", session, cancellationToken);
+                time.GetUtcNow()), repository, $"{repository.Id}/{pull.Number}/merged", cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
 
             var label = BackportProvenance.BackportedLabel(pull.BaseRef, config.EffectiveLines);

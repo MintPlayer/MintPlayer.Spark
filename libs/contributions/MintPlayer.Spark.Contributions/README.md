@@ -35,7 +35,7 @@ public partial class Lyrics
 - The **slots** (`Language`, `Script`) identify a row: one current version per slot combination,
   one contribution per user per slot combination.
 - The generator creates `SongLyricsContribution` and `SongLyricsCurrent` (always target + property,
-  no override). They are RavenDB collections and `security.json` resources, so renaming the target or
+  no override). They are collections of the store (RavenDB, SQL Server, PostgreSQL, InMemory) and `security.json` resources, so renaming the target or
   the property later means migrating them.
 - `Attribution` (default `None`) opts in to showing who wrote the current version, when, and the
   slot's history count.
@@ -56,13 +56,13 @@ For `Song.Lyrics` (types in `Song`'s namespace):
 
 | Type | Members |
 |---|---|
-| `partial class SongLyricsContribution : IContribution, IHasNaturalId` (+ `ISoftDeletable` when MintPlayer.Spark.SoftDelete is referenced) | `Id`, `TargetId`, `ContributorId`, `UpdatedAt` (UTC `DateTime`), the slots, the value properties; `static GetId(targetId, language, script, userId)` → `Songs/1234/LyricsContributions/ko/Kore/User/MintPlayerUsers/abc` |
-| `partial class SongLyricsCurrent : ICurrentContribution, IHasNaturalId` | `Id`, `TargetId`, `ContributorId`, `ContributionId`, `UpdatedAt`, `ContributionCount` (only with `History`), the slots, the values; `static GetId(targetId, language, script)` → `Songs/1234/Lyrics/ko/Kore` |
+| `partial class SongLyricsContribution : IContribution, IHasNaturalId` (+ `ISoftDeletable` when MintPlayer.Spark.SoftDelete is referenced) | `Id`, `TargetId`, `ContributorId`, `UpdatedAt` (UTC `DateTime`), the slots, the value properties; `static GetId(targetId, language, script, userId)` → `songlyricscontributions/songs/1234/lyricscontributions/ko/kore/user/mintplayerusers/abc` |
+| `partial class SongLyricsCurrent : ICurrentContribution, IHasNaturalId` | `Id`, `TargetId`, `ContributorId`, `ContributionId`, `UpdatedAt`, `ContributionCount` (only with `History`), the slots, the values; `static GetId(targetId, language, script)` → `songlyricscurrents/songs/1234/lyrics/ko/kore` |
 | `sealed class SongLyricsContributionMetadata : ContributionDescriptor<Song, Lyrics, SongLyricsContribution, SongLyricsCurrent>` | `Instance`; `Shape` (the shape hash) and `QueryName` (`SongLyricsContributions`) constants; prefixes (both end in `/`); `GetRows`/`SetRows`; `SlotKeyOf…`; `FindInvalidSlot`; `ContributionId`/`CurrentId`/`SlotContributionPrefix`; `CreateContribution`/`CopyValues`/`CreateCurrent`/`CreateRow` |
 | `partial class Lyrics` (added) | `[ValueKey] public string Key => "{Language}/{Script}"` (get-only, deterministic: the AsDetail row identity); with attribution, read-only `ContributorName`, `UpdatedAt`, `ContributionCount` (rendering hint `contributionAttribution`) |
 
-A single-valued declaration has no slot segments: `{targetId}/{Property}Contributions/User/{userId}`
-and `{targetId}/{Property}`.
+A single-valued declaration has no slot segments: `{collection}/{targetId}/{Property}Contributions/User/{userId}`
+and `{collection}/{targetId}/{Property}` (lower case; every id starts with its own collection, so a relational table accepts it).
 
 The generated documents are `partial`, so the app can add `IModeratable` (or `ISoftDeletable` itself
 when it wants to own the members — the generator then leaves them out).
@@ -114,8 +114,8 @@ commits atomically with the save or delete that caused it, and a refused save wr
   - refused with a validation error (400): two rows on one slot, a slot value that is not a valid id
     segment, an `IContributionValidator<TElement>` error, a row whose own contribution a moderator
     hid, and an anonymous caller.
-  - The target document itself is **not** rewritten: the property is `[JsonIgnore]`, and RavenDB
-    skips an unchanged document.
+  - The target document itself is **not** rewritten: the property is `[JsonIgnore]`, so none of
+    the target's stored fields change.
   - A create stores the target first, to know its id; the id convention must be client-side (HiLo
     or a natural id).
   - Only the attribute as posted and writable counts: a save that does not post the property, or
@@ -143,7 +143,7 @@ commits atomically with the save or delete that caused it, and a refused save wr
 - **Rebuild.** `IContributions.RebuildCurrentAsync(targetId)` recomputes every current document of the
   target from its contributions and deletes current documents nothing backs (its own session, up to 3
   attempts on a concurrent write). At startup, each declaration's generated `Shape` is compared with
-  the marker `SparkContributions/Shapes/{QueryName}`; on a difference (or no marker) every target of
+  the marker `contributionshapemarkers/{queryname}`; on a difference (or no marker) every target of
   that declaration is rebuilt in batches of 64 before the host serves requests, and the marker is
   written last.
 - **System context** (a migration, a sync) writes as contributor `system` when there is no user, and

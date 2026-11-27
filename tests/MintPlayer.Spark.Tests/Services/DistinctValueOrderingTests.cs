@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <summary>
 /// The filter panel's value list is ordered by what it <em>is</em>, not by how it prints.
 /// </summary>
-public class DistinctValueOrderingTests : SparkTestDriver
+public class DistinctValueOrderingTests : RavenSparkTestDriver
 {
     private static readonly Guid TallyTypeId = Guid.Parse("dddd5555-dddd-dddd-dddd-dddd55555555");
 
@@ -92,7 +92,7 @@ public class DistinctValueOrderingTests : SparkTestDriver
     public async Task Numeric_values_are_listed_in_numeric_order_not_text_order()
     {
         _factory = new SparkEndpointFactory<TestContext>(
-            Store, [TallyModel()],
+            Store.AsSparkTestDatabase(), [TallyModel()],
             configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Tallies_Overview)));
         var executor = _factory.GetService<IQueryExecutor>();
 

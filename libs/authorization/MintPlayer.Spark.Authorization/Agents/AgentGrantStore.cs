@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
-using Raven.Client;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Authorization.Agents;
 
@@ -21,7 +20,7 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// (<c>LoadStartingWith</c>), consistent the moment they are written.
 /// </para>
 /// </remarks>
-internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider time, ILogger<AgentGrantStore> logger)
+internal sealed partial class AgentGrantStore(ISparkStore store, TimeProvider time, ILogger<AgentGrantStore> logger)
 {
     /// <summary>How long a grant read is reused.</summary>
     internal static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(5);
@@ -39,7 +38,7 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
         if (cache.TryGetValue(id, out var hit) && now - hit.LoadedAt < CacheFor)
             return hit.Grant;
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var grant = await session.LoadAsync<AgentGrant>(id, cancellationToken);
         cache[id] = (grant, now);
 
@@ -51,8 +50,8 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     /// <summary>Every grant of <paramref name="userId"/>, read now (no cache).</summary>
     public async Task<IReadOnlyList<AgentGrant>> ListAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using var session = store.OpenAsyncSession();
-        var grants = await session.Advanced.LoadStartingWithAsync<AgentGrant>(AgentGrantIds.Prefix(userId), pageSize: 1024, token: cancellationToken);
+        using var session = store.OpenSession();
+        var grants = await session.LoadStartingWithAsync<AgentGrant>(AgentGrantIds.Prefix(userId), 0, 1024, cancellationToken: cancellationToken);
 
         // The prefix is the user's own; the check below is the second lock on the same door.
         return grants.Where(g => string.Equals(g.UserId, userId, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -61,7 +60,7 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     /// <summary>The user's grant with that id, read now; <see langword="null"/> if it is not theirs.</summary>
     public async Task<AgentGrant?> GetOwnAsync(string userId, string id, CancellationToken cancellationToken = default)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var grant = await session.LoadAsync<AgentGrant>(id, cancellationToken);
         return grant is not null && string.Equals(grant.UserId, userId, StringComparison.OrdinalIgnoreCase) ? grant : null;
     }
@@ -69,13 +68,13 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     /// <summary>Stores <paramref name="grant"/> (a new one, or an edited copy) and invalidates its cache entry.</summary>
     public async Task SaveAsync(AgentGrant grant, CancellationToken cancellationToken = default)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         await session.StoreAsync(grant, grant.Id.Value, cancellationToken);
         if (grant.ExpiresAt is { } expires)
         {
-            // RavenDB's expiration removes the document once the token cannot be used anyway (when the database
+            // The store's expiry removes the document once the token cannot be used anyway (RavenDB's when the database
             // has expiration enabled; the token check refuses an expired token either way).
-            session.Advanced.GetMetadataFor(grant)[Constants.Documents.Metadata.Expires] = expires.UtcDateTime.ToString("O");
+            session.SetExpiry(grant, expires);
         }
         await session.SaveChangesAsync(cancellationToken);
         Invalidate(grant.Id.Value);
@@ -89,14 +88,14 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     {
         try
         {
-            using var session = store.OpenAsyncSession();
-            // An empty change vector: the write fails if the document exists (optimistic concurrency on creation).
+            using var session = store.OpenSession();
+            // An empty expected version: the write fails if the document exists (optimistic concurrency on creation).
             await session.StoreAsync(grant, string.Empty, grant.Id.Value, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
             Invalidate(grant.Id.Value);
             return grant;
         }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
+        catch (SparkStoreConcurrencyException)
         {
             Invalidate(grant.Id.Value);
             return await GetAsync(grant.Id.Value, cancellationToken);
@@ -106,12 +105,12 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
     /// <summary>Deletes the grant: the agent's next call is refused. Answers whether it existed.</summary>
     public async Task<bool> DeleteAsync(string userId, string id, CancellationToken cancellationToken = default)
     {
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var grant = await session.LoadAsync<AgentGrant>(id, cancellationToken);
         if (grant is null || !string.Equals(grant.UserId, userId, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        session.Delete(grant);
+        session.Delete(grant.Id);
         await session.SaveChangesAsync(cancellationToken);
         Invalidate(id);
         return true;
@@ -122,7 +121,8 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
 
     /// <summary>
     /// Records a call: <see cref="AgentGrant.LastUsedAt"/> is written at most once per <see cref="TouchEvery"/>
-    /// per grant on this node (D15), as a single-field patch that never overwrites an edit.
+    /// per grant on this node (D15). Load-modify-save under optimistic concurrency (#536: no patch on every store), so it
+    /// never overwrites an edit: a concurrent write wins and this touch is skipped.
     /// </summary>
     public async Task TouchAsync(AgentGrant grant, CancellationToken cancellationToken = default)
     {
@@ -135,9 +135,17 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
         touched[id] = now;
         try
         {
-            using var session = store.OpenAsyncSession();
-            session.Advanced.Patch<AgentGrant, DateTimeOffset?>(id, g => g.LastUsedAt, now);
+            using var session = store.OpenSession();
+            session.OptimisticConcurrency = true;
+            if (await session.LoadAsync<AgentGrant>(id, cancellationToken) is not { } stored)
+                return;
+            stored.LastUsedAt = now;
             await session.SaveChangesAsync(cancellationToken);
+        }
+        catch (SparkStoreConcurrencyException)
+        {
+            // Someone wrote the grant meanwhile: theirs stands, and the next call touches it again.
+            touched.TryRemove(id, out _);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

@@ -25,8 +25,8 @@ namespace MintPlayer.Spark.Tests.Mcp;
 /// code + PKCE with <c>resource</c>, the agent consent screen, and <c>/mcp</c> accepting exactly its tokens. Real
 /// Identity, real RavenDB, the real IdentityProvider and Mcp gate; a scripted public client (the spike's approach).
 /// </summary>
-public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class McpEmbeddedAuthorizationServerTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private const string LoopbackRedirect = "http://127.0.0.1:53682/callback";
 

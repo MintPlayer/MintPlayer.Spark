@@ -8,16 +8,16 @@ namespace MintPlayer.Spark.Search;
 /// <summary>
 /// <c>spark.AddSearch()</c> (<c>docs/spark_search_PRD.md</c>, #238): search across every entity type whose model has
 /// <c>"search": { "enabled": true }</c>, served at <c>/spark/search</c>, <c>/spark/search/suggest</c> and
-/// <c>/spark/search/resolve</c> and mapped by <c>MapSpark()</c> with the other modules' endpoints. The app's generated
-/// <c>Spark_Search</c> index answers, unless an engine package (<c>s.UseOpenSearch(...)</c>) takes over.
+/// <c>/spark/search/resolve</c> and mapped by <c>MapSpark()</c> with the other modules' endpoints. On RavenDB the app's
+/// generated <c>Spark_Search</c> index answers, on every other store the collections themselves (#536 D44, <c>LIKE</c> on
+/// SQL), unless an engine package (<c>s.UseOpenSearch(...)</c>) takes over.
 /// </summary>
 public static class SparkSearchExtensions
 {
-    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Search", Provider = global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb)]
+    [global::MintPlayer.Spark.Abstractions.Storage.SparkRequiresStore("Spark.Search")]
     public static ISparkBuilder AddSearch(this ISparkBuilder builder, Action<SparkSearchOptions>? configure = null)
     {
-        // #551 D13: the default provider searches RavenDB's indexes, and OpenSearch syncs from its client.
-        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Search", provider: global::MintPlayer.Spark.Abstractions.Storage.SparkStoreProviders.RavenDb);
+        global::MintPlayer.Spark.Abstractions.Storage.SparkStoreRequirementExtensions.RequireStore(builder, "Spark.Search");
 
         // A second call would map the endpoints twice. AddOpenSearchDescription adds search itself when it is missing,
         // so a configured AddSearch must come first.
@@ -32,6 +32,7 @@ public static class SparkSearchExtensions
         builder.Services.AddSingleton<SearchCircuit>();
         builder.Services.AddSingleton<SearchRateLimiter>();
         builder.Services.AddSingleton<RavenSearchProvider>();
+        builder.Services.AddSingleton<StoreSearchProvider>();
         if (options.EngineProviderType is { } engine)
         {
             options.EngineServices?.Invoke(builder.Services);

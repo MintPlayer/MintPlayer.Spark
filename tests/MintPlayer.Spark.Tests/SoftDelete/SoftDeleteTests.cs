@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Tests.SoftDelete;
 /// Fixture names start with <c>Sd</c>: <c>ActionsResolver</c> matches actions classes by simple
 /// name across the whole assembly, and these types must not meet another fixture's.
 /// </remarks>
-public class SoftDeleteTests : SparkTestDriver
+public class SoftDeleteTests : RavenSparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46020000-0000-4000-8000-000000000001");
     private static readonly Guid PersonTypeId = Guid.Parse("46020000-0000-4000-8000-000000000002");
@@ -51,7 +51,7 @@ public class SoftDeleteTests : SparkTestDriver
     private async Task<Host> StartAsync(SparkTestSecurity? security = null, Action<IServiceCollection>? services = null)
     {
         var factory = new SparkEndpointFactory<SdContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [NoteModel(), PersonModel(), SlugModel()],
             configureServices: s =>
             {
@@ -743,7 +743,7 @@ public class SoftDeleteTests : SparkTestDriver
     public void A_soft_deletable_type_with_an_explicit_IsDeleted_refuses_startup()
     {
         var act = () => new SparkEndpointFactory<SdBrokenContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [new EntityTypeFile { PersistentObject = new EntityTypeDefinition { Id = Guid.NewGuid(), Name = "SdBroken", ClrType = typeof(SdBroken).FullName!, Attributes = [] } }],
             configureSpark: spark => spark.AddSoftDelete());
 
@@ -1034,7 +1034,7 @@ internal sealed class SdRefusingRevisions : ISoftDeleteRevisions
 {
     public Task EnsureCanDeleteAsync() => throw new InvalidOperationException("Purge refused: the probe was not allowed.");
 
-    public Task<long> DeleteAsync(string id) => throw new InvalidOperationException("Must not be reached: the probe refused.");
+    public Task<long> DeleteAsync(Type entityType, string id) => throw new InvalidOperationException("Must not be reached: the probe refused.");
 }
 
 /// <summary>A custom action that records the rows it ran on.</summary>

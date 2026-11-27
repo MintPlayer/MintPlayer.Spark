@@ -1,39 +1,37 @@
+using System.Security.Cryptography;
+using System.Text;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Commands.Batches;
-using Raven.Client.Documents.Operations;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
 /// <summary>
-/// Reads and writes a user's developer status (<see cref="OidcDeveloper"/>), which lives as the
-/// <c>Developer</c> field of the user's own document (<c>docs/identity_provider_platform_PRD.md</c> D1, D2).
+/// Reads and writes a user's developer status (<see cref="OidcDeveloper"/>), a document of its own per user (#536 D47).
 /// <para>
-/// <b>Read</b> by loading the user document as <see cref="DeveloperHolder"/> in a session of its own:
-/// the same id can be tracked as the application's user type in the request session, and one session
-/// cannot hold one id as two types. A load is strongly consistent, which a membership decision needs.
-/// </para>
-/// <para>
-/// <b>Written</b> with a patch deferred into the caller's session, so the status change commits
-/// together with its audit event, and the user document's other fields are never rewritten.
+/// <b>Read</b> by a load in a session of its own, which is strongly consistent, as a membership decision needs.
+/// <b>Written</b> into the caller's session, so the status change commits together with its audit event.
 /// </para>
 /// </summary>
-public sealed class OidcDevelopers(IDocumentStore store, SparkIdentityProviderOptions options)
+public sealed class OidcDevelopers(ISparkStore store, SparkIdentityProviderOptions options)
 {
-    private sealed class DeveloperHolder
+    private const string CollectionPrefix = "oidcdevelopers/";
+
+    /// <summary>
+    /// The id of <paramref name="userId"/>'s status: a hash, so any user id folds into one well-formed id. Ids compare
+    /// ignoring case, so the user id is hashed in lower case.
+    /// </summary>
+    public static string DocumentId(string userId)
     {
-        public string? Id { get; set; }
-        public OidcDeveloper? Developer { get; set; }
+        ArgumentException.ThrowIfNullOrEmpty(userId);
+        return CollectionPrefix + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(userId.ToLowerInvariant())));
     }
 
     /// <summary>The user's developer status, or null when they never asked.</summary>
     public async Task<OidcDeveloper?> GetAsync(string userId, CancellationToken ct = default)
     {
-        using var session = store.OpenAsyncSession();
-        var holder = await session.LoadAsync<DeveloperHolder>(userId, ct);
-        return holder?.Developer;
+        using var session = store.OpenSession();
+        return await session.LoadAsync<OidcDeveloper>(DocumentId(userId), ct);
     }
 
     /// <summary>
@@ -43,13 +41,26 @@ public sealed class OidcDevelopers(IDocumentStore store, SparkIdentityProviderOp
     public bool IsActive(OidcDeveloper? developer)
         => developer is { Status: OidcDeveloperStatuses.Approved } && developer.TermsVersion >= options.Developers.TermsVersion;
 
-    /// <summary>Defers writing <paramref name="developer"/> onto the user document; the caller's SaveChanges commits it.</summary>
-    public static void Set(IAsyncDocumentSession session, string userId, OidcDeveloper developer)
+    /// <summary>
+    /// Writes <paramref name="developer"/> as <paramref name="userId"/>'s status into <paramref name="session"/>; the caller's
+    /// SaveChanges commits it. <paramref name="developer"/> may come from <see cref="GetAsync"/> (another session): its
+    /// values are copied onto the document this session tracks.
+    /// </summary>
+    public static async Task SetAsync(ISparkSession session, string userId, OidcDeveloper developer, CancellationToken ct = default)
     {
-        session.Advanced.Defer(new PatchCommandData(userId, null, new PatchRequest
+        var id = DocumentId(userId);
+        var stored = await session.LoadAsync<OidcDeveloper>(id, ct);
+        if (stored is null)
         {
-            Script = $"this.{OidcDeveloper.FieldName} = args.developer;",
-            Values = { ["developer"] = developer },
-        }));
+            stored = new OidcDeveloper { Id = Id<OidcDeveloper>.FromTrusted(id) };
+            await session.StoreAsync(stored, id, ct);
+        }
+        stored.UserId = userId;
+        stored.Status = developer.Status;
+        stored.TermsVersion = developer.TermsVersion;
+        stored.RequestedAt = developer.RequestedAt;
+        stored.DecidedAt = developer.DecidedAt;
+        stored.DecidedBy = developer.DecidedBy;
+        stored.Note = developer.Note;
     }
 }

@@ -9,7 +9,7 @@ using POA = MintPlayer.Spark.Abstractions.PersistentObjectAttribute;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
-public class CreateEndpointTests : SparkTestDriver
+public class CreateEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("33333333-cccc-cccc-cccc-333333333333");
 
@@ -19,7 +19,7 @@ public class CreateEndpointTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
@@ -92,7 +92,7 @@ public class CreateEndpointTests : SparkTestDriver
     {
         // Required LastName missing — validation rejects before persisting.
         var typeWithRequired = TestModels.PersonWithRequiredLastName(Guid.Parse("44444444-cccc-cccc-cccc-444444444444"));
-        await using var factory = new SparkEndpointFactory(Store, [typeWithRequired]);
+        await using var factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [typeWithRequired]);
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var ex = (await new Func<Task>(() => client.CreatePersistentObjectAsync(new PO

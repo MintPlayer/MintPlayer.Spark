@@ -11,9 +11,8 @@ using MintPlayer.Spark.IdentityProvider.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Abstractions.Storage;
 using NSubstitute;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -59,47 +58,51 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             body.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() : null);
     }
 
-    private static SaveContext Saving<T>(T entity, T before, IAsyncDocumentSession session) where T : class => new()
+    private static SaveContext Saving<T>(T entity, T before) where T : class => new()
     {
         EntityType = typeof(T),
         Operation = PersistentObjectOperation.Save,
         PersistentObject = new PersistentObject { Name = typeof(T).Name, ObjectTypeId = Guid.NewGuid() },
         Entity = entity,
         Before = before,
-        Session = session,
     };
 
-    private static OidcApplicationInterceptors ApplicationInterceptors() => new(
+    /// <summary>The interceptors of a scope whose session is <paramref name="session"/>, the save's (#536 D50).</summary>
+    private OidcApplicationInterceptors ApplicationInterceptors(ISparkSession session) => new(
         corsOrigins: new OidcCorsOrigins(),
         accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(),
         options: new SparkIdentityProviderOptions(),
-        audit: new OidcAudit(new SparkIdentityProviderOptions()));
+        audit: new OidcAudit(new SparkIdentityProviderOptions()),
+        store: Store,
+        session: session);
 
     private async Task<OidcGrant?> GrantAsync(Issued issued)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return await session.LoadAsync<OidcGrant>(OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id.Value));
     }
 
     private async Task<List<OidcToken>> TokensOfAsync(OidcApplication app)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return [.. (await CaseTokensAsync(session)).Where(t =>
             t.ApplicationId == app.Id.Value && t.Type is OidcTokenTypes.AccessToken or OidcTokenTypes.RefreshToken)];
     }
 
+    /// <summary>The application's <c>INC:Tokens</c> series: RavenDB only (#536 D47).</summary>
     private async Task<double> TokensIssuedAsync(OidcApplication app)
     {
-        using var session = Store.OpenAsyncSession();
-        var entries = await session.IncrementalTimeSeriesFor(app.Id.Value,OidcExpiry.TokensTimeSeries).GetAsync();
+        using var session = Store.AsRavenStore().OpenAsyncSession();
+        var entries = await session.IncrementalTimeSeriesFor(app.Id.Value, OidcExpiry.TokensTimeSeries).GetAsync();
         return entries?.Sum(e => e.Value) ?? 0;
     }
 
     // ---------- INC:Tokens ----------
 
-    [Fact]
+    [SkippableFact]
     public async Task Every_access_token_issued_counts_one_on_the_applications_INC_Tokens_series()
     {
+        Skip.IfNot(IsRavenDb, "The INC:Tokens series is RavenDB's; another store keeps the token rows only.");
         var issued = await IssueAsync("counted", ["openid", "offline_access"]);
 
         (await TokensIssuedAsync(issued.App)).Should().Be(1, "the code grant issued one access token");
@@ -116,9 +119,10 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         (await TokensIssuedAsync(issued.App)).Should().Be(2, "the refresh grant issued a second one");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_refused_token_request_counts_nothing()
     {
+        Skip.IfNot(IsRavenDb, "The INC:Tokens series is RavenDB's; another store keeps the token rows only.");
         var app = await SeedApplicationAsync(ClientId("uncounted"));
 
         var response = await Client.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -142,14 +146,14 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var disabled = await IssueAsync("disabled", ["openid", "offline_access"]);
         var bystander = await IssueAsync("bystander", ["openid", "offline_access"], disabled.User);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var app = await session.LoadAsync<OidcApplication>(disabled.App.Id.Value);
             var before = new OidcApplication { Id = app.Id, ClientId = app.ClientId, Enabled = true };
             app.Enabled = false;
             await session.SaveChangesAsync();
 
-            await ApplicationInterceptors().OnAfterSaveAsync(app, Saving(app, before, session));
+            await ApplicationInterceptors(session).OnAfterSaveAsync(app, Saving(app, before));
         }
 
         var tokens = await TokensOfAsync(disabled.App);
@@ -173,21 +177,15 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var issued = await IssueAsync("stale-index", ["openid", "offline_access"]);
 
-        // The cascade's index exists and is up to date, as in any running provider ...
-        using (var session = Store.OpenAsyncSession())
-        {
-            await session.Query<OidcToken>()
-                .Customize(x => x.WaitForNonStaleResults())
-                .Where(t => t.ApplicationId == issued.App.Id.Value && t.Status == "valid")
-                .ToListAsync();
-        }
+        // The cascade's view exists and is up to date, as in any running provider ...
+        await WaitForIndexesAsync();
 
-        // ... then falls behind: a token is written while the database is not indexing.
+        // ... then falls behind: a token is written while RavenDB is not indexing (another store is never behind).
         var lateToken = OidcTokenReference.DocumentId(OidcTokenReference.GenerateValue());
-        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
+        var paused = await PauseIndexingAsync();
         try
         {
-            using (var session = Store.OpenAsyncSession())
+            using (var session = Store.OpenSession())
             {
                 await session.StoreAsync(new OidcToken
                 {
@@ -200,17 +198,17 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             var resume = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(1));
-                await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
+                await paused.DisposeAsync();
             });
             await OidcDisableCascade.RevokeApplicationAsync(Store, issued.App.Id.Value);
             await resume;
         }
         finally
         {
-            await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
+            await paused.DisposeAsync();
         }
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
             (await session.LoadAsync<OidcToken>(lateToken))!.Status.Should().Be("revoked", "the cascade waited for the index");
         (await TokensOfAsync(issued.App)).Should().OnlyContain(t => t.Status == "revoked");
     }
@@ -220,7 +218,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var issued = await IssueAsync("stilldisabled", ["openid"]);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var app = await session.LoadAsync<OidcApplication>(issued.App.Id.Value);
             // Only the Enabled → disabled transition cascades; Before says it was off already.
@@ -228,7 +226,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             app.Enabled = false;
             await session.SaveChangesAsync();
 
-            await ApplicationInterceptors().OnAfterSaveAsync(app, Saving(app, before, session));
+            await ApplicationInterceptors(session).OnAfterSaveAsync(app, Saving(app, before));
         }
 
         (await TokensOfAsync(issued.App)).Should().OnlyContain(t => t.Status == "valid");
@@ -249,7 +247,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         (await TokensOfAsync(carrying.App)).Should().Contain(t => t.Scopes.Contains(scope),
             "the issued access token carries the API scope");
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             var resource = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(api));
             var before = new OidcResource
@@ -260,8 +258,8 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             resource.Scopes.Single(s => s.Name == scope).Enabled = false;
             await session.SaveChangesAsync();
 
-            await new OidcResourceInterceptors(audit: new OidcAudit(new SparkIdentityProviderOptions()))
-                .OnAfterSaveAsync(resource, Saving(resource, before, session));
+            await new OidcResourceInterceptors(audit: new OidcAudit(new SparkIdentityProviderOptions()), store: Store, session: session)
+                .OnAfterSaveAsync(resource, Saving(resource, before));
         }
 
         (await TokensOfAsync(carrying.App)).Where(t => t.Scopes.Contains(scope))
@@ -275,7 +273,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
     // ---------- RevokeGrant ----------
 
-    private RevokeGrantAction RevokeGrant(IAsyncDocumentSession session, bool administrator) => new(
+    private RevokeGrantAction RevokeGrant(ISparkSession session, bool administrator) => new(
         manager: Substitute.For<IManager>(),
         session: session,
         access: new OidcPortalAccess(
@@ -283,13 +281,8 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
             accessControl: administrator ? SparkTestAccessControl.AllowAll() : SparkTestAccessControl.DenyAll()),
         withdrawal: new OidcGrantWithdrawal(Store, new OidcAudit(new SparkIdentityProviderOptions())));
 
-    /// <summary>The withdrawal's token sweep reads an index; let it catch up so the case is about the action.</summary>
-    private async Task WarmGrantSweepIndexAsync(string grantId)
-    {
-        using (var session = Store.OpenAsyncSession())
-            _ = await session.Query<OidcToken>().Where(t => t.AuthorizationId == grantId && t.Status == "valid").ToListAsync();
-        await Store.WaitForIndexingAsync();
-    }
+    /// <summary>The withdrawal's token sweep reads a view; let it catch up so the case is about the action.</summary>
+    private Task WarmGrantSweepIndexAsync(string grantId) => WaitForIndexesAsync();
 
     [Fact]
     public async Task RevokeGrant_revokes_the_grant_and_the_tokens_issued_under_it()
@@ -298,7 +291,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var grantId = OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id.Value);
         await WarmGrantSweepIndexAsync(grantId);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             await RevokeGrant(session, administrator: true).ExecuteAsync(new CustomActionArgs
             {
@@ -325,7 +318,7 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var issued = await IssueAsync("kept", ["openid", "offline_access"]);
         var grantId = OidcGrantReference.DocumentId(issued.User.Id!, issued.App.Id.Value);
 
-        using (var session = Store.OpenAsyncSession())
+        using (var session = Store.OpenSession())
         {
             await RevokeGrant(session, administrator: false).ExecuteAsync(new CustomActionArgs
             {

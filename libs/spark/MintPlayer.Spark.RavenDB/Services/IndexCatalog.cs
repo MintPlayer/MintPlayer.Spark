@@ -2,6 +2,8 @@ using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Abstractions.Views;
+using MintPlayer.Spark.Indexes;
 using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark.Services;
@@ -17,6 +19,12 @@ internal partial class IndexCatalog : IIndexCatalog
 
     public void RegisterIndex(Type indexType)
     {
+        if (SparkViewEntries.IsView(indexType))
+        {
+            RegisterView(indexType, shadowable: false);
+            return;
+        }
+
         // A multi-map or otherwise opaque index still gets an entry, with a null collection. Dropping
         // it here is what made an explicit "indexName" binding to such an index unresolvable while
         // RavenDB had deployed it perfectly happily.
@@ -46,6 +54,32 @@ internal partial class IndexCatalog : IIndexCatalog
             };
         }
     }
+
+    /// <summary>
+    /// A <see cref="SparkView{TRow}"/> (#536 D32), rendered as a static index of its name. In an assembly scan a native
+    /// index of the same name shadows it: for a RavenDB app the generator emits both, and the native one carries the
+    /// RavenDB-only configuration (analyzers, companions).
+    /// </summary>
+    private void RegisterView(Type viewType, bool shadowable)
+    {
+        var entry = SparkViewEntries.EntryFor(viewType);
+        lock (_lock)
+        {
+            ThrowIfFrozen();
+            if (_byIndexName.TryGetValue(entry.IndexName, out var existing))
+            {
+                if (existing.IndexType == viewType || (shadowable && !SparkViewEntries.IsView(existing.IndexType))) return;
+                throw new InvalidOperationException(
+                    $"Index name '{entry.IndexName}' is declared by both {existing.IndexType.FullName} and {viewType.FullName}. Rename one of them.");
+            }
+
+            _byIndexName[entry.IndexName] = entry;
+        }
+    }
+
+    /// <summary>The definition task of an entry: a view rendered for RavenDB, or the native index type instantiated.</summary>
+    internal static IAbstractIndexCreationTask? TaskFor(Type indexType)
+        => SparkViewEntries.IsView(indexType) ? RavenViewIndexes.Render(indexType) : Activator.CreateInstance(indexType) as IAbstractIndexCreationTask;
 
     public void RegisterProjection(Type projectionType, Type indexType)
     {
@@ -132,7 +166,8 @@ internal partial class IndexCatalog : IIndexCatalog
     /// The election for one entity type (D3). A claim wins, view or not — a viewless default shapes nothing,
     /// and its queries return entity documents (SP4). Without a claim, only an index <em>with a view</em> is a
     /// default implicitly, and only when it is the sole one: an index without a view contributes nothing to the
-    /// model file, so electing one silently would stamp an <c>indexName</c> nobody chose.
+    /// model file, so electing one silently would stamp an <c>indexName</c> nobody chose. For the same reason a
+    /// <c>SparkView</c> is a default only by its claim (#536 D48): every view has its row type, so it chooses nothing.
     /// </summary>
     private static IndexCatalogEntry? Elect(Type entityType, IReadOnlyList<IndexCatalogEntry> entries)
     {
@@ -147,7 +182,10 @@ internal partial class IndexCatalog : IIndexCatalog
                 $"[DefaultIndex(...)] list.");
         }
 
-        var viewed = entries.Where(e => e.CollectionType == entityType && e.ProjectionType is not null).ToList();
+        // A SparkView (#536 D48) is a default only by its claim: its row type is no [FromIndex] choice.
+        var viewed = entries
+            .Where(e => e.CollectionType == entityType && e.ProjectionType is not null && !SparkViewEntries.IsView(e.IndexType))
+            .ToList();
         if (viewed.Count <= 1) return viewed.FirstOrDefault();
 
         throw new InvalidOperationException(
@@ -163,6 +201,9 @@ internal partial class IndexCatalog : IIndexCatalog
     /// </summary>
     private static IReadOnlyList<Type> ResolveClaims(IndexCatalogEntry entry)
     {
+        if (SparkViewEntries.IsView(entry.IndexType))
+            return SparkViewEntries.ResolveClaim(entry);
+
         var marker = entry.IndexType.GetCachedCustomAttribute<DefaultIndexAttribute>();
         if (marker is null) return [];
 
@@ -222,6 +263,10 @@ internal partial class IndexCatalog : IIndexCatalog
                 RegisterIndex(indexType);
         }
 
+        // After every native index, so a native index of the same name shadows a view whichever assembly declares it.
+        foreach (var viewType in assemblies.SelectMany(SparkViewEntries.ViewTypes))
+            RegisterView(viewType, shadowable: true);
+
         foreach (var assembly in assemblies)
         {
             var projectionTypes = ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
@@ -258,14 +303,14 @@ internal partial class IndexCatalog : IIndexCatalog
     /// collections with, and a field another map emits is indexed, so sorting on it is no error.
     /// </remarks>
     public void BuildDefinition(IndexCatalogEntry entry)
-        => (Activator.CreateInstance(entry.IndexType) as AbstractIndexCreationTask)?.CreateIndexDefinition();
+        => TaskFor(entry.IndexType)?.CreateIndexDefinition();
 
     public IReadOnlySet<string>? GetQuerySurface(IndexCatalogEntry entry)
     {
         IndexDefinition definition;
         try
         {
-            if (Activator.CreateInstance(entry.IndexType) is not IAbstractIndexCreationTask task) return null;
+            if (TaskFor(entry.IndexType) is not { } task) return null;
             definition = task.CreateIndexDefinition();
         }
         catch (Exception ex) when (ex is MissingMethodException or NotSupportedException or TargetInvocationException or InvalidOperationException)

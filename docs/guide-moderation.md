@@ -20,8 +20,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 var app = builder.Build();
 ```
 
-`if (builder.InitializeSparkModerationIfRequested(args)) return;` before `Build()` enables
-`dotnet run -- --spark-init-moderation`.
+`AddModeration` registers `--spark-init-moderation`; `if (await app.RunSparkCommandIfRequestedAsync(args)) return;` after
+`Build()` runs it (`dotnet run -- --spark-init-moderation`).
 
 Domain types implement `IModeratable` (reference `MintPlayer.Spark.Moderation.Abstractions`):
 

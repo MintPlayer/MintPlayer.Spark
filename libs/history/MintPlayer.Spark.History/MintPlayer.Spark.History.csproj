@@ -11,7 +11,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Revision history for MintPlayer.Spark: RavenDB revisions configured from the model, audit stamping (IAuditable, user ids only), revision list/read with row security and redaction (History/T), revert through the save pipeline (Revert/T), and in-process revision observers. Adds POST /spark/po/revisions, /spark/po/revision and /spark/po/revert.</Description>
+		<Description>Revision history for MintPlayer.Spark on any store with revisions (RavenDB's own; a revisions table on SQL Server and PostgreSQL): revisions configured from the model, audit stamping (IAuditable, user ids only), revision list/read with row security and redaction (History/T), revert through the save pipeline (Revert/T), and in-process revision observers. Adds POST /spark/po/revisions, /spark/po/revision and /spark/po/revert.</Description>
 		<PackageTags>history;revisions;audit;revert;ravendb;spark</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
@@ -31,7 +31,6 @@
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
 	</ItemGroup>
 
 	<ItemGroup>

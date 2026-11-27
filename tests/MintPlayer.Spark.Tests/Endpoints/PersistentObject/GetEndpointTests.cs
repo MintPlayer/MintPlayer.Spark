@@ -5,7 +5,7 @@ using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
-public class GetEndpointTests : SparkTestDriver
+public class GetEndpointTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("11111111-aaaa-aaaa-aaaa-111111111111");
 
@@ -15,7 +15,7 @@ public class GetEndpointTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

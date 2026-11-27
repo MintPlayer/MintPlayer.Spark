@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.Client;
 /// dedicated <c>MintPlayer.Spark.Client.Tests</c> project (Phase 3) where the harness also
 /// boots Spark.Authorization.
 /// </summary>
-public class SparkClientAliasAndActionTests : SparkTestDriver
+public class SparkClientAliasAndActionTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("7aaaa111-0000-0000-0000-7aaaa1110000");
 
@@ -25,7 +25,7 @@ public class SparkClientAliasAndActionTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)]);
+        _factory = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [TestModels.Person(PersonTypeId)]);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

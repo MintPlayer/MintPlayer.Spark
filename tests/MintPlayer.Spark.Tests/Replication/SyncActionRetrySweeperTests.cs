@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// never happens.
 /// </para>
 /// </summary>
-public class SyncActionRetrySweeperTests : SparkTestDriver
+public class SyncActionRetrySweeperTests : RavenSparkTestDriver
 {
     protected override IEnumerable<Assembly> IndexAssemblies => [typeof(SparkSyncActions_ByStatus).Assembly];
 

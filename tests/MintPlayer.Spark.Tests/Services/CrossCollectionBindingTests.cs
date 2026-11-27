@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// a green test here is the guard working, not the row rule accidentally covering.
 /// </para>
 /// </summary>
-public class CrossCollectionBindingTests : SparkTestDriver
+public class CrossCollectionBindingTests : RavenSparkTestDriver
 {
     private static readonly Guid DocTypeId = Guid.Parse("c0110c11-0000-0000-0000-c0110c110000");
 
@@ -43,7 +43,7 @@ public class CrossCollectionBindingTests : SparkTestDriver
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<GuardedContext>(Store,
+        _factory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(),
             new[] { GuardedDocModel.For(DocTypeId), GuardedCodedModel.For(CodedTypeId) });
         _dbAccess = _factory.GetService<IDatabaseAccess>();
     }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -23,12 +24,10 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// delivery was entirely dead, which is how five production queues went unnoticed for months.
 /// </para>
 /// </summary>
-public class MessagingInvariantsTests : SparkTestDriver
+public class MessagingInvariantsTests : MessagingRavenTestDriver
 {
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(30);
 
-    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
-        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
 
     // --- Messages, one per queue ---------------------------------------------
 
@@ -89,7 +88,7 @@ public class MessagingInvariantsTests : SparkTestDriver
         services.AddSingleton<IRecipient<OrderedMessage>>(recipient);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         for (var i = 1; i <= 5; i++)
             await bus.BroadcastAsync(new OrderedMessage { Sequence = i });
 
@@ -116,7 +115,7 @@ public class MessagingInvariantsTests : SparkTestDriver
         services.AddSingleton<IRecipient<FastMessage>>(fast);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         await bus.BroadcastAsync(new SlowMessage { Id = "slow/1" });
 
         await using var host = await StartManagerAsync(provider);
@@ -164,10 +163,10 @@ public class MessagingInvariantsTests : SparkTestDriver
         await Store.WaitForIndexingAsync();
 
         var sweeper = new MessageRetrySweeper(
-            Store,
+            Store.SparkStore(),
             Options.Create(new SparkMessagingOptions()),
             NullLogger<MessageRetrySweeper>.Instance,
-            new MessagingLeaseManager(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true });
+            Store.HeldLease());
 
         var reclaimed = await sweeper.ReclaimAbandonedAsync(CancellationToken.None);
         reclaimed.Should().Be(1, "the expired claim marks the message as abandoned");
@@ -223,7 +222,7 @@ public class MessagingInvariantsTests : SparkTestDriver
         servicesB.AddSingleton<IRecipient<OrderedMessage>>(recipientB);
         await using var providerB = servicesB.BuildServiceProvider();
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions()));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions()));
         for (var i = 1; i <= 3; i++)
             await bus.BroadcastAsync(new OrderedMessage { Sequence = i });
 
@@ -288,10 +287,10 @@ public class MessagingInvariantsTests : SparkTestDriver
         await Store.WaitForIndexingAsync();
 
         var sweeper = new MessageRetrySweeper(
-            Store,
+            Store.SparkStore(),
             Options.Create(new SparkMessagingOptions()),
             NullLogger<MessageRetrySweeper>.Instance,
-            new MessagingLeaseManager(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true });
+            Store.HeldLease());
 
         var reclaimed = await sweeper.ReclaimAbandonedAsync(CancellationToken.None);
         reclaimed.Should().Be(1,
@@ -400,7 +399,7 @@ public class MessagingInvariantsTests : SparkTestDriver
         services.AddSingleton<IRecipient<Message2>>(r2B);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
         await bus.BroadcastAsync(new Message1 { Id = "m1" });
         await bus.BroadcastAsync(new Message2 { Id = "m2" });
 
@@ -500,7 +499,7 @@ public class MessagingInvariantsTests : SparkTestDriver
         services.AddSingleton<IRecipient<HeadOfLineMessage>>(recipient);
         await using var provider = services.BuildServiceProvider();
 
-        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = 2 }));
+        var bus = new MessageBus(Store.SparkStore(), NSubstitute.Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Options.Create(new SparkMessagingOptions { MaxAttempts = 2 }));
         await bus.BroadcastAsync(new HeadOfLineMessage { Sequence = 1 });   // poison, first
         for (var i = 2; i <= 4; i++)
             await bus.BroadcastAsync(new HeadOfLineMessage { Sequence = i });
@@ -546,6 +545,7 @@ public class MessagingInvariantsTests : SparkTestDriver
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Store);
+        services.AddRavenDbSessions(); // #536 D40: messaging runs on ISparkStore/ISparkSubscriptions/ISparkAtomicValues
         services.AddSparkMessaging(o =>
         {
             o.FallbackPollInterval = TimeSpan.FromSeconds(1);

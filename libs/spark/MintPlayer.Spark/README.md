@@ -2,13 +2,13 @@
 
 A low-code .NET library for building data-driven web applications with minimal boilerplate. Spark uses a PersistentObject pattern to eliminate DTOs and repository layers, letting you focus on your domain logic.
 
-Spark is built on RavenDB and ASP.NET Core. It auto-generates CRUD endpoints, model JSON files, and a data-driven Angular frontend from your C# entity classes. You define entities, register them in a SparkContext, and the framework takes care of REST API routing, persistence, and UI rendering.
+Spark is built on ASP.NET Core and a pluggable store: RavenDB, SQL Server, PostgreSQL or memory. It auto-generates CRUD endpoints, model JSON files, and a data-driven Angular frontend from your C# entity classes. You define entities, register them in a SparkContext, and the framework takes care of REST API routing, persistence, and UI rendering.
 
 ## Overview
 
 A typical Spark application has three layers:
 
-1. **Entity classes** -- plain C# classes stored in RavenDB
+1. **Entity classes** -- plain C# classes stored in the application's store
 2. **SparkContext** -- exposes queryable collections of your entities
 3. **Model JSON files** -- auto-generated metadata that drives the Angular frontend
 
@@ -78,7 +78,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
-    spark.UseRavenDb();       // The store: MintPlayer.Spark.RavenDB. Or spark.UseInMemory() (MintPlayer.Spark.InMemory)
+    spark.UseRavenDb();       // The store: MintPlayer.Spark.RavenDB. Or UseSqlServer(), UsePostgreSql(), UseInMemory()
     spark.UseContext<MySparkContext>();
     spark.AddActions();       // Source-generated: registers all Actions classes
     spark.AddMessaging();     // Optional: durable message bus
@@ -113,7 +113,9 @@ app.Run();
 
 In development mode, Spark automatically creates the database if it does not exist.
 
-Core has no database of its own: the store comes from a provider package. `spark.UseRavenDb()` (`MintPlayer.Spark.RavenDB`) reads the section above. `spark.UseInMemory()` (`MintPlayer.Spark.InMemory`) needs no server and no configuration; its data resets on restart, and it has no indexes, subscriptions or revisions, so features that need them (messaging, history, …) refuse to start on it and say why.
+Core has no database of its own: the store comes from a provider package. `spark.UseRavenDb()` (`MintPlayer.Spark.RavenDB`) reads the section above. `spark.UseSqlServer()` (`MintPlayer.Spark.SqlServer`) and `spark.UsePostgreSql()` (`MintPlayer.Spark.PostgreSql`) store each collection in a table, with a schema that synchronize writes as migrations; see the [relational stores guide](../../../docs/guide-relational-stores.md). `spark.UseInMemory()` (`MintPlayer.Spark.InMemory`) needs no server and no configuration; its data resets on restart.
+
+Every store offers subscriptions, revisions and live updates, so Messaging, History and SoftDelete run on all four. Native RavenDB indexes, attachments, Replication and the OpenSearch engine need RavenDB; a feature that needs what the store lacks refuses to start and says why.
 
 ### 3. Define SparkContext
 
@@ -355,9 +357,9 @@ the [CORS guide](../../../docs/guide-cors.md).
 | `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with per-app options |
 | `MapSpark()` | Map Spark REST endpoints |
 | `SynchronizeSparkModels<T>()` | Sync entity models from SparkContext |
-| `builder.SynchronizeSparkModelsIfRequested(args)` | Build step: sync or verify the model, then return from `Main` |
+| `app.RunSparkCommandIfRequestedAsync(args)` | After `Build()`: runs the requested `--spark-` command (sync or verify the model, security, each package's own; `--spark-help` lists them), then return from `Main` |
 
-RavenDB indexes are deployed by `UseSpark()` itself — there is nothing to call.
+On RavenDB, `UseSpark()` deploys the indexes itself — there is nothing to call. On SQL Server and PostgreSQL the views are part of the schema, which `--spark-synchronize-model` writes into a migration.
 
 ## Model Synchronization
 
@@ -625,7 +627,9 @@ Model files can be validated in the editor against the published [JSON schemas](
 
 ## Index-Based Queries
 
-For optimized list views with projections, use RavenDB indexes:
+For list views with projections, declare a `SparkView<TRow>`: one C# definition that RavenDB deploys as an index, SQL Server and PostgreSQL as a view, and the in-memory store runs as LINQ. The [relational stores guide](../../../docs/guide-relational-stores.md#views-are-the-indexes) shows one.
+
+A native RavenDB index works too, on RavenDB only:
 
 ```csharp
 // Projection class
@@ -660,7 +664,7 @@ Then reference the projection in your SparkContext:
 public IQueryable<VPerson> PeopleOverview => Session.Query<VPerson, People_Overview>();
 ```
 
-Indexes need a provider with them (`spark.UseRavenDb()`); on `UseInMemory()` a model that binds one is refused at startup.
+A native index needs `spark.UseRavenDb()`; on the other stores a model that binds one is refused at startup. Declare it as a `SparkView<TRow>` to run on every store.
 
 ## Angular Frontend
 
@@ -727,14 +731,15 @@ MyApp/
 
 ## Requirements
 
-- .NET 10.0+ SDK
-- RavenDB 6.2+ (default: `http://localhost:8080`)
+- .NET 11.0 SDK
+- A store: RavenDB 6.2+ (default: `http://localhost:8080`), SQL Server 2022+, PostgreSQL 17+, or none (`UseInMemory()`)
 - Node.js 20+ and npm (for the Angular frontend)
 
 ## Next Steps
 
 - [Reference Attributes](../../../docs/guide-reference-attributes.md) -- link entities together with navigation properties
-- [Queries and Sorting](../../../docs/guide-queries-and-sorting.md) -- define RavenDB indexes and sortable list views
+- [Queries and Sorting](../../../docs/guide-queries-and-sorting.md) -- define views and sortable list views
+- [Relational stores](../../../docs/guide-relational-stores.md) -- run Spark on SQL Server or PostgreSQL
 - [Authorization](../../authorization/MintPlayer.Spark.Authorization/README.md) -- add permission-based access control
 - [Custom Attribute Renderers](../../../docs/guide-custom-attribute-renderers.md) -- replace default UI rendering with custom Angular components
 

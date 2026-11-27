@@ -1,3 +1,5 @@
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -36,16 +38,20 @@ public sealed class CrawlOptions
 /// (<c>CancelRequested</c>), and the live push (X4, "live": true) sees each change. Also the run's endings that are
 /// not a score: cancelled, blocked by robots.txt, failed.
 /// </summary>
-public sealed class RunPipeline(
-    IDocumentStore store,
-    ISparkSettings settings,
-    ISparkNotifier notifier,
-    AuditLog auditLog,
-    IOptions<SparkMessagingOptions> messaging,
-    IOptions<CrawlOptions> crawlOptions,
-    TimeProvider time,
-    ILogger<RunPipeline> logger)
+public sealed partial class RunPipeline
 {
+    [Inject] private readonly IDocumentStore store;
+    /// <summary>The scope's session: the stage's unit of work, which the outbox writes to as well (#536 D50).</summary>
+    [Inject] private readonly IAsyncDocumentSession scopeSession;
+    [Inject] private readonly IMessageOutbox outbox;
+    [Inject] private readonly ISparkSettings settings;
+    [Inject] private readonly ISparkNotifier notifier;
+    [Inject] private readonly AuditLog auditLog;
+    [Inject] private readonly IOptions<SparkMessagingOptions> messaging;
+    [Inject] private readonly IOptions<CrawlOptions> crawlOptions;
+    [Inject] private readonly TimeProvider time;
+    [Inject] private readonly ILogger<RunPipeline> logger;
+
     public CrawlOptions Options => crawlOptions.Value;
 
     public DateTime NowUtc => time.GetUtcNow().UtcDateTime;
@@ -86,34 +92,39 @@ public sealed class RunPipeline(
         await session.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Ends the run without a score, deletes its frontier, logs and tells the participants.</summary>
+    /// <summary>
+    /// Ends the run without a score, deletes its frontier, logs and tells the participants, in one commit of the scope's
+    /// session: the notifier writes the notice there and never saves (#536 D50).
+    /// </summary>
     public async Task EndAsync(AuditRun run, string status, string? error, string? logKind, CancellationToken cancellationToken)
     {
-        using (var session = store.OpenAsyncSession())
-        {
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Status, status);
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Phase!, status.ToLowerInvariant());
-            session.Advanced.Patch<AuditRun, DateTime?>(run.Id.Value, r => r.CompletedAtUtc, NowUtc);
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Error!, error!);
-            session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.CurrentUrl!, null!);
-            session.Delete(CrawlFrontier.IdFor(run.Id.Value));
-            if (logKind is not null && run.SiteId is not null && await session.LoadAsync<Site>(run.SiteId, cancellationToken) is { } site)
-                await session.StoreAsync(await auditLog.EntryAsync(logKind, run.StartedBy, site, run.Id.Value, error, cancellationToken), cancellationToken);
-            await session.SaveChangesAsync(cancellationToken);
-        }
+        // A stage that failed for the last time (GuardAsync) left its writes pending here, and may have spent the session's
+        // request budget (Clear() keeps the count): neither belongs to ending the run, which had a session of its own before
+        // the notice had to share the scope's.
+        scopeSession.Advanced.Clear();
+        using var budget = scopeSession.IgnoreMaxRequests();
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Status, status);
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Phase!, status.ToLowerInvariant());
+        scopeSession.Advanced.Patch<AuditRun, DateTime?>(run.Id.Value, r => r.CompletedAtUtc, NowUtc);
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.Error!, error!);
+        scopeSession.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.CurrentUrl!, null!);
+        scopeSession.Delete(CrawlFrontier.IdFor(run.Id.Value));
+        if (logKind is not null && run.SiteId is not null && await scopeSession.LoadAsync<Site>(run.SiteId, cancellationToken) is { } site)
+            await scopeSession.StoreAsync(await auditLog.EntryAsync(logKind, run.StartedBy, site, run.Id.Value, error, cancellationToken), cancellationToken);
         if (status != AuditRunStatus.Cancelled)
             await NotifyAsync(run, status == AuditRunStatus.Blocked ? $"The audit of {run.Origin} was blocked by its robots.txt" : $"The audit of {run.Origin} failed",
                 error, "audit-ended", cancellationToken);
+        await scopeSession.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Ends a stage in the caller's unit of work: its findings were written in the same session; this adds the stage to
+    /// Ends a stage in the scope's unit of work: its findings were written in the same session; this adds the stage to
     /// <c>StagesDone</c> and enqueues the aggregate, which runs once every stage before it is done (§4.3).
     /// </summary>
-    public async Task FinishStageAsync(IAsyncDocumentSession session, IMessageOutbox outbox, string runId, string stage, CancellationToken cancellationToken)
+    public async Task FinishStageAsync(string runId, string stage, CancellationToken cancellationToken)
     {
-        session.Advanced.Patch<AuditRun, string>(runId, r => r.StagesDone, stages => stages.Add(stage));
-        await outbox.EnqueueAsync(session, new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
+        scopeSession.Advanced.Patch<AuditRun, string>(runId, r => r.StagesDone, stages => stages.Add(stage));
+        await outbox.EnqueueAsync(new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
     }
 
     /// <summary>

@@ -12,7 +12,7 @@
 		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue isolation, and retry logic.</Description>
+		<Description>Durable message bus for MintPlayer.Spark on any store with subscriptions (RavenDB, SQL Server, PostgreSQL or memory), with scoped recipients, queue isolation, and retry logic.</Description>
 		<PackageTags>messaging;message-bus;ravendb;background-service</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
@@ -41,7 +41,8 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.1.2" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.7" />
+		<!-- Message payloads are Newtonsoft JSON (it came through RavenDB.Client before #536 D40). -->
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 	</ItemGroup>
 
 </Project>

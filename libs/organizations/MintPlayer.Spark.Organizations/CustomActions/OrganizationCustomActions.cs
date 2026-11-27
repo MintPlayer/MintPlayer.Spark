@@ -8,7 +8,7 @@ using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Organizations.Identity;
 using MintPlayer.Spark.Organizations.Models;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Organizations.CustomActions;
 
@@ -23,7 +23,7 @@ internal sealed partial class InviteOrganizationMemberAction : ICustomAction
 
     [Inject] private readonly IManager manager;
     [Inject] private readonly ISparkOrganizations organizations;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
@@ -94,7 +94,7 @@ internal sealed partial class TransferOrganizationOwnershipAction : ICustomActio
 {
     [Inject] private readonly IManager manager;
     [Inject] private readonly ISparkOrganizations organizations;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)

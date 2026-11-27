@@ -1,12 +1,12 @@
 using Microsoft.AspNetCore.Identity;
-using Raven.Client.Documents.Operations.CompareExchange;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Security.Cryptography;
 
 namespace MintPlayer.Spark.Authorization.Identity;
 
 // IUserPasskeyStore<TUser> over the embedded SparkUser.Passkeys collection, plus the
-// compare/exchange reservation that makes a credential id resolvable to its owner and unique across
-// the cluster.
+// store reservation (#536 S6; compare exchange on RavenDB, under the same keys) that makes a credential id resolvable
+// to its owner and unique.
 //
 // ⚠️ Plain comment, not an XML <summary>: the type's docs live on the primary declaration in
 // UserStore.cs. A partial type documented in two files makes DescriptionSourceGenerator emit two
@@ -61,14 +61,19 @@ public partial class UserStore<TUser>
         if (string.IsNullOrEmpty(user.Id))
             throw new InvalidOperationException("The user must be persisted before a passkey can be enrolled against it.");
 
-        // Reserve before mutating the document. If the reservation fails the credential belongs to
-        // somebody else and enrollment must not proceed.
-        if (!await CreatePasskeyReservationAsync(passkey.CredentialId, user.Id, cancellationToken))
+        // Checked before mutating the document: a credential that belongs to somebody else must not be enrolled. The
+        // claim itself is written with the user (UpdateAsync's save); a concurrent enrollment of the same id fails that
+        // save instead.
+        var key = PasskeyKeyFor(passkey.CredentialId);
+        var holder = await Session.GetReservationAsync(key, cancellationToken);
+        if (holder is not null && !string.Equals(holder, user.Id, StringComparison.OrdinalIgnoreCase)
+            && await Session.ExistsAsync(user.GetType(), holder, cancellationToken))
         {
             // Deliberately says nothing about who holds it. Naming the other account would turn
             // enrollment into a lookup oracle over a value the caller already controls.
             throw new InvalidOperationException("This passkey is already registered.");
         }
+        Session.Reserve(key, user.Id);
 
         user.Passkeys.Add(new SparkUserPasskey
         {
@@ -105,14 +110,8 @@ public partial class UserStore<TUser>
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(credentialId);
 
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var result = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(PasskeyKeyFor(credentialId)), token: cancellationToken);
-
-        if (string.IsNullOrEmpty(result?.Value))
-            return null;
-
-        return await Session.LoadAsync<TUser>(result.Value, cancellationToken);
+        var userId = await Session.GetReservationAsync(PasskeyKeyFor(credentialId), cancellationToken);
+        return string.IsNullOrEmpty(userId) ? null : Loaded(await Session.LoadAsync<TUser>(userId, cancellationToken));
     }
 
     public Task<UserPasskeyInfo?> FindPasskeyAsync(TUser user, byte[] credentialId, CancellationToken cancellationToken)
@@ -140,7 +139,7 @@ public partial class UserStore<TUser>
     /// Removes a passkey and releases its reservation, so the credential id becomes registerable
     /// again. Leaving the reservation behind would burn the id permanently.
     /// </summary>
-    public async Task RemovePasskeyAsync(TUser user, byte[] credentialId, CancellationToken cancellationToken)
+    public Task RemovePasskeyAsync(TUser user, byte[] credentialId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
@@ -149,10 +148,13 @@ public partial class UserStore<TUser>
 
         var existing = FindEmbeddedPasskey(user, credentialId);
         if (existing is null)
-            return;
+            return Task.CompletedTask;
 
         user.Passkeys.Remove(existing);
-        await DeletePasskeyReservationAsync(credentialId, cancellationToken);
+        // Freed with the user's save, and only while this user holds it.
+        if (user.Id is not null)
+            Session.Release(PasskeyKeyFor(credentialId), user.Id);
+        return Task.CompletedTask;
     }
 
     #endregion
@@ -177,59 +179,6 @@ public partial class UserStore<TUser>
         {
             Name = passkey.Name,
         };
-
-    /// <summary>
-    /// Takes the cluster-wide reservation for a credential id.
-    /// <para>
-    /// Idempotent for the same owner: a reservation that already points at this user is treated as
-    /// success, so a retry after the document write failed can complete rather than being locked out
-    /// by its own half-finished attempt.
-    /// </para>
-    /// </summary>
-    private async Task<bool> CreatePasskeyReservationAsync(byte[] credentialId, string userId, CancellationToken cancellationToken)
-    {
-        var key = PasskeyKeyFor(credentialId);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-
-        var result = await operations.SendAsync(
-            new PutCompareExchangeValueOperation<string>(key, userId, 0), token: cancellationToken);
-
-        if (result.Successful)
-            return true;
-
-        var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-
-        return string.Equals(existing?.Value, userId, StringComparison.Ordinal);
-    }
-
-    private async Task DeletePasskeyReservationAsync(byte[] credentialId, CancellationToken cancellationToken)
-    {
-        var key = PasskeyKeyFor(credentialId);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-
-        var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-
-        if (existing != null)
-        {
-            await operations.SendAsync(
-                new DeleteCompareExchangeValueOperation<string>(key, existing.Index), token: cancellationToken);
-        }
-    }
-
-    /// <summary>
-    /// Releases every passkey reservation a user holds. Called from <c>DeleteAsync</c>: without it a
-    /// deleted user's credential ids stay reserved forever, pointing at a document that no longer
-    /// exists.
-    /// </summary>
-    private async Task DeleteAllPasskeyReservationsAsync(TUser user, CancellationToken cancellationToken)
-    {
-        foreach (var passkey in user.Passkeys)
-        {
-            await DeletePasskeyReservationAsync(passkey.CredentialId, cancellationToken);
-        }
-    }
 
     #endregion
 }

@@ -28,10 +28,17 @@ public partial class M_202610051200_UserNamesAreNotEmails : ISparkMigration
     public static long Version => 202610051200;
     public static string? Description => "User names are public handles: replace email-shaped user names with a generated handle";
 
-    [Inject] private readonly IDocumentStore store;
+    // RavenDB only (#536): it repairs documents written before any other provider existed, so on SQL Server, PostgreSQL
+    // and in memory there is nothing to repair and it does nothing.
+    [Inject] private readonly IDocumentStore? raven;
+    private IDocumentStore store = null!;
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
+        if (raven is null)
+            return;
+        store = raven;
+
         // Spliced into the scan below, because RQL takes no parameter for a collection; validated,
         // because an application can customise the convention to return anything (#264).
         var collection = RqlIdentifier.Collection(store.Conventions.FindCollectionName(typeof(SparkUser)));

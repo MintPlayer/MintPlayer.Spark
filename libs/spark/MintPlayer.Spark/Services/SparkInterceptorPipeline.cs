@@ -30,12 +30,12 @@ internal interface ISparkInterceptorPipeline
 
     /// <summary>
     /// Runs <see cref="IAfterMaterialize"/> interceptors (F1) for each of <paramref name="entities"/> not already
-    /// intercepted in this request (by reference).
+    /// intercepted in this request (by reference). <paramref name="session"/> is the one they were loaded in.
     /// </summary>
     Task RunAfterMaterializeAsync(Type entityType, ISparkSession session, IEnumerable<object> entities, MaterializeReason reason);
 
     /// <summary>Runs <see cref="IAfterLoad"/> interceptors for each loaded object.</summary>
-    Task RunAfterLoadAsync(Type entityType, ISparkSession session, IReadOnlyList<PersistentObject> objects);
+    Task RunAfterLoadAsync(Type entityType, IReadOnlyList<PersistentObject> objects);
 
     /// <summary>
     /// Runs after-interceptors, each isolated: a failure is logged and neither turns the committed write
@@ -140,8 +140,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
             {
                 EntityType = entityType,
                 Entity = entity,
-                Session = session.Native,
-                StorageSession = session,
+                Session = session,
                 Reason = reason,
                 User = user,
                 IsSystemContext = system,
@@ -151,7 +150,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         }
     }
 
-    public async Task RunAfterLoadAsync(Type entityType, ISparkSession session, IReadOnlyList<PersistentObject> objects)
+    public async Task RunAfterLoadAsync(Type entityType, IReadOnlyList<PersistentObject> objects)
     {
         var interceptors = For<IAfterLoad>(entityType);
         if (interceptors.Count == 0 || objects.Count == 0)
@@ -161,7 +160,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         var system = IsSystemContext;
         foreach (var obj in objects)
         {
-            var context = new LoadContext { EntityType = entityType, PersistentObject = obj, Session = session.Native, StorageSession = session, User = user, IsSystemContext = system };
+            var context = new LoadContext { EntityType = entityType, PersistentObject = obj, User = user, IsSystemContext = system };
             foreach (var interceptor in interceptors)
                 await interceptor.OnAfterLoadAsync(context);
         }
@@ -201,7 +200,7 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
         };
 
         foreach (var interceptor in durable)
-            await outbox.EnqueueAsync(context.Session, new SparkAfterCommitWork { InterceptorType = interceptor.GetType().FullName!, IsDelete = isDelete, Change = change });
+            await outbox.EnqueueAsync(new SparkAfterCommitWork { InterceptorType = interceptor.GetType().FullName!, IsDelete = isDelete, Change = change });
     }
 
     public async Task RunIsolatedAsync<TInterceptor>(IReadOnlyList<TInterceptor> interceptors, Func<TInterceptor, ValueTask> call, Type entityType, string? id) where TInterceptor : class, ISparkInterceptor

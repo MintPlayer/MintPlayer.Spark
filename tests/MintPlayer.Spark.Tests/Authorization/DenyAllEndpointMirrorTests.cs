@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Authorization;
 /// Nothing in this class writes a document — every case asks an endpoint what it refuses — so a
 /// shared database costs it nothing and saves 26 create/delete cycles plus 26 host boots.
 /// </remarks>
-public sealed class DenyAllHost : SparkSharedDatabase
+public sealed class DenyAllHost : RavenSparkSharedDatabase
 {
     internal static readonly Guid DocTypeId = Guid.Parse("5a5a0000-1111-2222-3333-444455556666");
     internal static readonly Guid AllDocsQueryId = Guid.Parse("5a5a1111-1111-2222-3333-444455556666");
@@ -45,7 +45,7 @@ public sealed class DenyAllHost : SparkSharedDatabase
         ];
 
         Factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [docType], security: SparkTestSecurity.Empty);
+            Store.AsSparkTestDatabase(), [docType], security: SparkTestSecurity.Empty);
         Client = Factory.CreateClient();
 
         (CookieHeader, XsrfToken) = await Factory.MintAntiforgeryAsync();
@@ -87,7 +87,7 @@ public sealed class DenyAllHost : SparkSharedDatabase
 /// </list>
 /// </remarks>
 public class DenyAllEndpointMirrorTests(DenyAllHost host)
-    : SparkSharedTestDriver(host), IClassFixture<DenyAllHost>
+    : RavenSparkSharedTestDriver(host), IClassFixture<DenyAllHost>
 {
     private static readonly Guid DocTypeId = DenyAllHost.DocTypeId;
     private static readonly Guid AllDocsQueryId = DenyAllHost.AllDocsQueryId;

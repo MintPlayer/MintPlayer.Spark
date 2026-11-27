@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using System.Diagnostics;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging;
@@ -161,7 +162,7 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
         {
             RunPipeline.PatchProgress(session, run.Id.Value, "crawl", frontier.Fetched, frontier.Seen.Count, current);
             var next = new PageBatchMessage(run.Id.Value, frontier.NextBatch);
-            await outbox.EnqueueAsync(session, next, backOff is { } delay ? new BroadcastOptions { Delay = delay } : null, cancellationToken);
+            await outbox.EnqueueAsync(next, backOff is { } delay ? new BroadcastOptions { Delay = delay } : null, cancellationToken);
         }
         else
         {
@@ -172,8 +173,8 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
             session.Advanced.Patch<AuditRun, string>(run.Id.Value, r => r.StagesDone, stages => stages.Add(PipelineStages.Crawl));
             // The render and PageSpeed stages sample the crawled pages, so they start now, side by side; each enqueues
             // the aggregate as it finishes, and the aggregate waits for both (M10).
-            await outbox.EnqueueAsync(session, new RenderSampleMessage(run.Id.Value), cancellationToken: cancellationToken);
-            await outbox.EnqueueAsync(session, new PsiMessage(run.Id.Value), cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(new RenderSampleMessage(run.Id.Value), cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(new PsiMessage(run.Id.Value), cancellationToken: cancellationToken);
         }
 
         await session.StoreAsync(frontier, changeVector, frontier.Id.Value, cancellationToken);

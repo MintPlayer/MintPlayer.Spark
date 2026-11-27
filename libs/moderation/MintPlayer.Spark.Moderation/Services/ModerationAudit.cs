@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// <remarks>Append-only documents; actors are user ids (D8), resolved to names at read time by the application.</remarks>
 internal sealed partial class ModerationAudit
 {
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly TimeProvider timeProvider;
 
@@ -27,7 +27,7 @@ internal sealed partial class ModerationAudit
         CancellationToken cancellationToken = default,
         string? actorId = null)
     {
-        using var session = documentStore.OpenAsyncSession();
+        using var session = store.OpenSession();
         await session.StoreAsync(new ModerationAuditEntry
         {
             ActorId = actorId ?? (currentUser.IsAuthenticated ? currentUser.Id : null),

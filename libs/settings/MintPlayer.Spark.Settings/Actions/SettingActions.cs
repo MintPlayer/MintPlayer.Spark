@@ -1,8 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Settings.Models;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Settings.Actions;
 
@@ -13,8 +12,8 @@ namespace MintPlayer.Spark.Settings.Actions;
 /// </summary>
 public partial class SettingActions : DefaultPersistentObjectActions<Setting>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
 
     /// <summary>Every setting document.</summary>
-    public IRavenQueryable<Setting> Settings() => session.Query<Setting>();
+    public IQueryable<Setting> Settings() => session.Query<Setting>();
 }

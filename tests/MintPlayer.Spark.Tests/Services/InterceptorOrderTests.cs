@@ -12,14 +12,14 @@ namespace MintPlayer.Spark.Tests.Services;
 /// and at most one <see cref="IDeleteReplacement"/> decides a type's deletes. Within a stage, interceptors
 /// keep registration order (not a contract).
 /// </summary>
-public class InterceptorOrderTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class InterceptorOrderTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     [Fact]
     public async Task Finalize_interceptors_run_after_every_default_interceptor_whatever_the_registration_order()
     {
         await using var factory = new SparkEndpointFactory<InterceptedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(Guid.Parse("0f5e0000-0000-4000-8000-0f5e00000001"))],
             configureServices: services => services.AddSingleton(new InterceptionLog()),
             configureSpark: spark => spark
@@ -41,7 +41,7 @@ public class InterceptorOrderTests(SparkSharedDatabase database)
     public async Task Two_delete_replacements_for_one_type_are_refused()
     {
         await using var factory = new SparkEndpointFactory<InterceptedContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [InterceptedNoteModel.For(Guid.Parse("0f5e0000-0000-4000-8000-0f5e00000002"))],
             configureServices: services => services.AddSingleton(new InterceptionLog()),
             configureSpark: spark => spark.AddInterceptor<OrdReplacementA>().AddInterceptor<OrdReplacementB>());

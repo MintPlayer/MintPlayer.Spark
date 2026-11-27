@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -17,7 +18,7 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// only ever deliver well-formed messages to registered handlers, so every dead-letter path here was
 /// untested — and they are the paths an attacker who can write into <c>SparkMessages</c> exercises.
 /// </summary>
-public class MessageProcessorTests : SparkTestDriver
+public class MessageProcessorTests : MessagingRavenTestDriver
 {
     private const string Owner = "this-node/0001";
 
@@ -83,7 +84,7 @@ public class MessageProcessorTests : SparkTestDriver
         => NewProcessor(services, new SparkMessagingOptions { RetentionDays = retentionDays });
 
     private MessageProcessor NewProcessor(IServiceProvider services, SparkMessagingOptions options)
-        => new(services, Store, Options.Create(options), NullLogger<MessageProcessor>.Instance);
+        => new(services, Store.SparkStore(), Options.Create(options), NullLogger<MessageProcessor>.Instance);
 
     private static ServiceProvider Services(IMessageTypeAllowList allowList, Action<IServiceCollection>? configure = null)
     {
@@ -394,7 +395,7 @@ public class MessageProcessorTests : SparkTestDriver
         {
             s.AddSingleton<IRecipient<Ping>>(new RenewingRecipient(async () =>
             {
-                (await MessageClaims.TryRenewAsync(Store, id, Owner, options.ClaimTtl, CancellationToken.None))
+                (await MessageClaims.TryRenewAsync(Store.SparkStore(), id, Owner, options.ClaimTtl, CancellationToken.None))
                     .Should().BeTrue("the claim is ours");
                 return await StoredExpiryAsync();
             }, renewed));

@@ -46,7 +46,7 @@ namespace MintPlayer.Spark.Tests.Extensions;
 /// endpoint, which is why the reads below carry a written reason.
 /// </para>
 /// </remarks>
-public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(hosts), IClassFixture<XsrfSurfaceHosts>
+public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : RavenSparkSharedTestDriver(hosts), IClassFixture<XsrfSurfaceHosts>
 {
     private static readonly string[] MutatingMethods = ["POST", "PUT", "PATCH", "DELETE"];
 
@@ -255,7 +255,7 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
 /// Both hosts for the class, booted once (M8 item 5): every case only reads endpoint metadata, so
 /// nothing a case does can reach a sibling.
 /// </summary>
-public sealed class XsrfSurfaceHosts : SparkSharedDatabase
+public sealed class XsrfSurfaceHosts : RavenSparkSharedDatabase
 {
     public SparkEndpointFactory<GuardedContext> CoreFactory { get; private set; } = null!;
     public IHost AuthHost { get; private set; } = null!;
@@ -264,7 +264,7 @@ public sealed class XsrfSurfaceHosts : SparkSharedDatabase
     {
         await base.InitializeAsync();
         var docType = GuardedDocModel.For(Guid.Parse("5a5a0000-1111-2222-3333-444455556666"));
-        CoreFactory = new SparkEndpointFactory<GuardedContext>(Store, [docType], security: SparkTestSecurity.Empty);
+        CoreFactory = new SparkEndpointFactory<GuardedContext>(Store.AsSparkTestDatabase(), [docType], security: SparkTestSecurity.Empty);
         AuthHost = await StartAuthHostAsync();
     }
 
@@ -283,6 +283,8 @@ public sealed class XsrfSurfaceHosts : SparkSharedDatabase
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = SparkLocalCredentials.Full);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender

@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// <c>ADMINISTRATORS</c> and the test was false (found wiring Fleet's agents, 2026-10-12). The store keeps and answers
 /// the declared name, a document holding the role in another casing answers by it too, and membership ignores case.
 /// </summary>
-public class UserRoleNameTests : SparkTestDriver
+public class UserRoleNameTests : RavenSparkTestDriver
 {
     private const string Administrators = "Administrators";
     private const string Viewers = "Viewers";

@@ -5,8 +5,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Actions;
 
@@ -17,12 +15,12 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 /// </summary>
 public partial class OidcResourceActions : DefaultPersistentObjectActions<OidcResource>
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IAccessControl accessControl;
 
     /// <summary>Every resource, narrowed for writes by <see cref="GetRowFilterAsync"/>.</summary>
-    public IRavenQueryable<OidcResource> Resources() => session.Query<OidcResource>();
+    public IQueryable<OidcResource> Resources() => session.Query<OidcResource>();
 
     public override async Task<Expression<Func<OidcResource, bool>>?> GetRowFilterAsync(string action)
     {

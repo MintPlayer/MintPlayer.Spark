@@ -7,14 +7,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Extensions;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Testing;
 
 /// <summary>
-/// Boots a minimal in-memory Spark host wired against an externally-supplied
-/// <see cref="IDocumentStore"/> (typically obtained from <see cref="SparkTestDriver"/>).
+/// Boots a minimal in-memory Spark host on an <see cref="ISparkTestDatabase"/>: a test driver's database, or a
+/// RavenDB store wrapped with <c>store.AsSparkTestDatabase()</c> (MintPlayer.Spark.Testing.RavenDB). The database's
+/// provider registers itself inside <c>AddSpark</c>, as an app's <c>UseRavenDb()</c> or <c>UseSqlServer()</c> does.
 /// Each instance writes its model JSON files into a per-test temp content root so
 /// <c>ModelLoader</c> sees only the entity types declared by the fixture.
 ///
@@ -23,7 +24,7 @@ namespace MintPlayer.Spark.Testing;
 /// expose a <c>Main</c> entry point, which a library-level test project doesn't have.
 ///
 /// <typeparamref name="TContext"/> is the <see cref="SparkContext"/> subclass your tests
-/// expose to Spark (e.g. a context with <c>IRavenQueryable&lt;Person&gt; People</c>).
+/// expose to Spark (e.g. a context with <c>IQueryable&lt;Person&gt; People</c>).
 /// Library code lives here so downstream test projects only write a thin subclass, or
 /// construct <c>SparkEndpointFactory&lt;TMyContext&gt;</c> directly with no boilerplate.
 /// </summary>
@@ -58,10 +59,10 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         return path;
     });
 
-    /// <param name="testStore">The in-memory (or otherwise) document store the host should use.</param>
+    /// <param name="database">The database the host runs on; the factory does not dispose it.</param>
     /// <param name="models">Entity type definitions; serialized into <c>App_Data/Model/*.json</c>.</param>
     /// <param name="configureServices">
-    /// Optional hook invoked after the built-in registrations (AddRouting, AddSpark, testStore override).
+    /// Optional hook invoked after the built-in registrations (AddRouting, AddSpark, the database's services).
     /// Use it to register custom actions classes, options, or swap services for mocks without forking
     /// the factory.
     /// </param>
@@ -114,7 +115,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// </para>
     /// </param>
     public SparkEndpointFactory(
-        IDocumentStore testStore,
+        ISparkTestDatabase database,
         IEnumerable<EntityTypeFile> models,
         Action<IServiceCollection>? configureServices = null,
         Action<ISparkBuilder>? configureSpark = null,
@@ -123,7 +124,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         SparkTestSecurity? security = null,
         bool deployAllIndexes = false)
     {
-        ArgumentNullException.ThrowIfNull(testStore);
+        ArgumentNullException.ThrowIfNull(database);
+        Database = database;
         ArgumentNullException.ThrowIfNull(models);
 
         _contentRoot = Path.Combine(Path.GetTempPath(), "spark-endpoint-tests-" + Guid.NewGuid().ToString("N"));
@@ -168,8 +170,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.AddRouting();
                         services.AddSpark(spark =>
                         {
-                            // RavenDB, its store replaced by the test driver's below.
-                            spark.UseRavenDb();
+                            // The database's provider, pointed at that database by ConfigureServices below.
+                            database.UseProvider(spark);
                             spark.UseContext<TContext>();
                             // Before configureSpark, so a fixture can still replace or clear it.
                             if (!deployAllIndexes)
@@ -189,9 +191,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         MintPlayer.Spark.SparkDevelopmentExtensions.WriteSparkModelHashes(
                             typeof(TContext), _contentRoot, services, configureIndexCatalog);
 
-                        var existing = services.Single(d => d.ServiceType == typeof(IDocumentStore));
-                        services.Remove(existing);
-                        services.AddSingleton(testStore);
+                        database.ConfigureServices(services);
 
                         // One PBKDF2 iteration instead of Identity's 100,000. Every register, sign-in
                         // and password check in a test host otherwise burns tens of milliseconds of
@@ -282,7 +282,29 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
             || armedIndexTypes.Contains(indexType);
     }
 
+    /// <summary>The database this host runs on.</summary>
+    public ISparkTestDatabase Database { get; }
+
     public HttpClient CreateClient() => _host.GetTestClient();
+
+    /// <summary>
+    /// Writes through the host's own store, in a session of its own, then waits until every query sees it
+    /// (<see cref="WaitForConsistencyAsync"/>). The provider-neutral way to seed a test.
+    /// </summary>
+    public async Task SeedAsync(Func<ISparkSession, Task> seed, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        using (var session = GetService<ISparkStore>().OpenSession())
+        {
+            await seed(session);
+            await session.SaveChangesAsync(cancellationToken);
+        }
+        await WaitForConsistencyAsync(timeout, cancellationToken);
+    }
+
+    /// <summary>Returns once what the host wrote is visible to every query: RavenDB's indexes are up to date.</summary>
+    public Task WaitForConsistencyAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        => Database.WaitForConsistencyAsync(_host.Services, timeout, cancellationToken);
 
     /// <summary>
     /// A WebSocket client against the in-memory server, for the live socket (<c>/spark/live</c>). Set
@@ -295,9 +317,9 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// the factory does.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <see cref="Raven.Client.Documents.Session.IAsyncDocumentSession"/> is scoped, and so is
+    /// ⚠️ <see cref="ISparkSession"/> is scoped, and so is
     /// everything built on it (<c>IDatabaseAccess</c> among them). Resolving one here and reusing it
-    /// across several saves means <b>one session for the whole test</b> — and a Raven session has an
+    /// across several saves means <b>one session for the whole test</b> — and a session has an
     /// identity map, so a document it already loaded comes back as the tracked instance, not as it
     /// currently is on disk. A test that changes a document out of band (a background stamp, a
     /// second session) and then saves through that same instance is asserting against a stale entity
@@ -308,7 +330,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
 
     /// <summary>
     /// A fresh DI scope — the test-side equivalent of one HTTP request, with its own
-    /// <see cref="Raven.Client.Documents.Session.IAsyncDocumentSession"/>. Dispose it when the
+    /// <see cref="ISparkSession"/>. Dispose it when the
     /// "request" is over. See the remarks on <see cref="GetService{T}"/> for why this matters.
     /// </summary>
     public IServiceScope CreateScope() => _host.Services.CreateScope();

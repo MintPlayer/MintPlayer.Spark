@@ -7,14 +7,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
-using Raven.Client;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Mcp.Plans;
 
@@ -62,7 +60,7 @@ internal sealed class McpPlanRefusal(string message) : Exception(message);
 /// whose echoed <c>changes</c> differ from the stored rendering.
 /// </para>
 /// <para>
-/// <b>All or nothing.</b> The saves and deletes of a plan commit in one RavenDB request
+/// <b>All or nothing.</b> The saves and deletes of a plan commit in one store transaction
 /// (<see cref="ISparkWriteUnit.RunInOneCommitAsync"/>), each carrying the version captured at propose time, together
 /// with the plan's own "applied" record. A conflict anywhere fails the request and nothing is written. A custom action
 /// runs code the framework cannot hold back, so a custom action is always a plan of its own.
@@ -78,8 +76,8 @@ internal sealed class McpPlanner(
     IEntityMapper entityMapper,
     INewInvoker newInvoker,
     ISparkTypeResolver typeResolver,
-    IDocumentStore store,
-    IAsyncDocumentSession session,
+    ISparkStore store,
+    ISparkSession session,
     ISparkCurrentPrincipal currentUser,
     IHttpContextAccessor httpContextAccessor,
     SparkMcpOptions options,
@@ -148,10 +146,10 @@ internal sealed class McpPlanner(
         };
 
         // Its own session: the request session holds what the checks loaded, and nothing of it may be written.
-        using (var planSession = store.OpenAsyncSession())
+        plan.Stamp();
+        using (var planSession = store.OpenSession())
         {
             await planSession.StoreAsync(plan, plan.Id.Value, cancellationToken);
-            planSession.Advanced.GetMetadataFor(plan)[Constants.Documents.Metadata.Expires] = plan.ExpiresAt;
             await planSession.SaveChangesAsync(cancellationToken);
         }
 
@@ -170,9 +168,9 @@ internal sealed class McpPlanner(
         // Claimed first, in a session of its own with optimistic concurrency: two applies of one plan race on this
         // write, and only one gets past it. The plan is never appliable again, whatever happens next.
         McpPlan plan;
-        using (var claim = store.OpenAsyncSession())
+        using (var claim = store.OpenSession())
         {
-            claim.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            claim.OptimisticConcurrency = true;
             plan = await claim.LoadAsync<McpPlan>(planId, cancellationToken)
                 ?? throw new McpPlanRefusal(SparkMcpResult.NotFoundMessage);
 
@@ -197,7 +195,7 @@ internal sealed class McpPlanner(
             {
                 await claim.SaveChangesAsync(cancellationToken);
             }
-            catch (Raven.Client.Exceptions.ConcurrencyException)
+            catch (SparkStoreConcurrencyException)
             {
                 throw new McpPlanRefusal("This plan was already used; a plan runs once. Propose the changes again.");
             }
@@ -209,7 +207,7 @@ internal sealed class McpPlanner(
         }
         catch (SparkConcurrencyException)
         {
-            // The batch's commit found a document changed after its checks (RavenDB's own change-vector check).
+            // The batch's commit found a document changed after its checks (the store's own version check).
             const string conflict = "Conflict (409): an object of the plan changed since the plan was proposed. Nothing was saved. Read it again and propose new changes.";
             await RecordFailureAsync(plan.Id.Value, conflict);
             throw new McpPlanRefusal(conflict);
@@ -556,14 +554,12 @@ internal sealed class McpPlanner(
         {
             var plan = await session.LoadAsync<McpPlan>(planId, cancellationToken);
             MarkApplied(plan, resultIds);
-            session.Advanced.GetMetadataFor(plan)[Constants.Documents.Metadata.Expires] = plan.ExpiresAt;
             return;
         }
 
-        using var record = store.OpenAsyncSession();
+        using var record = store.OpenSession();
         var stored = await record.LoadAsync<McpPlan>(planId, cancellationToken);
-        MarkApplied(stored, resultIds);
-        record.Advanced.GetMetadataFor(stored)[Constants.Documents.Metadata.Expires] = stored.ExpiresAt;
+        MarkApplied(stored!, resultIds);
         await record.SaveChangesAsync(cancellationToken);
     }
 
@@ -574,6 +570,7 @@ internal sealed class McpPlanner(
         plan.AppliedAt = now;
         plan.ResultIds = resultIds;
         plan.ExpiresAt = now + options.PlanRetention;
+        plan.Stamp();
     }
 
     /// <summary>A failed apply is kept as long as an applied one: both are the record of what the agent attempted.</summary>
@@ -581,14 +578,14 @@ internal sealed class McpPlanner(
     {
         try
         {
-            using var record = store.OpenAsyncSession();
+            using var record = store.OpenSession();
             var plan = await record.LoadAsync<McpPlan>(planId);
             if (plan is null || plan.Status != McpPlanStatus.Applying)
                 return;
             plan.Status = McpPlanStatus.Failed;
             plan.Error = error;
             plan.ExpiresAt = DateTime.UtcNow + options.PlanRetention;
-            record.Advanced.GetMetadataFor(plan)[Constants.Documents.Metadata.Expires] = plan.ExpiresAt;
+            plan.Stamp();
             await record.SaveChangesAsync();
         }
         catch (Exception ex)

@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// careful <em>not</em> to say. The endpoints that matter here are anonymous, so their failure
 /// shapes are the security-relevant part.
 /// </summary>
-public class PasskeyEndpointTests : SparkTestDriver
+public class PasskeyEndpointTests : RavenSparkTestDriver
 {
     private async Task<IHost> StartAsync(
         SparkPasskeys passkeys,
@@ -33,6 +33,8 @@ public class PasskeyEndpointTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.Configure<SparkAuthenticationOptions>(o =>
@@ -162,7 +164,7 @@ public class PasskeyEndpointTests : SparkTestDriver
     {
         using var host = await StartAsync(SparkPasskeys.Enabled);
 
-        using (var store = new UserStore<SparkUser>(Store))
+        using (var store = new UserStore<SparkUser>(Store.AsSparkStore()))
         {
             var user = new SparkUser { UserName = "known@example.com", Email = "known@example.com", NormalizedEmail = "KNOWN@EXAMPLE.COM" };
             (await store.CreateAsync(user, CancellationToken.None)).Succeeded.Should().BeTrue();

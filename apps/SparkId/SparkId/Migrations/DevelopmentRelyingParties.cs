@@ -1,7 +1,7 @@
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace SparkId.Migrations;
 
@@ -14,19 +14,22 @@ namespace SparkId.Migrations;
 internal static class DevelopmentRelyingParties
 {
     /// <summary>
-    /// Stores the relying party unless a client with that id exists (by client id), so an administrator's edits
-    /// survive. Does not save: the caller's migration commits.
+    /// Stores the relying party and reserves its client id, unless an existing application holds that client id, so
+    /// an administrator's edits survive. Does not save: the caller's migration commits.
     /// </summary>
-    public static async Task EnsureAsync(IAsyncDocumentSession session, string clientId, string displayName, string origin, string secret, CancellationToken ct)
+    /// <remarks>
+    /// The client-id reservation is both the existence check and the only way the provider finds the application by
+    /// its client id (#536 D47), on every store; a collection query would build an auto index on RavenDB (D42).
+    /// </remarks>
+    public static async Task EnsureAsync(ISparkSession session, string clientId, string displayName, string origin, string secret, CancellationToken ct)
     {
-        var exists = await session.Query<OidcApplication>()
-            .Where(a => a.ClientId == clientId, exact: true)
-            .AnyAsync(ct);
-        if (exists)
+        if (await session.GetReservationAsync(OidcClientIdReservation.Key(clientId), ct) is { } holder
+            && await session.ExistsAsync(typeof(OidcApplication), holder, ct))
             return;
 
-        await session.StoreAsync(new OidcApplication
+        var app = new OidcApplication
         {
+            Id = Id<OidcApplication>.FromTrusted("oidcapplications/" + Guid.NewGuid().ToString("N")),
             ClientId = clientId,
             DisplayName = displayName,
             ClientType = "confidential",
@@ -54,6 +57,8 @@ internal static class DevelopmentRelyingParties
             Mode = OidcApplicationModes.Live,
             ConsentType = "implicit",
             RequirePkce = true,
-        }, ct);
+        };
+        await OidcClientIdReservation.ReserveAsync(session, app, ct);
+        await session.StoreAsync(app, app.Id.Value, ct);
     }
 }

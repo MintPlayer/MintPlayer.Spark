@@ -1,18 +1,20 @@
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions.Search;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Search;
 
 /// <summary>
 /// Which provider answers (<c>docs/spark_search_PRD.md</c> D6): the engine an engine package registered, else the
-/// RavenDB one. While the engine fails, a circuit opens and the RavenDB provider answers for <see cref="OpenFor"/>, so a
-/// stopped engine container costs one failed call per period instead of a timeout per keystroke. The RavenDB index is
-/// always deployed, so the fallback is always current.
+/// store's own: RavenDB's index on RavenDB, the collections on every other store (#536 D44). While the engine fails, a
+/// circuit opens and the store's provider answers for <see cref="OpenFor"/>, so a stopped engine container costs one
+/// failed call per period instead of a timeout per keystroke. The RavenDB index is always deployed, so the fallback is
+/// always current.
 /// </summary>
-internal sealed class SearchProviderSelector(IServiceProvider services, SparkSearchOptions options, SearchCircuit circuit, ILogger<SearchProviderSelector> logger)
+internal sealed class SearchProviderSelector(IServiceProvider services, ISparkStore store, SparkSearchOptions options, SearchCircuit circuit, ILogger<SearchProviderSelector> logger)
     : ISparkSearchProvider
 {
-    /// <summary>How long the RavenDB provider answers after the engine failed.</summary>
+    /// <summary>How long the store's provider answers after the engine failed.</summary>
     internal static readonly TimeSpan OpenFor = TimeSpan.FromSeconds(30);
 
     public Task<IReadOnlyList<SparkSearchCandidate>> SearchAsync(SparkSearchRequest request, CancellationToken cancellationToken)
@@ -23,7 +25,9 @@ internal sealed class SearchProviderSelector(IServiceProvider services, SparkSea
 
     private async Task<IReadOnlyList<SparkSearchCandidate>> CallAsync(Func<ISparkSearchProvider, Task<IReadOnlyList<SparkSearchCandidate>>> call, CancellationToken cancellationToken)
     {
-        var fallback = services.GetRequiredService<RavenSearchProvider>();
+        ISparkSearchProvider fallback = string.Equals(store.ProviderName, SparkStoreProviders.RavenDb, StringComparison.OrdinalIgnoreCase)
+            ? services.GetRequiredService<RavenSearchProvider>()
+            : services.GetRequiredService<StoreSearchProvider>();
         if (options.EngineProviderType is not { } engineType || circuit.IsOpen)
             return await call(fallback);
 
@@ -34,7 +38,7 @@ internal sealed class SearchProviderSelector(IServiceProvider services, SparkSea
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             if (circuit.Trip(OpenFor))
-                logger.LogWarning(ex, "The search engine failed; the RavenDB index answers searches for the next {Seconds} s.", OpenFor.TotalSeconds);
+                logger.LogWarning(ex, "The search engine failed; the store's own search answers for the next {Seconds} s.", OpenFor.TotalSeconds);
             return await call(fallback);
         }
     }

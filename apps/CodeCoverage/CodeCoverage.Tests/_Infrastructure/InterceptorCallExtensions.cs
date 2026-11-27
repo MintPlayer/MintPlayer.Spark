@@ -22,6 +22,5 @@ internal static class InterceptorCallExtensions
         Operation = string.IsNullOrEmpty(obj.Id) ? PersistentObjectOperation.New : PersistentObjectOperation.Save,
         PersistentObject = obj,
         Entity = entity,
-        Session = new object(),
     };
 }

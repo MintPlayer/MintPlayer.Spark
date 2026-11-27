@@ -115,6 +115,32 @@ public sealed class ModelHashFile
     /// </remarks>
     public SortedDictionary<string, SortedDictionary<string, string>>? Layers { get; set; }
 
+    /// <summary>
+    /// The formula of every stored getter of the model's types (#536 O13), keyed <c>{Entity}.{Property}</c>: the hash
+    /// of the getter's body that <c>StoredGetterGenerator</c> records in <see cref="SparkStoredGetterAttribute"/>.
+    /// </summary>
+    /// <remarks>
+    /// A stored getter's value is written when its row is saved, on every store, so a changed formula leaves the rows
+    /// saved before it with the old value. Part of <see cref="ModelHash"/>, so the change can't pass unnoticed:
+    /// verification fails until synchronize runs, and synchronize names the getters whose formula changed. Absent when
+    /// the model has no stored getters, which keeps such a model's hash what it was before this existed.
+    /// </remarks>
+    public SortedDictionary<string, string>? StoredGetters { get; set; }
+
+    /// <summary>
+    /// The stored getters of <paramref name="types"/> and their base types (<see cref="StoredGetters"/>), keyed by the
+    /// model type's name; empty when there are none.
+    /// </summary>
+    public static SortedDictionary<string, string> ComputeStoredGetters(IEnumerable<Type> types)
+    {
+        var getters = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var type in types)
+            for (var declaring = type; declaring is not null; declaring = declaring.BaseType)
+                foreach (var getter in declaring.GetCustomAttributes(typeof(SparkStoredGetterAttribute), inherit: false).Cast<SparkStoredGetterAttribute>())
+                    getters.TryAdd($"{type.Name}.{getter.Property}", getter.Formula);
+        return getters;
+    }
+
     /// <summary>Absolute path of the hash file for a given content root.</summary>
     public static string PathFor(string contentRootPath)
         => SparkAppData.Path(contentRootPath, FileName);

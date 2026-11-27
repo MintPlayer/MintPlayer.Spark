@@ -21,7 +21,8 @@ using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.SoftDelete;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
+using MintPlayer.Spark.Moderation.Indexes;
 
 namespace MintPlayer.Spark.Tests.Moderation;
 
@@ -173,23 +174,31 @@ public sealed class MoHost : IAsyncDisposable
     public string Cookie { get; }
     public string Xsrf { get; }
     public MoClock Clock { get; }
-    public IDocumentStore Store => Factory.GetService<IDocumentStore>();
+    public ISparkStore Store => Factory.GetService<ISparkStore>();
 
-    /// <summary>The etag of the stored version, which every update, delete and purge names (#467, D14).</summary>
-    public Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
+    /// <summary>The etag of the stored post's version, which every update, delete and purge names (#467, D14).</summary>
+    public async Task<string> EtagAsync(string postId)
+    {
+        using var session = Store.OpenSession();
+        var post = await session.LoadAsync<MoPost>(postId) ?? throw new InvalidOperationException($"'{postId}' is not stored, so it has no etag.");
+        return session.GetVersion(post)!;
+    }
+
+    /// <summary>How long a test read waits for the moderation views to include every write so far (a failure bound).</summary>
+    public static readonly TimeSpan ViewWait = TimeSpan.FromSeconds(60);
 
     /// <summary>Runs the durable after-commit interceptors of every committed write so far (#482, D17).</summary>
     public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
 
     public static async Task<MoHost> StartAsync(
-        IDocumentStore store,
+        ISparkTestDatabase database,
         Action<SparkModerationOptions>? configure = null,
         SparkTestSecurity? security = null,
         MoClock? clock = null)
     {
         clock ??= new MoClock();
         var factory = new SparkEndpointFactory<MoContext>(
-            store,
+            database,
             [PostModel(), LineModel(), PlainModel()],
             configureServices: services =>
             {
@@ -294,7 +303,8 @@ public sealed class MoHost : IAsyncDisposable
     /// <summary>Creates a user document as Identity would (fraud measure 10: CreatedAtUtc, RegistrationMethod).</summary>
     public async Task<string> SeedUserAsync(string id, int ageDays = 365, string? email = null, string? registration = "password", DateTime? createdAtUtc = null)
     {
-        using var session = Store.OpenAsyncSession();
+        // Moderation reads accounts by id (IdentityModerationAccounts), so no user-name reservation is needed here.
+        using var session = Store.OpenSession();
         await session.StoreAsync(new SparkUser
         {
             UserName = id.Replace("users/", string.Empty),
@@ -310,7 +320,7 @@ public sealed class MoHost : IAsyncDisposable
     /// <summary>Stores a post by <paramref name="authorId"/>, as a create through the pipeline would have stamped it.</summary>
     public async Task<string> SeedPostAsync(string authorId, string title = "post", DateTimeOffset? postedAt = null)
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         var post = new MoPost { Title = title, AuthorId = authorId, PostedAt = postedAt ?? Clock.Now };
         await session.StoreAsync(post);
         await session.SaveChangesAsync();
@@ -319,31 +329,50 @@ public sealed class MoHost : IAsyncDisposable
 
     public async Task<T?> LoadAsync<T>(string id) where T : class
     {
-        using var session = Store.OpenAsyncSession();
+        using var session = Store.OpenSession();
         return await session.LoadAsync<T>(id);
     }
 
+    /// <summary>Every ledger entry of <paramref name="userId"/>: ids from the ledger view (no collection query, D42), then the documents.</summary>
     public async Task<List<ReputationEvent>> EventsForAsync(string userId)
     {
-        using var session = Store.OpenAsyncSession();
-        return await session.Query<ReputationEvent>()
-            .Customize(c => c.WaitForNonStaleResults())
+        using var session = Store.OpenSession();
+        var ids = await session.ToListAsync(session.Query<Moderation_Ledger.Result, Moderation_Ledger>(ViewWait)
             .Where(e => e.UserId == userId)
-            .ToListAsync();
+            .Select(e => e.Id)
+            .Take(10_000));
+        var events = await session.LoadAsync<ReputationEvent>(ids.OfType<string>());
+        return [.. events.Values.OfType<ReputationEvent>()];
+    }
+
+    /// <summary>The number of ledger entries, read from the ledger view.</summary>
+    public async Task<int> EventCountAsync()
+    {
+        using var session = Store.OpenSession();
+        return await session.CountAsync(session.Query<Moderation_Ledger.Result, Moderation_Ledger>(ViewWait));
+    }
+
+    /// <summary>Every network observation of <paramref name="userId"/>, read through the observations view.</summary>
+    public async Task<List<ModerationIpObservation>> ObservationsOfAsync(string? userId)
+    {
+        using var session = Store.OpenSession();
+        var view = session.Query<Moderation_IpObservations.Result, Moderation_IpObservations>(ViewWait);
+        if (userId is not null)
+            view = view.Where(o => o.UserId == userId);
+        var ids = await session.ToListAsync(view.Select(o => o.Id).Take(10_000));
+        var observations = await session.LoadAsync<ModerationIpObservation>(ids.OfType<string>());
+        return [.. observations.Values.OfType<ModerationIpObservation>()];
     }
 
     /// <summary>
-    /// Waits until the pending-reputation index has every write made so far (failure bound 60 s).
+    /// Waits until the pending-reputation view has every write made so far (failure bound 60 s).
     /// The badge read waits for it only briefly (2 s, then serves the stale figure, by design), and
     /// on a loaded machine a map-reduce index can take longer than that.
     /// </summary>
     public async Task WaitForPendingReputationIndexAsync()
     {
-        using var session = Store.OpenAsyncSession();
-        await session.Query<MintPlayer.Spark.Moderation.Indexes.Moderation_PendingReputation.Result, MintPlayer.Spark.Moderation.Indexes.Moderation_PendingReputation>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(60)))
-            .Take(1)
-            .ToListAsync();
+        using var session = Store.OpenSession();
+        await session.ToListAsync(session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>(ViewWait).Take(1));
     }
 
     public async Task<int> CreditAsync()

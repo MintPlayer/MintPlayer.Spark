@@ -1,0 +1,86 @@
+using Raven.Embedded;
+using Raven.TestDriver;
+
+namespace MintPlayer.Spark.Testing;
+
+/// <summary>
+/// Configures the one embedded RavenDB server a test run uses, exactly once per process.
+/// </summary>
+/// <remarks>
+/// Both drivers share this, and so does a suite with its own <c>RavenTestDriver</c> base that must
+/// share the process with them. <see cref="RavenSparkTestDriver"/> takes a database per test case;
+/// <see cref="RavenSparkSharedDatabase"/> takes one per test class. They must not disagree about how the
+/// server is licensed, and neither may configure it twice — <c>ConfigureServer</c> throws once the
+/// server has started.
+/// <para>
+/// <b>Thread-safety.</b> The work lives in a type initialiser, which the CLR guarantees runs exactly
+/// once with correct publication however many threads race to touch the type. That matters here
+/// because xUnit runs test classes in parallel, so several fixtures can reach this simultaneously on
+/// a cold process. The obvious hand-rolled alternative — a <c>static bool isConfigured</c> checked
+/// and then set — is a check-then-act race: two threads both observe <see langword="false"/>, both
+/// configure, and the second throws. (That is precisely the shape of the equivalent code in
+/// the originating framework's driver, which is safe only because NUnit is sequential by default. Do not copy it.)
+/// </para>
+/// </remarks>
+public static class SparkEmbeddedServer
+{
+    static SparkEmbeddedServer()
+    {
+        // Before the server starts: it inherits the variable. See the method.
+        RavenServerLocator.DisableServerDynamicPgo();
+
+        // Loud on an invalid licence, tolerant of an absent one — the two halves are separable
+        // because they are triggered by different conditions.
+        //
+        // With a licence present the server validates it and refuses to start on a bad one, which is
+        // what we want: ThrowOnInvalidOrMissingLicense is not consulted at all in that case. Setting
+        // the flag unconditionally instead would turn an *invalid* licence from a startup error into
+        // a silent downgrade to restricted mode, surfacing much later as an obscure "feature not
+        // available in this licence" inside whichever test first touches ETL, encryption or
+        // compression.
+        //
+        // With no licence at all there is nothing to validate, so refusing to start buys no
+        // diagnostic — it just makes every RavenDB test fail for a contributor who cannot have one.
+        // Whether that is tolerable is the fixture's call, not the server's: RequireLicense decides,
+        // at the fixture's own initialisation. This has to be split that way because ConfigureServer
+        // is static and runs once per process before any instance exists, so an instance member
+        // cannot reach it.
+        var license = LicenseHelper.LoadOrNull();
+        RavenTestDriver.ConfigureServer(new TestServerOptions
+        {
+            // ⚠️ Do not add --Cluster.OperationTimeoutInSec here hoping to fix the teardown timeout.
+            // It reads as the obvious knob because its default is also 15 s, but it governs database
+            // CREATION; AdminDatabasesHandler.WaitForDeletionToComplete resolves the DELETION budget
+            // from `parameters.TimeToWaitForConfirmation ?? TimeSpan.FromSeconds(15)`, a hard-coded
+            // fallback that never consults server configuration. The deletion side is handled
+            // client-side in RavenSparkTestDriver.DisposeAsync, which explains the mechanism.
+            // The server is no longer copied into bin/ — it would be a 623 MB build output and
+            // Nx caches bin/Debug. It is provisioned once into a temp directory instead. ~~Null
+            // leaves RavenDB's default (AppContext.BaseDirectory) in place.~~ Null makes RavenDB throw
+            // ArgumentNullException, so the fixtures check RavenServerLocator.RequireServerDirectory()
+            // first, which names the reason. See RavenServerLocator.
+            ServerDirectory = RavenServerLocator.ServerDirectory,
+            Licensing = license is not null
+                ? new ServerOptions.LicensingOptions
+                {
+                    License = license,
+                    EulaAccepted = true,
+                }
+                : new ServerOptions.LicensingOptions
+                {
+                    ThrowOnInvalidOrMissingLicense = false,
+                },
+        });
+    }
+
+    /// <summary>
+    /// Ensures the server has been configured. Idempotent, and safe to call concurrently.
+    /// </summary>
+    /// <remarks>
+    /// The body is deliberately empty: touching the type is what runs the initialiser. A method
+    /// rather than a field read so the call site says what it means.
+    /// </remarks>
+    public static void EnsureConfigured()
+    {
+    }
+}

@@ -4,7 +4,7 @@ using MintPlayer.Spark.Testing;
 namespace MintPlayer.Tests.Media;
 
 /// <summary>#601 D11/D12: only unknown media are asked about, refusals are kept, failures are retried.</summary>
-public sealed class MediaUrlsAddedRecipientTests : SparkTestDriver
+public sealed class MediaUrlsAddedRecipientTests : RavenSparkTestDriver
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
 

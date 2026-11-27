@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.Live;
 /// (PRD §5 "Defects in today's streaming queries").
 /// </summary>
 /// <remarks>Fixture names start with <c>Ls</c>: <c>ActionsResolver</c> matches actions classes by simple name.</remarks>
-public class LiveAppStreamTests : SparkTestDriver
+public class LiveAppStreamTests : RavenSparkTestDriver
 {
     internal static readonly Guid TickerTypeId = Guid.Parse("1f5e0000-0000-4000-8000-000000000001");
     internal static readonly Guid TickersQueryId = Guid.Parse("1f5e0000-0000-4000-8000-000000000011");
@@ -40,7 +40,7 @@ public class LiveAppStreamTests : SparkTestDriver
         LsTickerActions.Reset();
         var access = SparkTestAccessControl.Matching(resource => allowed || !resource.EndsWith("/LsTicker", StringComparison.Ordinal));
         var factory = new SparkEndpointFactory<LsContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [new EntityTypeFile
             {
                 PersistentObject = new EntityTypeDefinition

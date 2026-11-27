@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Cron;
 /// </summary>
 /// <remarks>
 /// Jobs are resolved from a fresh DI scope for every run, so constructor/<c>[Inject]</c>
-/// dependencies (e.g. <c>IAsyncDocumentSession</c>) work exactly as in any scoped service.
+/// dependencies (e.g. <c>ISparkSession</c>) work exactly as in any scoped service.
 /// </remarks>
 public interface ISparkCronJob
 {

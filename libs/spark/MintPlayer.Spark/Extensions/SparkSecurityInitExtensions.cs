@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Builder;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Commands;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Extensions;
@@ -20,27 +20,16 @@ namespace MintPlayer.Spark.Extensions;
 /// loses nothing.
 /// </para>
 /// </remarks>
-public static class SparkSecurityInitExtensions
+internal static class SparkSecurityInitExtensions
 {
     internal const string InitFlag = "--spark-init-security";
 
     /// <summary>
-    /// Handles <c>--spark-init-security</c> and reports whether the host should stop instead of
-    /// starting.
+    /// Handles <c>--spark-init-security</c> (an <see cref="Abstractions.Commands.ISparkCommand"/> since #536 D34) and
+    /// reports whether it ran.
     /// </summary>
-    /// <returns>
-    /// <see langword="true"/> when the command was handled and the host should return from
-    /// <c>Main</c>; <see langword="false"/> when the flag was not passed.
-    /// </returns>
-    /// <example>
-    /// <code>
-    /// if (builder.InitializeSparkSecurityIfRequested(args))
-    ///     return;
-    /// </code>
-    /// </example>
-    public static bool InitializeSparkSecurityIfRequested(this WebApplicationBuilder builder, string[] args)
+    internal static bool RunInitSecurity(SparkCommandHost builder, string[] args)
     {
-        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
         if (!args.Contains(InitFlag))

@@ -1,23 +1,21 @@
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
 internal static class ModerationQueries
 {
     /// <summary>
-    /// Every result of <paramref name="query"/>, streamed, after the index caught up. RavenDB refuses
-    /// <c>WaitForNonStaleResults</c> on a stream (measured: <c>NotSupportedException</c>, "Stream()
-    /// does not wait for indexing"), so a zero-row query waits first and the stream follows.
+    /// Every row of the view <typeparamref name="TView"/> that <paramref name="shape"/> selects, streamed, after the view
+    /// caught up. RavenDB refuses <c>WaitForNonStaleResults</c> on a stream (measured: <c>NotSupportedException</c>,
+    /// "Stream() does not wait for indexing"), so a zero-row query waits first and the stream follows.
     /// </summary>
-    public static async Task<List<(string Id, T Document)>> StreamAllAsync<T>(IAsyncDocumentSession session, Func<IRavenQueryable<T>> query, CancellationToken cancellationToken)
+    public static async Task<List<TRow>> StreamAllAsync<TRow, TView>(ISparkSession session, Func<IQueryable<TRow>, IQueryable<TRow>> shape, CancellationToken cancellationToken)
+        where TRow : class where TView : class, new()
     {
-        await query().Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30))).Take(0).ToListAsync(cancellationToken);
-        var results = new List<(string, T)>();
-        await using var stream = await session.Advanced.StreamAsync(query(), cancellationToken);
-        while (await stream.MoveNextAsync())
-            results.Add((stream.Current.Id, stream.Current.Document));
-        return results;
+        await session.ToListAsync(shape(session.Query<TRow, TView>(ReputationLedger.IndexWait)).Take(0), cancellationToken);
+        var rows = new List<TRow>();
+        await foreach (var row in session.StreamAsync(shape(session.Query<TRow, TView>()), cancellationToken))
+            rows.Add(row.Document);
+        return rows;
     }
 }

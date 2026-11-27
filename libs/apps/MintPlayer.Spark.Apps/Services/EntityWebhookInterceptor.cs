@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Services;
 
@@ -40,7 +40,8 @@ internal sealed partial class EntityWebhookInterceptor<T> : IBeforeSave<T>, IBef
     internal const string OwnerKeyFact = "Spark.Apps.OwnerKey";
 
     [Inject] private readonly EntityEventRegistrations registrations;
-    [Inject] private readonly IDocumentStore store;
+    /// <summary>The scope's session. An after-commit interceptor runs in a scope of its own, so it saves only the event.</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly WebhookPublisher publisher;
 
     private EntityEventRegistration Registration => registrations.For(typeof(T));
@@ -91,8 +92,7 @@ internal sealed partial class EntityWebhookInterceptor<T> : IBeforeSave<T>, IBef
     {
         if (!change.Facts.TryGetValue(OwnerKindFact, out var kind) || !change.Facts.TryGetValue(OwnerKeyFact, out var key))
             return;
-        using var session = store.OpenAsyncSession();
-        await publisher.PublishAsync(data, new WebhookOwner(kind, key), session, MessageIdFor(change, data), cancellationToken);
+        await publisher.PublishWithIdAsync(data, new WebhookOwner(kind, key), MessageIdFor(change, data), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 

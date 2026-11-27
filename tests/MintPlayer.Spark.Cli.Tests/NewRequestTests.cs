@@ -36,15 +36,16 @@ public class NewRequestTests
     [Fact]
     public void A_RavenDB_feature_is_refused_on_InMemory()
     {
-        Request(store: "InMemory", features: ["history"]).Validate(Manifest).Should().ContainSingle()
-            .Which.Should().Contain("history");
+        // Replication rides RavenDB's ETL; most features run on any store since #536.
+        Request(store: "InMemory", features: ["replication"]).Validate(Manifest).Should().ContainSingle()
+            .Which.Should().Contain("replication");
     }
 
     [Fact]
-    public void Sign_in_is_refused_on_InMemory()
+    public void Sign_in_is_available_on_InMemory()
     {
-        Request(store: "InMemory", auth: "authorization", features: []).Validate(Manifest).Should().ContainSingle()
-            .Which.Should().Contain("InMemory");
+        // Authorization runs on any store since #536 M6 (users are found through their reservations).
+        Request(store: "InMemory", auth: "authorization", features: []).Validate(Manifest).Should().BeEmpty();
     }
 
     [Fact]
@@ -81,7 +82,8 @@ public class NewRequestTests
     {
         var arguments = Request(store: "InMemory", features: []).TemplateArguments(Manifest);
 
-        arguments.Should().NotContain("--history");
+        arguments.Should().NotContain("--replication");
+        arguments.Should().Contain("--history");
         arguments.Should().Contain("--logging");
     }
 

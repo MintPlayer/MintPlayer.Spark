@@ -6,7 +6,7 @@ namespace SparkApp.Tests;
 /// A sample test. Each test gets its own database; override <c>IndexAssemblies</c> to deploy your indexes first, and
 /// use <c>SparkEndpointFactory</c> to call the app's endpoints. The MintPlayer.Spark.Testing README has the rest.
 /// </summary>
-public class PersonTests : SparkTestDriver
+public class PersonTests : RavenSparkTestDriver
 {
     [Fact]
     public async Task A_stored_person_loads_back()

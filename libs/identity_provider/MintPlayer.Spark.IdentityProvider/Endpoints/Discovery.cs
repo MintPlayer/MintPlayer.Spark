@@ -3,7 +3,6 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -14,7 +13,7 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
 {
     public static string Path => "/openid-configuration";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly ISparkStore store;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcKeyRing signingKeys;
     [Inject] private readonly MintPlayer.Spark.Services.ICultureLoader cultures;
@@ -29,7 +28,7 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
         var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Load scopes dynamically from DB
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
 
         var scopes = await OidcScopeCatalog.LoadDiscoverableAsync(session, ct);
 

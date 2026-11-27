@@ -4,7 +4,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 
@@ -21,6 +20,9 @@ namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>, IAfterSave<OidcResource>
 {
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly ISparkStore store;
+    /// <summary>The scope's session, which the save commits through.</summary>
+    [Inject] private readonly ISparkSession session;
 
     public async ValueTask OnBeforeSaveAsync(OidcResource entity, SaveContext context)
     {
@@ -40,8 +42,7 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
         var naturalId = OidcScopeCatalog.ResourceId(entity.Name);
         if (context.IsNew || string.IsNullOrEmpty(entity.Id.Value))
         {
-            // Not a session only when the interceptor is called by hand (unit tests of the rules above).
-            if (context.Session is IAsyncDocumentSession session && await session.Advanced.ExistsAsync(naturalId))
+            if (await session.ExistsAsync(typeof(OidcResource), naturalId))
                 throw new SparkValidationException($"A resource named '{entity.Name}' already exists.", nameof(entity.Name));
 
             entity.Id = Id<OidcResource>.FromTrusted(naturalId);
@@ -68,7 +69,7 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
     /// </summary>
     public async ValueTask OnAfterSaveAsync(OidcResource entity, SaveContext context)
     {
-        if (context.Before is not OidcResource before || context.Session is not IAsyncDocumentSession session)
+        if (context.Before is not OidcResource before)
             return;
 
         var wasOn = EnabledScopes(before);
@@ -76,9 +77,8 @@ public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>
         if (turnedOff.Count == 0)
             return;
 
-        var store = session.Advanced.DocumentStore;
         await OidcDisableCascade.RevokeScopesAsync(store, turnedOff);
-        using var auditSession = store.OpenAsyncSession();
+        using var auditSession = store.OpenSession();
         await audit.RecordAsync(auditSession, OidcAuditKinds.ResourceChanged,
             context.User?.FindFirstValue(ClaimTypes.NameIdentifier),
             details: new Dictionary<string, string> { ["resource"] = entity.Name, ["disabledScopes"] = string.Join(' ', turnedOff) });

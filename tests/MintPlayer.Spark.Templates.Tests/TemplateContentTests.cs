@@ -37,15 +37,15 @@ public partial class TemplateContentTests
         projects.Where(p => !outputs.Contains(p) || !outputs.Contains("../" + p)).Should().BeEmpty("primaryOutputs lists every project in both layouts");
     }
 
-    /// <summary>The test project is built on MintPlayer.Spark.Testing (SparkTestDriver), which the template pins (core).</summary>
+    /// <summary>The test project is built on MintPlayer.Spark.Testing (RavenSparkTestDriver), which the template pins (core).</summary>
     [Fact]
     public void The_tests_project_references_the_testing_package_and_the_host()
     {
         var csproj = XDocument.Parse(TemplateRepository.Read("SparkApp.Tests/SparkApp.Tests.csproj"));
 
-        csproj.Descendants("PackageReference").Select(r => r.Attribute("Include")?.Value).Should().Contain("MintPlayer.Spark.Testing");
+        csproj.Descendants("PackageReference").Select(r => r.Attribute("Include")?.Value).Should().Contain("MintPlayer.Spark.Testing.RavenDB");
         csproj.Descendants("ProjectReference").Select(r => r.Attribute("Include")?.Value).Should().Contain(@"..\SparkApp\SparkApp.csproj");
-        Manifest.Core.Select(p => Path.GetFileNameWithoutExtension(p.Project)).Should().Contain("MintPlayer.Spark.Testing");
+        Manifest.Core.Select(p => Path.GetFileNameWithoutExtension(p.Project)).Should().Contain("MintPlayer.Spark.Testing.RavenDB");
     }
 
     [Fact]

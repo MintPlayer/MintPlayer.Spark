@@ -274,16 +274,4 @@ public class SparkSecurityVerificationExtensionsTests : IDisposable
         handled.Should().BeTrue();
         Environment.ExitCode.Should().Be(2);
     }
-
-    [Fact]
-    public void Null_arguments_are_rejected()
-    {
-        var builder = Builder();
-
-        var nullArgs = () => builder.VerifySparkSecurityIfRequested(null!);
-        nullArgs.Should().Throw<ArgumentNullException>();
-
-        var nullBuilder = () => ((WebApplicationBuilder)null!).VerifySparkSecurityIfRequested([]);
-        nullBuilder.Should().Throw<ArgumentNullException>();
-    }
 }

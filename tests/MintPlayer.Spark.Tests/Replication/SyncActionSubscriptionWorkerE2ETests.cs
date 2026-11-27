@@ -21,7 +21,7 @@ namespace MintPlayer.Spark.Tests.Replication;
 /// <c>SparkModulesTest</c> database on the embedded test server, and the outbound
 /// HTTP call is intercepted by <see cref="StubHttpMessageHandler"/>.
 /// </summary>
-public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
+public class SyncActionSubscriptionWorkerE2ETests : RavenSparkTestDriver
 {
     private readonly string _modulesDatabase = $"SparkModulesTest-{Guid.NewGuid():N}";
     private const string OwnerModule = "Fleet";
@@ -116,12 +116,15 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         var options = opts ?? DefaultOptions();
 
         // Generated ctor order: own [Inject] fields first (httpClientProvider, moduleDirectory),
-        // then base [Inject] members in declaration order (DocumentStore property, loggerFactory field).
+        // then base [Inject] members in declaration order (Subscriptions property, loggerFactory field, store readiness).
+        // RavenDB has no schema, so its readiness is complete at once (#536 D41).
         return new SyncActionSubscriptionWorker(
             new StubReplicationHttpClientProvider(handler),
             new ModuleDirectory(Options.Create(options)),
             Store,
-            NullLoggerFactory.Instance);
+            Store.SparkSubscriptions(),
+            NullLoggerFactory.Instance,
+            new MintPlayer.Spark.Abstractions.Storage.SparkStoreReadiness(NSubstitute.Substitute.For<IServiceProvider>()));
     }
 
     private async Task<string> SeedSyncActionAsync(string ownerModuleName = OwnerModule)

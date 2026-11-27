@@ -5,8 +5,6 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -23,7 +21,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// cookies can stop it from reaching the client's session.</item>
 /// </list>
 /// </summary>
-internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, IHttpClientFactory httpClientFactory, ILogger<OidcSessionStore> logger)
+internal sealed class OidcSessionStore(ISparkStore store, OidcKeyRing keys, IHttpClientFactory httpClientFactory, ILogger<OidcSessionStore> logger)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromDays(30);
     private const string BackChannelEvent = "http://schemas.openid.net/event/backchannel-logout";
@@ -38,12 +36,12 @@ internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, I
     /// <see cref="EndAsync"/> it cannot miss a refresh token minted just before the logout. A session whose record
     /// is gone (expired, or never recorded) is not "ended": the refresh token's own expiry governs it.
     /// </summary>
-    public static async Task<bool> HasEndedAsync(IAsyncDocumentSession session, string? sid, CancellationToken ct)
+    public static async Task<bool> HasEndedAsync(ISparkSession session, string? sid, CancellationToken ct)
         => !string.IsNullOrEmpty(sid)
             && await session.LoadAsync<OidcToken>(DocumentId(sid), ct) is { Type: OidcTokenTypes.Session, Status: not "valid" };
 
     /// <summary>Records that <paramref name="applicationId"/> received tokens in session <paramref name="sid"/>.</summary>
-    public static async Task JoinAsync(IAsyncDocumentSession session, string? sid, string userId, string applicationId, CancellationToken ct)
+    public static async Task JoinAsync(ISparkSession session, string? sid, string userId, string applicationId, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(sid))
             return;
@@ -76,19 +74,21 @@ internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, I
         if (string.IsNullOrEmpty(sid))
             return new([]);
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var record = await session.LoadAsync<OidcToken>(DocumentId(sid), ct);
         if (record is not { Type: OidcTokenTypes.Session, Status: "valid" })
             return new([]);
         record.Status = "revoked";
 
-        // An index read: a refresh token minted in the last moments may be missed. Refresh then
-        // re-checks the grant and the session-bound state, so this is cleanup, not the enforcement.
-        var refreshTokens = await session.Query<OidcToken>()
-            .Where(t => t.SessionId == sid && t.Type == OidcTokenTypes.RefreshToken && t.Status == "valid")
-            .ToListAsync(ct);
-        foreach (var token in refreshTokens)
-            token.Status = "revoked";
+        // A view read (#536 D47): a refresh token minted in the last moments may be missed. Refresh then
+        // re-checks the grant and the session-bound state, so this is cleanup, not the enforcement. The view
+        // narrows; the loaded tokens are checked exactly.
+        var rows = await session.ToListAsync(session.Query<Indexes.OidcTokenState, Indexes.OidcTokens_ByState>()
+            .Where(t => t.SessionId == sid && t.Type == OidcTokenTypes.RefreshToken && t.Status == "valid"), ct);
+        var refreshTokens = await session.LoadAsync<OidcToken>(rows.Select(r => r.Id).OfType<string>(), ct);
+        foreach (var token in refreshTokens.Values.OfType<OidcToken>())
+            if (token is { Type: OidcTokenTypes.RefreshToken, Status: "valid" } && string.Equals(token.SessionId, sid, StringComparison.Ordinal))
+                token.Status = "revoked";
         await session.SaveChangesAsync(ct);
 
         var appIds = (record.Properties.GetValueOrDefault("clients") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);

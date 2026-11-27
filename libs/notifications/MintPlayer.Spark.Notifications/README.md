@@ -18,7 +18,7 @@ defaults beneath it. Guide: [docs/guide-notifications.md](../../../docs/guide-no
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.AddAuthentication<SparkUser>();
-    spark.AddMessaging();          // Web Push deliveries are outbox messages
+    spark.AddMessaging();          // pushes and mails go out through the outbox
     spark.AddMailManager();        // optional: the mail channel
     spark.AddNotifications();      // Spark:Notifications
 });
@@ -57,6 +57,7 @@ the account.
 var visitorId = principal.EnsureVisitorId();   // null when signed in: address principal.Id instead
 // Later, in the job (a Messaging recipient, a hosted service):
 await notifier.NotifyAsync(new SparkNotification { VisitorIds = [message.VisitorId], Title = "Your report is ready" });
+await session.SaveChangesAsync();   // the scope's ISparkSession: the notifier never saves
 ```
 
 ## Sending
@@ -72,7 +73,13 @@ await notifier.NotifyAsync(new SparkNotification
     Category = "score-drop",               // also the push Topic
     Urgent = true,                         // Urgency: high
 });
+await session.SaveChangesAsync();          // commits it with the caller's own writes
 ```
+
+`NotifyAsync` writes in the scope's session (`ISparkSession`) and **never saves** (#536 D50). The notification commits
+with the caller's `SaveChanges`, and a rollback or a `Clear()` before a retry drops it. Pushes and mails wait for that
+commit: the call writes one outbox message, whose handler reads each user's devices and account, then queues one push
+per device and one mail per user. The call itself costs the session one request (every user's preferences at once).
 
 ## Endpoints (`/spark/notifications`, antiforgery on POST)
 

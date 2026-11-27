@@ -29,7 +29,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// SP3 asks which store methods the handler reaches for, and therefore whether
 /// <c>IUserPasskeyStore</c> sits on the sign-in hot path.
 /// </summary>
-public class PasskeyCeremonyStateTests : SparkTestDriver
+public class PasskeyCeremonyStateTests : RavenSparkTestDriver
 {
     private const string NoCeremonyMarker = "no passkey attestation is underway";
 
@@ -41,6 +41,8 @@ public class PasskeyCeremonyStateTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
 
                     // Disabled keeps the MapIdentityApi surface minimal; the ceremony helpers are

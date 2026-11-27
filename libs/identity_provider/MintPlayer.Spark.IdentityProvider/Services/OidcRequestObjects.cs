@@ -4,8 +4,6 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
 
@@ -29,12 +27,12 @@ internal sealed record OidcResolvedRequest(
 /// </list>
 /// A request object can itself be pushed: PAR validates it at push time.
 /// </summary>
-internal sealed class OidcRequestObjects(IDocumentStore store, OidcClientKeys clientKeys)
+internal sealed class OidcRequestObjects(ISparkStore store, OidcClientKeys clientKeys)
 {
     /// <summary>How long a pushed request can be redeemed (RFC 9126 recommends a short lifetime).</summary>
     public static readonly TimeSpan PushedRequestLifetime = TimeSpan.FromSeconds(90);
 
-    public async Task<OidcResolvedRequest> ResolveAsync(IAsyncDocumentSession session, OidcAuthorizeParameters parameters, string issuer, CancellationToken ct)
+    public async Task<OidcResolvedRequest> ResolveAsync(ISparkSession session, OidcAuthorizeParameters parameters, string issuer, CancellationToken ct)
     {
         if (parameters.RequestUri is not null && parameters.Request is not null)
             return new(null, Error: "invalid_request", ErrorDescription: "Use request or request_uri, not both.");
@@ -75,7 +73,7 @@ internal sealed class OidcRequestObjects(IDocumentStore store, OidcClientKeys cl
     /// <c>exp</c>, and its <c>jti</c> used once.
     /// </summary>
     public async Task<OidcResolvedRequest> ParseRequestObjectAsync(
-        IAsyncDocumentSession session, string requestObject, string? clientId, string issuer, CancellationToken ct)
+        ISparkSession session, string requestObject, string? clientId, string issuer, CancellationToken ct)
     {
         JsonWebToken unverified;
         try { unverified = new JsonWebToken(requestObject); }
@@ -135,7 +133,7 @@ internal sealed class OidcRequestObjects(IDocumentStore store, OidcClientKeys cl
     /// The pushed values are stored as given; they are validated again when the browser redeems them,
     /// exactly as a request by value is.
     /// </summary>
-    public async Task<string> PushAsync(IAsyncDocumentSession session, OidcApplication app, OidcAuthorizeParameters parameters, bool fromRequestObject, CancellationToken ct)
+    public async Task<string> PushAsync(ISparkSession session, OidcApplication app, OidcAuthorizeParameters parameters, bool fromRequestObject, CancellationToken ct)
     {
         var handle = OidcTokenReference.GenerateValue();
         var properties = new Dictionary<string, string>();

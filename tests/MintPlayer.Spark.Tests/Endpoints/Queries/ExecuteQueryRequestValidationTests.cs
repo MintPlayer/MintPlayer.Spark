@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// the query right is checked, so none of them can be used to enumerate attribute names.
 /// </summary>
 public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<ExecuteQueryRequestValidationTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<ExecuteQueryRequestValidationTests.Host>, IDisposable
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaa8888-8888-8888-8888-aaaaaaaaaaaa");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb8888-8888-8888-8888-bbbbbbbbbbbb");
@@ -25,7 +25,7 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
     public sealed class Host : SharedSparkHost<TestSparkContext>
     {
         protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
-            => new SparkEndpointFactory(Store, [Model()]);
+            => new SparkEndpointFactory(Store.AsSparkTestDatabase(), [Model()]);
 
         public override async Task InitializeAsync()
         {
@@ -167,7 +167,7 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
     public async Task Sort_validation_is_not_reachable_without_the_query_right()
     {
         // Otherwise 400-vs-404 would tell an unauthorized caller which attribute names exist.
-        await using var denied = new SparkEndpointFactory(Store, [Model()], security: SparkTestSecurity.Empty);
+        await using var denied = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [Model()], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(denied.CreateClient(), ownsClient: true);
 
         var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(

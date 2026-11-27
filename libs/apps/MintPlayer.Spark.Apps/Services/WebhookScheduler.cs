@@ -3,9 +3,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Apps.Messaging;
 using MintPlayer.Spark.Apps.Models;
 using MintPlayer.Spark.Messaging;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using Raven.Client.Exceptions;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Apps.Services;
 
@@ -17,24 +15,24 @@ namespace MintPlayer.Spark.Apps.Services;
 [Register(Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped)]
 internal sealed partial class WebhookScheduler
 {
-    [Inject] private readonly IDocumentStore store;
+    /// <summary>The scope's session: the caller's write, which <see cref="ScheduleAsync"/> joins (#536 D50).</summary>
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly IOptions<SparkAppsOptions> options;
 
     public bool Ordered => options.Value.Ordering == WebhookOrdering.PerDestination;
 
     /// <summary>
-    /// Stores and schedules <paramref name="delivery"/> in <paramref name="session"/> (which the caller saves, with
-    /// optimistic concurrency on). <paramref name="bypassChain"/> is for pings and redeliveries, which are not events
-    /// in the stream.
+    /// Stores and schedules <paramref name="delivery"/> in the scope's session, which the caller saves (with optimistic
+    /// concurrency on). <paramref name="bypassChain"/> is for pings and redeliveries, which are not events in the stream.
     /// </summary>
-    public async Task ScheduleAsync(IAsyncDocumentSession session, WebhookDelivery delivery, bool bypassChain, CancellationToken cancellationToken)
+    public async Task ScheduleAsync(WebhookDelivery delivery, bool bypassChain, CancellationToken cancellationToken)
     {
         var id = delivery.Id.Value;
         if (!Ordered || bypassChain)
         {
             await session.StoreAsync(delivery, id, cancellationToken);
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
             return;
         }
 
@@ -50,7 +48,7 @@ internal sealed partial class WebhookScheduler
         if (chain.InFlight is null && !chain.Halted)
         {
             chain.InFlight = id;
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(new WebhookDeliveryMessage { DeliveryId = id }, cancellationToken: cancellationToken);
         }
         else
         {
@@ -66,7 +64,7 @@ internal sealed partial class WebhookScheduler
     /// moving on. A delivery that is not the chain's head (an old message, a redelivery) changes nothing.
     /// </summary>
     public Task CompleteAsync(WebhookDelivery delivery, bool halt, CancellationToken cancellationToken)
-        => !delivery.Ordered ? Task.CompletedTask : WithChainAsync(delivery.EndpointId, (session, chain) =>
+        => !delivery.Ordered ? Task.CompletedTask : WithChainAsync(delivery.EndpointId, chain =>
         {
             if (!string.Equals(chain.InFlight, delivery.Id.Value, StringComparison.OrdinalIgnoreCase))
                 return Task.FromResult(false);
@@ -75,12 +73,12 @@ internal sealed partial class WebhookScheduler
                 chain.Halted = true;
                 return Task.FromResult(true);
             }
-            return StartNextAsync(session, chain, cancellationToken);
+            return StartNextAsync(chain, cancellationToken);
         }, cancellationToken);
 
     /// <summary>A halted chain resumes (the endpoint was re-enabled): its failed head is tried again, then the rest.</summary>
     public Task ResumeAsync(string endpointPublicId, CancellationToken cancellationToken)
-        => WithChainAsync(endpointPublicId, async (session, chain) =>
+        => WithChainAsync(endpointPublicId, async chain =>
         {
             if (!chain.Halted)
                 return false;
@@ -89,13 +87,13 @@ internal sealed partial class WebhookScheduler
             {
                 delivery.Status = WebhookDeliveryStatus.Pending;
                 delivery.CompletedUtc = null;
-                await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = head }, cancellationToken: cancellationToken);
+                await outbox.EnqueueAsync(new WebhookDeliveryMessage { DeliveryId = head }, cancellationToken: cancellationToken);
                 return true;
             }
-            return await StartNextAsync(session, chain, cancellationToken);
+            return await StartNextAsync(chain, cancellationToken);
         }, cancellationToken);
 
-    private async Task<bool> StartNextAsync(IAsyncDocumentSession session, WebhookChain chain, CancellationToken cancellationToken)
+    private async Task<bool> StartNextAsync(WebhookChain chain, CancellationToken cancellationToken)
     {
         chain.InFlight = null;
         while (chain.Waiting.Count > 0)
@@ -106,29 +104,37 @@ internal sealed partial class WebhookScheduler
             if (await session.LoadAsync<WebhookDelivery>(next, cancellationToken) is null)
                 continue;
             chain.InFlight = next;
-            await outbox.EnqueueAsync(session, new WebhookDeliveryMessage { DeliveryId = next }, cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(new WebhookDeliveryMessage { DeliveryId = next }, cancellationToken: cancellationToken);
             break;
         }
         return true;
     }
 
-    private async Task WithChainAsync(string endpointPublicId, Func<IAsyncDocumentSession, WebhookChain, Task<bool>> change, CancellationToken cancellationToken)
+    /// <summary>
+    /// Changes the chain in the scope's session and saves it. Its callers have nothing pending there: the delivery handler
+    /// writes in sessions of its own, and an endpoint is enabled by a save that has already committed.
+    /// </summary>
+    private async Task WithChainAsync(string endpointPublicId, Func<WebhookChain, Task<bool>> change, CancellationToken cancellationToken)
     {
+        // The attempts bound the requests, not the session's budget: Clear() keeps the count, and the caller may have spent
+        // part of it (EnableAsync reads and writes the endpoint first). Before #536 D50 every attempt had a session of its own.
+        using var budget = session.IgnoreMaxRequests();
         for (var attempt = 1; ; attempt++)
         {
-            using var session = store.OpenAsyncSession();
-            session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+            session.OptimisticConcurrency = true;
             var chain = await session.LoadAsync<WebhookChain>(WebhookChain.IdFor(endpointPublicId).Value, cancellationToken);
-            if (chain is null || !await change(session, chain))
+            if (chain is null || !await change(chain))
                 return;
             try
             {
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
-            catch (ConcurrencyException) when (attempt < 10)
+            catch (SparkStoreConcurrencyException) when (attempt < 10)
             {
-                // Another delivery or event moved the chain first: read it again.
+                // Another delivery or event moved the chain first. Clear() forgets the stale chain and this attempt's
+                // message, so the next load reads the chain again.
+                session.Clear();
             }
         }
     }

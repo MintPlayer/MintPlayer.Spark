@@ -1,6 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.CompareExchange;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -18,9 +17,9 @@ public sealed record MessagingLease(string NodeId, DateTime AcquiredAtUtc, DateT
 /// runs the singleton messaging machinery.
 /// <para>
 /// <b>The lease is a liveness mechanism, not a safety one, and that distinction is deliberate.</b>
-/// Exclusivity on the message stream is enforced by RavenDB itself: the feeder opens its
-/// subscription with <c>SubscriptionOpeningStrategy.WaitForFree</c>, and the server permits exactly
-/// one connected worker per subscription. Measured on RavenDB 7.2 — a second worker blocks inside
+/// Exclusivity on the message stream is enforced by the store itself: a subscription admits exactly one
+/// running worker (#536 D39 — RavenDB through <c>SubscriptionOpeningStrategy.WaitForFree</c>, the other
+/// stores through the subscription's runner lease). Measured on RavenDB 7.2 — a second worker blocks inside
 /// <c>Run()</c> with no exception and no retry churn, and takes over in 962 ms after a graceful
 /// close or 575 ms after the holder is killed outright. So two hosts cannot both feed even if both
 /// believe they hold the lease.
@@ -35,9 +34,11 @@ public sealed record MessagingLease(string NodeId, DateTime AcquiredAtUtc, DateT
 /// </summary>
 internal sealed partial class MessagingLeaseManager
 {
-    private const string LeaseKey = "spark/messaging/leader";
+    // #536 D40: an atomic value holding the lease as JSON. A new key: the RavenDB-only build stored a typed
+    // compare-exchange object under "spark/messaging/leader", which lapses within one TTL of the upgrade.
+    private const string LeaseKey = "spark/messaging/lease";
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkAtomicValues atomicValues;
     [Inject] private readonly ILogger<MessagingLeaseManager> logger;
 
     /// <summary>How long the lease is valid without renewal.</summary>
@@ -76,13 +77,12 @@ internal sealed partial class MessagingLeaseManager
         {
             // index 0: succeeds only if the key does not exist yet.
             var lease = new MessagingLease(MessageClaims.NodeId, now, now + Ttl, 1);
-            var put = await documentStore.Operations.SendAsync(
-                new PutCompareExchangeValueOperation<MessagingLease>(LeaseKey, lease, 0), token: cancellationToken);
+            var put = await atomicValues.TryPutAsync(LeaseKey, Serialize(lease), 0, cancellationToken);
 
-            if (put.Successful)
+            if (put is not null)
                 logger.LogInformation("Acquired the messaging lease (fence {Fence})", lease.Fence);
 
-            return put.Successful;
+            return put is not null;
         }
 
         if (current.Value.NodeId == MessageClaims.NodeId)
@@ -93,17 +93,16 @@ internal sealed partial class MessagingLeaseManager
 
         // Expired — take over, guarded on the index we read, so only one contender wins.
         var takeover = new MessagingLease(MessageClaims.NodeId, now, now + Ttl, current.Value.Fence + 1);
-        var result = await documentStore.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<MessagingLease>(LeaseKey, takeover, current.Index), token: cancellationToken);
+        var result = await atomicValues.TryPutAsync(LeaseKey, Serialize(takeover), current.Version, cancellationToken);
 
-        if (result.Successful)
+        if (result is not null)
         {
             logger.LogInformation(
                 "Took over the messaging lease from {PreviousNode}, whose lease expired at {ExpiredAt} (fence {Fence})",
                 current.Value.NodeId, current.Value.ExpiresAtUtc, takeover.Fence);
         }
 
-        return result.Successful;
+        return result is not null;
     }
 
     /// <summary>
@@ -127,10 +126,7 @@ internal sealed partial class MessagingLeaseManager
         }
 
         var renewed = current.Value with { ExpiresAtUtc = DateTime.UtcNow + Ttl };
-        var result = await documentStore.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<MessagingLease>(LeaseKey, renewed, current.Index), token: cancellationToken);
-
-        return result.Successful;
+        return await atomicValues.TryPutAsync(LeaseKey, Serialize(renewed), current.Version, cancellationToken) is not null;
     }
 
     /// <summary>
@@ -158,12 +154,6 @@ internal sealed partial class MessagingLeaseManager
         // A disposed store cannot send anything: RavenDB throws OperationCanceledException from its
         // context pool (or ObjectDisposedException), which is what S-M8's crashed host logged as
         // "Error releasing the messaging lease" on teardown.
-        if (documentStore.WasDisposed)
-        {
-            logger.LogDebug("Not releasing the messaging lease: the document store is disposed; it lapses at its TTL");
-            return false;
-        }
-
         using var bound = new CancellationTokenSource(ReleaseTimeout);
         try
         {
@@ -174,15 +164,14 @@ internal sealed partial class MessagingLeaseManager
             if (current is null || current.Value.NodeId != MessageClaims.NodeId)
                 return false;
 
-            var deleted = await documentStore.Operations.SendAsync(
-                new DeleteCompareExchangeValueOperation<MessagingLease>(LeaseKey, current.Index), token: bound.Token);
+            var deleted = await atomicValues.TryDeleteAsync(LeaseKey, current.Version, bound.Token);
 
-            if (deleted.Successful)
+            if (deleted)
                 logger.LogInformation("Released the messaging lease (fence {Fence})", current.Value.Fence);
 
-            return deleted.Successful;
+            return deleted;
         }
-        catch (Exception ex) when (documentStore.WasDisposed && ex is OperationCanceledException or ObjectDisposedException)
+        catch (Exception ex) when (ex is ObjectDisposedException || (ex is OperationCanceledException && !bound.IsCancellationRequested))
         {
             logger.LogDebug("Not releasing the messaging lease: the document store was disposed during the release; it lapses at its TTL");
             return false;
@@ -196,7 +185,13 @@ internal sealed partial class MessagingLeaseManager
         }
     }
 
-    private async Task<CompareExchangeValue<MessagingLease>?> GetAsync(CancellationToken cancellationToken)
-        => await documentStore.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<MessagingLease>(LeaseKey), token: cancellationToken);
+    private async Task<StoredLease?> GetAsync(CancellationToken cancellationToken)
+        => await atomicValues.GetAsync(LeaseKey, cancellationToken) is { } stored
+            && System.Text.Json.JsonSerializer.Deserialize<MessagingLease>(stored.Value) is { } lease
+                ? new StoredLease(lease, stored.Version)
+                : null;
+
+    private sealed record StoredLease(MessagingLease Value, long Version);
+
+    private static string Serialize(MessagingLease lease) => System.Text.Json.JsonSerializer.Serialize(lease);
 }

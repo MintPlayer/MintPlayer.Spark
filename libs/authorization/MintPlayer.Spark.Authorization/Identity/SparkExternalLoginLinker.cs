@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -113,7 +112,7 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
 
     private const string IdPrefix = "sparkpendingexternallogins/"; // Lower case (#536 D7); a token mailed before still loads.
 
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ISparkStore documentStore;
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly ISparkLinkConfirmationSender<TUser>? confirmationSender;
@@ -160,7 +159,7 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
         var documentId = IdPrefix + DeriveKey(user.Id, loginProvider, providerKey);
         var now = timeProvider.GetUtcNow();
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = documentStore.OpenSession();
         var existing = await session.LoadAsync<SparkPendingExternalLogin>(documentId, cancellationToken);
 
         // A second attempt while one is still usable sends nothing. Without this, signing in
@@ -172,7 +171,7 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
         var secret = GenerateSecret();
 
         // ⚠️ A spent or expired document is *rewritten in place*, not replaced. Storing a second
-        // instance at the same id throws NonUniqueObjectException — the load above already
+        // instance at the same id throws (RavenDB: NonUniqueObjectException) — the load above already
         // associated one with this session — and the case that reaches it is the ordinary one:
         // somebody confirmed a link, then asked to link another provider later.
         if (existing is not null)
@@ -236,7 +235,7 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
         if (!TryParseToken(token, out var documentId, out var secret))
             return new(SparkLinkConfirmationOutcome.InvalidOrExpired, null);
 
-        using var session = documentStore.OpenAsyncSession();
+        using var session = documentStore.OpenSession();
         var pending = await session.LoadAsync<SparkPendingExternalLogin>(documentId, cancellationToken);
         if (pending is null)
             return new(SparkLinkConfirmationOutcome.InvalidOrExpired, null);

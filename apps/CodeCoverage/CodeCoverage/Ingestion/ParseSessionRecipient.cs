@@ -19,7 +19,7 @@ namespace CodeCoverage.Ingestion;
 public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly IServiceScopeFactory scopes;
     [Inject] private readonly ICoverageParserFactory parserFactory;
     [Inject] private readonly ILogger<ParseSessionRecipient> logger;
     [Inject] private readonly CoverageWebhookPublisher webhooks;
@@ -255,11 +255,15 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
     /// that failed (exhausted request budget, faulted connection), and
     /// reporting through it used to throw again — leaving the session
     /// "Pending" with error null, a status that reads like "the worker never
-    /// ran" instead of carrying the diagnosis.
+    /// ran" instead of carrying the diagnosis. Clear() would not do: it forgets
+    /// what is pending, not what broke the session. The fresh session is a
+    /// scope's, so the webhook publisher, which writes to its scope's session
+    /// (#536 D50), stores the event in the commit that records the failure.
     /// </summary>
     private async Task ReportParseFailure(ParseSessionMessage message, Exception ex, CancellationToken cancellationToken)
     {
-        using var freshSession = documentStore.OpenAsyncSession();
+        await using var scope = scopes.CreateAsyncScope();
+        var freshSession = scope.ServiceProvider.GetRequiredService<IAsyncDocumentSession>();
         var build = await freshSession.LoadAsync<Build>(message.BuildId, cancellationToken);
         var buildSession = build?.Sessions.FirstOrDefault(s => s.SessionId == message.SessionId);
         if (buildSession is null)
@@ -267,7 +271,7 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
 
         buildSession.ParseStatus = "Failed";
         buildSession.Error = ex.Message;
-        await CoverageWebhooks.PublishReportAsync(webhooks, freshSession, build!, buildSession, cancellationToken);
+        await CoverageWebhooks.PublishReportAsync(scope.ServiceProvider.GetRequiredService<CoverageWebhookPublisher>(), freshSession, build!, buildSession, cancellationToken);
         await freshSession.SaveChangesAsync(cancellationToken);
     }
 

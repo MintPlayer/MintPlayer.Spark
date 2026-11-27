@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// (loud, at serialization time), and the <c>{Name}Sort</c> + <c>[IgnoreProperty]</c> redirect
 /// sorts a complex column by its breadcrumb end-to-end through <see cref="QueryExecutor"/>.
 /// </summary>
-public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
+public class BreadcrumbCompanionRuntimeTests : RavenSparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("cccc3333-cccc-cccc-cccc-cccc33333333");
 
@@ -182,7 +182,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
     {
         await SeedPeopleAsync();
 
-        await using var factory = new SparkEndpointFactory<TestContext>(Store, [PersonModel()],
+        await using var factory = new SparkEndpointFactory<TestContext>(Store.AsSparkTestDatabase(), [PersonModel()],
             configureIndexCatalog: catalog =>
             {
                 catalog.RegisterIndex(typeof(People_Overview));

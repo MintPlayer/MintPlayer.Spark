@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class HandWrittenIndexCompanionTests(HandWrittenIndexCompanionTests.SeededHwCars host)
-    : SparkSharedTestDriver(host), IClassFixture<HandWrittenIndexCompanionTests.SeededHwCars>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<HandWrittenIndexCompanionTests.SeededHwCars>, IDisposable
 {
     private static readonly Guid HwCarTypeId = Guid.Parse("ffff6666-ffff-ffff-ffff-ffff66666666");
 
@@ -176,7 +176,7 @@ public class HandWrittenIndexCompanionTests(HandWrittenIndexCompanionTests.Seede
         }
 
         protected override SparkEndpointFactory<HwContext> CreateFactory() =>
-            new(Store, [HwCarModel()],
+            new(Store.AsSparkTestDatabase(), [HwCarModel()],
                 configureIndexCatalog: catalog =>
                 {
                     catalog.RegisterIndex(typeof(HwCars_Mapped));

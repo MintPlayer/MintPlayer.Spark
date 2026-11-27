@@ -1,5 +1,5 @@
 using MintPlayer.Spark.Abstractions.Authentication;
-using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Authorization.Identity;
 
@@ -23,7 +23,7 @@ public sealed class SparkUserAccount(SparkUser user) : ISparkAccount
 }
 
 /// <summary>The <see cref="ISparkAccountDirectory"/> over the stored <typeparamref name="TUser"/> documents.</summary>
-internal sealed class SparkUserAccountDirectory<TUser>(IDocumentStore store) : ISparkAccountDirectory
+internal sealed class SparkUserAccountDirectory<TUser>(ISparkStore store) : ISparkAccountDirectory
     where TUser : SparkUser
 {
     public async Task<IReadOnlyDictionary<string, ISparkAccount>> FindAsync(IReadOnlyCollection<string> ids, CancellationToken cancellationToken = default)
@@ -32,7 +32,7 @@ internal sealed class SparkUserAccountDirectory<TUser>(IDocumentStore store) : I
         if (wanted.Count == 0)
             return new Dictionary<string, ISparkAccount>();
 
-        using var session = store.OpenAsyncSession();
+        using var session = store.OpenSession();
         var users = await session.LoadAsync<TUser>(wanted, cancellationToken);
         return users
             .Where(pair => pair.Value?.Id is not null)

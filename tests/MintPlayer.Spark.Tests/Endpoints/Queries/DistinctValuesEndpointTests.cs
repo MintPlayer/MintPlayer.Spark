@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// the parent gate — had not.
 /// </summary>
 public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
-    : SparkSharedTestDriver(host), IClassFixture<DistinctValuesEndpointTests.Host>, IDisposable
+    : RavenSparkSharedTestDriver(host), IClassFixture<DistinctValuesEndpointTests.Host>, IDisposable
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaa7777-7777-7777-7777-aaaaaaaaaaaa");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb7777-7777-7777-7777-bbbbbbbbbbbb");
@@ -26,7 +26,7 @@ public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
     public sealed class Host : SharedSparkHost<TestSparkContext>
     {
         protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
-            => new SparkEndpointFactory(Store, [Model()]);
+            => new SparkEndpointFactory(Store.AsSparkTestDatabase(), [Model()]);
 
         public override async Task InitializeAsync()
         {
@@ -155,7 +155,7 @@ public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
     [Fact]
     public async Task A_caller_without_the_query_right_gets_the_same_404()
     {
-        await using var denied = new SparkEndpointFactory(Store, [Model()], security: SparkTestSecurity.Empty);
+        await using var denied = new SparkEndpointFactory(Store.AsSparkTestDatabase(), [Model()], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(denied.CreateClient(), ownsClient: true);
 
         var ex = (await new Func<Task>(() => client.GetDistinctValuesAsync(AllPeopleQueryId, "LastName")).Should().ThrowExactlyAsync<SparkClientException>()).Which;

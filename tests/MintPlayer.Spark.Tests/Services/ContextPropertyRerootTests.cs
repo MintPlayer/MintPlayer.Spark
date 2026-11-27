@@ -25,7 +25,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <em>index</em> — is exactly the failure mode. Only the RQL distinguishes them.
 /// </para>
 /// </remarks>
-public class ContextPropertyRerootTests : SparkTestDriver
+public class ContextPropertyRerootTests : RavenSparkTestDriver
 {
     private sealed class SpikeProbe
     {

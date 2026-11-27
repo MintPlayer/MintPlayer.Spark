@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// </para>
 /// </remarks>
 public class DistinctValuesDisclosureTests(DistinctValuesDisclosureTests.Data data)
-    : SparkSharedTestDriver(data), IClassFixture<DistinctValuesDisclosureTests.Data>, IAsyncLifetime
+    : RavenSparkSharedTestDriver(data), IClassFixture<DistinctValuesDisclosureTests.Data>, IAsyncLifetime
 {
     private static readonly Guid DistinctVaultTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
 
@@ -100,7 +100,7 @@ public class DistinctValuesDisclosureTests(DistinctValuesDisclosureTests.Data da
     /// vaults and then only queried, so that moved to class setup. The host stays per case: the
     /// cases differ in model and row security.
     /// </summary>
-    public sealed class Data : SparkSharedDatabase
+    public sealed class Data : RavenSparkSharedDatabase
     {
         public override async Task InitializeAsync()
         {
@@ -133,7 +133,7 @@ public class DistinctValuesDisclosureTests(DistinctValuesDisclosureTests.Data da
     private IQueryExecutor Executor(EntityTypeFile? model = null, IRowSecurity? rowSecurity = null)
     {
         _factory = new SparkEndpointFactory<TestContext>(
-            Store,
+            Store.AsSparkTestDatabase(),
             [model ?? DistinctVaultModel()],
             configureServices: rowSecurity is null
                 ? null

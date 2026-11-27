@@ -25,8 +25,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// Pins <c>GET /spark/auth/capabilities</c> — the channel that stops the server's auth
 /// configuration and the client's from silently disagreeing.
 /// </summary>
-public class AuthCapabilitiesTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class AuthCapabilitiesTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private async Task<IHost> StartAsync(
         SparkLocalCredentials mode,
@@ -40,6 +40,8 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o =>
                     {
@@ -198,6 +200,8 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = SparkLocalCredentials.Disabled);
                     services.AddTestMailSink();

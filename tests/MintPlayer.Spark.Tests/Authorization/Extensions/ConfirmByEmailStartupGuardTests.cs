@@ -31,8 +31,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// <c>EmailSenderRegistrationTests</c>, which measured it.
 /// </para>
 /// </remarks>
-public class ConfirmByEmailStartupGuardTests(SparkSharedDatabase database)
-    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
+public class ConfirmByEmailStartupGuardTests(RavenSparkSharedDatabase database)
+    : RavenSparkSharedTestDriver(database), IClassFixture<RavenSparkSharedDatabase>
 {
     private sealed class RecordingLinkConfirmationSender : ISparkLinkConfirmationSender<SparkUser>
     {
@@ -110,6 +110,8 @@ public class ConfirmByEmailStartupGuardTests(SparkSharedDatabase database)
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+
+                    services.AddSingleton<global::MintPlayer.Spark.Abstractions.Storage.ISparkStore>(Store.AsSparkStore());
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddAuthorization();

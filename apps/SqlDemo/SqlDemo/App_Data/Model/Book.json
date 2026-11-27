@@ -1,0 +1,142 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "2cea3221-e367-48c1-973f-b5a946c13d9b",
+    "name": "Book",
+    "clrType": "SqlDemo.Entities.Book",
+    "queryType": "SqlDemo.Views.VBook",
+    "indexName": "Books_WithAuthor",
+    "breadcrumb": "{Title}",
+    "revisions": {
+      "enabled": true,
+      "purgeOnDelete": false
+    },
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "4773f3f3-10ca-46ac-b8b7-601a8b3baf76",
+        "name": "Author",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "query": "GetAuthors",
+        "referenceType": "SqlDemo.Entities.Author",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "44892c1a-9756-44b2-8b77-e1f8f014d2bd",
+        "name": "AuthorName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "98e96109-ea3c-4e10-bf25-12a1614850d6",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "b732344f-c468-4416-8a4d-97ce27a65f2f",
+        "name": "CreatedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "0a5d4ed0-c5b1-4398-85b1-a924571277f7",
+        "name": "Isbn",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8e600af2-879a-478f-8776-826341d0c59d",
+        "name": "ModifiedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "30293eda-d1a5-4a61-8ffc-ec7bc6ea356d",
+        "name": "ModifiedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "0ad98d62-ddb6-4f2a-b720-c9a7d488bbac",
+        "name": "Title",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c9979fc6-4972-4509-811e-b396f8bd127d",
+        "name": "Year",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "0a9cbe71-912e-466c-a994-d48b11e933b9",
+      "name": "GetBooks",
+      "source": "Database.Books",
+      "sortColumns": [
+        {
+          "property": "AuthorName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "Books_WithAuthor",
+      "entityType": "Book"
+    }
+  ]
+}

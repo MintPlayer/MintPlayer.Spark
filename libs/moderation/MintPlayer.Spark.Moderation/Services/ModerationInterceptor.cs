@@ -5,10 +5,9 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Storage;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Services;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Moderation.Services;
 
@@ -29,8 +28,8 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// </remarks>
 internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete, IAfterLoad
 {
-    [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkStore store;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly ISparkCurrentPrincipal currentUser;
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IModelLoader modelLoader;
@@ -157,8 +156,8 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
     {
         if (!typeof(IModeratable).IsAssignableFrom(entityType))
             return false;
-        using var check = documentStore.OpenAsyncSession();
-        if (!await check.Advanced.ExistsAsync(ModerationIds.Lock(id).Value))
+        using var check = store.OpenSession();
+        if (!await check.ExistsAsync(ModerationIds.Lock(id)))
             return false;
         // Moderators of the type are exempt.
         return !await permissions.IsAllowedAsync(ModerationRights.Lock, TypeName(entityType));
@@ -182,7 +181,7 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
             throw new SparkThrottledException($"New accounts may post {limits.MaxPostsPerDay} times a day.", now.Date.AddDays(1) - now);
         counter.Count++;
         await session.StoreAsync(counter, counterId.Value);
-        session.Advanced.GetMetadataFor(counter)["@expires"] = now.Date.AddDays(2).ToString("O");
+        session.SetExpiry(counter, new DateTimeOffset(now.Date.AddDays(2), TimeSpan.Zero));
     }
 
     private string TypeName(Type entityType)

@@ -15,7 +15,7 @@ namespace HR.Tests.Mcp;
 /// The data: 60 professions, 300 companies, 2,000 people with an address, 1–3 professions and 5–40 jobs each (a career of
 /// forty contracts is the long tail), every text at the length the model allows or a realistic maximum.
 /// </remarks>
-public class McpOutputBudgetTests(ITestOutputHelper output) : SparkTestDriver
+public class McpOutputBudgetTests(ITestOutputHelper output) : RavenSparkTestDriver
 {
     /// <summary>10k tokens at 4 characters a token: Claude Code warns above 10k tokens of tool output (D10).</summary>
     private const int Budget = 40_000;

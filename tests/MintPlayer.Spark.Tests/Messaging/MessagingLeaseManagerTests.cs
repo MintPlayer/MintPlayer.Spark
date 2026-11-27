@@ -1,7 +1,8 @@
+using MintPlayer.Spark;
 using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
-using Raven.Client.Documents.Operations.CompareExchange;
+using System.Text.Json;
 
 namespace MintPlayer.Spark.Tests.Messaging;
 
@@ -9,26 +10,26 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// The leader lease, against a second node that exists only as data.
 /// <para>
 /// <see cref="MessageClaims.NodeId"/> is static, so two managers in one process are the same node
-/// and can never contend. A foreign holder is forged instead, by writing the compare-exchange value
-/// another host would have written. That is all a second host is, from the lease's point of view.
+/// and can never contend. A foreign holder is forged instead, by writing the atomic value another
+/// host would have written (#536 D40: the lease as JSON in <c>ISparkAtomicValues</c>). That is all a second host is, from the lease's point of view.
 /// </para>
 /// </summary>
-public class MessagingLeaseManagerTests : SparkTestDriver
+public class MessagingLeaseManagerTests : MessagingRavenTestDriver
 {
-    private const string LeaseKey = "spark/messaging/leader";
+    private const string LeaseKey = "spark/messaging/lease";
     private const string ForeignNode = "other-host/ffff";
 
-    private MessagingLeaseManager NewManager() => new(Store, NullLogger<MessagingLeaseManager>.Instance);
+    private MessagingLeaseManager NewManager() => new(Store.AtomicValues(), NullLogger<MessagingLeaseManager>.Instance);
 
     private async Task ForgeAsync(string nodeId, DateTime expiresAtUtc, long fence = 7)
     {
-        var result = await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<MessagingLease>(
-            LeaseKey, new MessagingLease(nodeId, expiresAtUtc.AddSeconds(-30), expiresAtUtc, fence), 0));
-        result.Successful.Should().BeTrue();
+        var put = await Store.AtomicValues().TryPutAsync(
+            LeaseKey, JsonSerializer.Serialize(new MessagingLease(nodeId, expiresAtUtc.AddSeconds(-30), expiresAtUtc, fence)), 0);
+        put.Should().NotBeNull();
     }
 
     private async Task<MessagingLease?> ReadAsync()
-        => (await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<MessagingLease>(LeaseKey)))?.Value;
+        => await Store.AtomicValues().GetAsync(LeaseKey) is { } stored ? JsonSerializer.Deserialize<MessagingLease>(stored.Value) : null;
 
     [Fact]
     public async Task A_free_lease_is_acquired_and_then_renewed_by_its_holder()
@@ -91,8 +92,8 @@ public class MessagingLeaseManagerTests : SparkTestDriver
         await manager.ReleaseAsync();
         (await ReadAsync()).Should().NotBeNull("releasing must never drop a lease another host took over");
 
-        await Store.Operations.SendAsync(new DeleteCompareExchangeValueOperation<MessagingLease>(
-            LeaseKey, (await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<MessagingLease>(LeaseKey))).Index));
+        var atomicValues = Store.AtomicValues();
+        (await atomicValues.TryDeleteAsync(LeaseKey, (await atomicValues.GetAsync(LeaseKey))!.Version)).Should().BeTrue();
         (await manager.TryAcquireAsync(CancellationToken.None)).Should().BeTrue();
 
         await manager.ReleaseAsync();
