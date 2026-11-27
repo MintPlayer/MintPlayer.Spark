@@ -2,11 +2,12 @@
 
 Issue [#536](https://github.com/MintPlayer/MintPlayer.Spark/issues/536). The what and why are in
 [`relational_providers_PRD.md`](relational_providers_PRD.md). This file holds the how and when: spikes, grilling
-rounds, milestones and status. Branch `feat/536-sql-server-provider`, draft PR #697, **one pull request** (O1).
+rounds, milestones and status. Branch `feat/536-sql-server-provider`, PR #697 (ready, queued), **one pull request** (O1).
 
 ## 1. Status (2026-11-26)
 
-- **Now (2026-11-26): M1–M9, O13, O18–O21 and D50 are built.**
+- **Now (2026-11-27): M1–M9, O13, O18–O21 and D50 are built,** including the owner's last D50 decision (the notifier
+  writes in the caller's unit of work, below). Nothing is open (PRD §10); three items are recorded, not planned (below).
   - **Split (owner, 2026-11-26).** Typed ids (M2) shipped first as #713, with its own
     [PRD](typed_ids_PRD.md) and [plan](typed_ids_plan.md). After it merged, this branch was rebuilt on master: #697's
     commits were cherry-picked in order without the 22 M2 commits, which master now holds squashed. One commit
