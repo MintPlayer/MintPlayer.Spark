@@ -5,7 +5,8 @@ questions, the spikes and the milestones; the decisions and the log follow as th
 `apps/CodeCoverage/` unless they start with `docs/`, `.github/` or `CLAUDE.md`.
 
 Status: **draft, 2026-11-27.** Nothing is decided yet. §2 corrects part of the issue (F1) and finds two more stalls
-(F3, F4). §5 holds the owner's questions. **S1 should run before the next `/release`** (F4).
+(F3, F4). §5 holds the owner's questions. Spikes S1, S3 and S5 are done (§6.1). S1 found that `/release` itself is not
+at risk, so nothing here has a deadline any more.
 
 ## 1. What happened
 
@@ -90,9 +91,12 @@ The engine already recognises this case. The git writer reports `BaseChangedWork
 Comment 2 says "an entry already in the queue also needs `/dequeue` and `/queue`". That is right, and F3 is a second
 reason for it, besides the ruleset.
 
-### F4. Ruleset 3 is likely to stall the release lines at the next `/release`
+### F4. Ruleset 3 still requires the old names; `/release` is not at risk (S1)
 
-S1 confirms the path.
+> **Superseded by S1 (2026-11-27).** This finding first said "Ruleset 3 is likely to stall the release lines at the next
+> `/release`". S1 showed that `/release` never goes through ruleset 3 (§6.1). The exposure is any pull request against
+> a line after the next promotion, and a past line cut later. Both are rare today; A1 removes them for good.
+
 - **What ruleset 3 requires.** Ruleset 27018553 ("merge-queue: release-line checks", `refs/heads/release/*-*.x`,
   updated 2026-11-12) requires `tests / Library suites` and `tests / CodeCoverage git suites` (live GET, 2026-11-27).
 - **What the lines produce.** Both lines still produce those names: `release/dotnet-11.x` at `abeeb94cd` and
@@ -101,6 +105,8 @@ S1 confirms the path.
   the App is exempt from that ruleset (`MergeQueueEngine.cs:542-547`: "the queue waits for the required checks
   itself"). A line pull request that brings #697's `test.yml` onto a line reports `tests / Library + git suites`
   instead, so it would wait like #697 did. S1 answers whether a promotion takes that path or only later backports do.
+  **S1's answer:** a promotion is a direct push, so neither path applies today (§6.1). Only a pull request opened
+  against a line after the next promotion would stall.
 - **Why no list of job names can fit.** One ruleset covers both lines, and the lines receive the rename at different
   times. In between, no list of job names fits both lines. Only a name that never changes does.
 
@@ -115,8 +121,8 @@ S1 confirms the path.
 - **Ruleset 2's 24 contexts** (live GET, 2026-11-27):
   - 21 are jobs the aggregate already covers: `build + verify`, `Angular apps`, `coverage upload`, `action bundles`
     and the 17 `tests / …` jobs.
-  - The other 3 are `pull-request` itself and CodeCoverage's commit statuses `coverage/patch` and
-    `coverage/project`.
+  - The other 3 are `pull-request` itself and CodeCoverage's checks `coverage/patch` and `coverage/project`. These
+    two are check runs of the CodeCoverage App (4574022) that end `neutral`, not commit statuses (S5).
   - No context pins an `integration_id`.
 - **Ruleset 3** has the same shape with the old names, plus `Line policy`, which is pinned to the App (4574022).
 - **What requiring only the aggregate would mean.** Rulesets that require only `pull-request`, `coverage/patch` and
@@ -162,8 +168,15 @@ Non-goals and constraints:
 | A2 | Keep a context per job, and change the rulesets in the same change as every rename | Nothing to do now | Cannot fit F4 (two lines, one ruleset). Every rename needs an admin at the right moment |
 | A3 | One ruleset per line, each with its own list | Lines can differ | The setup writes one ruleset 3 for the pattern. More rulesets to keep in step. Still work on every rename |
 
-**Recommendation: A1**, applied before the next `/release` (S1 says how urgent). The owner applies it, through "Set up
-rulesets" or GitHub's UI.
+**Recommendation: A1.** The owner applies it, through "Set up rulesets" or GitHub's UI. There is no deadline (S1).
+
+> **Superseded (2026-11-27):** "applied before the next `/release` (S1 says how urgent)". S1 found no release risk.
+
+**A1 hardening: pin each context to its App.** Under A1, the whole of GitHub's protection rests on one name. Pinning
+`pull-request` to GitHub Actions (`integration_id` 15368) and the two coverage checks to the CodeCoverage App (4574022)
+means no other App can satisfy them. The App ids were read from #697's head (S5), and `Line policy` is pinned this way
+already. Re-running the setup keeps a pin: the planner keeps the `integration_id` of a check that is already required
+(`MergeQueueRulesets.cs:107, 373-378`).
 
 ### Part B: the setup (direction 1, F1)
 
@@ -190,7 +203,8 @@ rulesets" or GitHub's UI.
   - `ForgeBranchRules` has to keep each ruleset's required checks for this. The `ruleset_id` is already read (F2).
 - **C4. Drop stale expected names (F3).** When `BaseChangedWorkflows` is set and every suite of the App that
   reported the name has completed, a missing expected name is dropped, with a note. Names from a commit status or
-  from another App are still waited for. S3 settles the exact rule. *Recommended, subject to S3.*
+  from another App are still waited for. S3 settles the exact rule. *Recommended, subject to S3.* **S3's rule** is
+  in §6.1. It adds one condition: the commit must have been stuck at the previous poll as well.
 - **C5. Evict early** instead of waiting for `checks.timeout`. *Not recommended.* A workflow started by
   `workflow_run` can start after the first suites complete, and external statuses arrive on their own (`CheckGate.cs:18-25`
   describes what `RunsFollow` already covers). With C2 and C3, the wait is visible, and it ends as soon as someone
@@ -210,7 +224,7 @@ rulesets" or GitHub's UI.
 ### Part E: docs (direction 3)
 
 - **`CLAUDE.md`**, "Running the test suites": the "CI layout" paragraph and the bullet on 20 concurrent jobs. Say
-  that the rulesets require only the aggregate, and that renaming `pull-request` (or a coverage status) means
+  that the rulesets require only the aggregate, and that renaming `pull-request` (or a coverage check) means
   changing rulesets 2 and 3 first.
 - **`docs/code-coverage/merge-queue.md` §3**, "Recommended GitHub setup":
   - replace the stale lines 598-599;
@@ -222,7 +236,7 @@ rulesets" or GitHub's UI.
 
 | # | Question | Recommended | Risk if the answer is wrong |
 |---|---|---|---|
-| Q1 | Should Spark's rulesets 2 and 3 require only `pull-request`, `coverage/patch` and `coverage/project`, plus `Line policy` on ruleset 3 (A1)? | Yes, before the next `/release` | Without it, the next line pull request carrying #697's `test.yml` stalls (F4) |
+| Q1 | Should Spark's rulesets 2 and 3 require only `pull-request`, `coverage/patch` and `coverage/project`, plus `Line policy` on ruleset 3 (A1)? And should each be pinned to its App (A1 hardening)? | Yes to both, with no deadline (S1) | Without it, every rename needs a ruleset edit at the right moment, and a pull request against a line after the next promotion stalls (F4) |
 | Q2 | In the stuck state, re-read the rules and name the deadlock while keeping the 60-minute timeout (C2, C3), or also evict early (C5)? | Re-read and name it; no early eviction | A 60-minute wait remains when nobody fixes the ruleset, but now it says why |
 | Q3 | Drop stale expected names after the base changed its workflows (C4)? | Yes, with the rule from S3 | Too loose: an entry merges before a late workflow reports. Too strict: F3 stays |
 | Q4 | Setup: B1, B2 and B3, but not B4? | Yes | None worth noting |
@@ -232,16 +246,83 @@ rulesets" or GitHub's UI.
 
 | # | Question | Where | Done when |
 |---|---|---|---|
-| S1 | How do a promotion and a backport reach `release/*-*.x`, and which list holds them? Confirm F4: does the first line pull request that carries #697's `test.yml` wait for `tests / Library suites` for good? Does a promotion go through the queue's gate at all, or does the exempt App push it directly, so that only later backports stall? | This repo, read-only (`MergeQueueEngine.cs:542-547` and the promote path), plus GETs on the lines' latest pull requests | A trace with file:line, and an answer to "must ruleset 3 change before the next `/release`?". **Run first.** |
+| S1 | How do a promotion and a backport reach `release/*-*.x`, and which list holds them? Confirm F4: does the first line pull request that carries #697's `test.yml` wait for `tests / Library suites` for good? Does a promotion go through the queue's gate at all, or does the exempt App push it directly, so that only later backports stall? | This repo, read-only (`MergeQueueEngine.cs:542-547` and the promote path), plus GETs on the lines' latest pull requests | A trace with file:line, and an answer to "must ruleset 3 change before the next `/release`?". **Done 2026-11-27: no (§6.1).** |
 | S2 | End-to-end repro on a sandbox. A ruleset requires `ci / job-a`; pull request 1 renames that job to `job-b`; pull request 2 is queued behind it. Before the fix, both stall (F2, F3). After C2–C4 (dev App), fixing the ruleset frees pull request 1 within one poll, and pull request 2 drops `job-a` with a note. Under A1 (only the aggregate required), pull request 1 merges without any ruleset change | `PieterjanDeClippel/SparkTest` with the dev App. This writes to GitHub, so it needs the owner's approval first | The four outcomes recorded, with check-run titles and timestamps |
-| S3 | The rule for C4: which signals prove that an expected name is gone for good? Candidates: `BaseChangedWorkflows`; the name's App (`KnownChecks` keeps `AppSlug` for each name); every suite of that App completed on `FinalSha`; `RunsFollow`. What happens with a workflow started by `workflow_run`, and with a commit status? | This repo, read-only, then `CheckGate` table tests | The rule written down, with a test for each case, including the two "keep waiting" cases |
+| S3 | The rule for C4: which signals prove that an expected name is gone for good? Candidates: `BaseChangedWorkflows`; the name's App (`KnownChecks` keeps `AppSlug` for each name); every suite of that App completed on `FinalSha`; `RunsFollow`. What happens with a workflow started by `workflow_run`, and with a commit status? | This repo, read-only, then `CheckGate` table tests | The rule written down, with a test for each case, including the two "keep waiting" cases. **Rule done 2026-11-27 (§6.1); the tests belong to M2.** |
 | S4 | Can a workflow's default `GITHUB_TOKEN` (`contents: read`) read `GET /repos/{o}/{r}/rules/branches/{b}` on a public repository? | A throwaway workflow run on SparkTest | Answered, with the response. **Only if Q5 picks D2.** |
-| S5 | Does today's aggregate already cover everything ruleset 2 requires, on a real head? Compare the check runs of a recent master pull request's head with the aggregate's `needs` and the coverage statuses | This repo, plus GET `commits/<sha>/check-runs` | An empty "required but not covered" list, so A1 loses nothing |
+| S5 | Does today's aggregate already cover everything ruleset 2 requires, on a real head? Compare the check runs of a recent master pull request's head with the aggregate's `needs` and the coverage statuses | This repo, plus GET `commits/<sha>/check-runs` | An empty "required but not covered" list, so A1 loses nothing. **Done 2026-11-27: empty (§6.1).** |
+
+### 6.1 Results (2026-11-27)
+
+**S1: `/release` does not go through ruleset 3 or the queue.**
+- `/release` (promote mode) does three things:
+  - it picks the newest default-branch commit whose `versioning.lines.workflow` run succeeded;
+  - it gets the App's writer access (`pushesWorkflowChanges: true`);
+  - it has the git writer's `PromoteService` push the promotion straight to the line.
+
+  Evidence: `PackageVersioning/ReleaseRecipients.cs:43-57, 179-196`.
+- Ruleset 3 exempts that App: `bypass_actors` = actor 4574022, `bypass_mode: exempt` (live GET of ruleset 27018553).
+- The last promotion went this way: `abeeb94cd` "Promote release/dotnet-11.x to master fc95abe3820e", 2026-11-18,
+  followed by that day's package tags (`MintPlayer.Spark.Templates/v11.0.0` and others).
+- **No pull requests reach a current line.** A `backport:` label on a current line opens no pull request: the bot
+  answers that the change ships with the next `/release` (seen on #696, 2026-11-19). The latest pull requests against
+  either line are from 2026-11-07 to 2026-11-09 (#581–#610), before the lines switched to promote mode.
+- **So the exposure is:**
+  - a pull request opened against a line by hand after the next promotion, which brings #697's `test.yml` there;
+  - a past line (`dotnet-10.x`, `angular-21.x`) cut later, whose tree has other job names than the current lines
+    under the same ruleset 3.
+
+  A1 covers both, so A1 is no longer urgent.
+
+**S3: the rule for dropping a stale expected name (C4).** A missing expected name is dropped, with a note on the entry
+and in the check run, only when all of these hold:
+1. `entry.BaseChangedWorkflows` is set. The base changed `.github/workflows` since the head pinned at enqueue. Without
+   that, a name that reported on the pinned head can only be late, never gone. The pull request's own workflow change
+   is already in the pinned head's CI.
+2. The name was a check run of GitHub Actions (`github-actions`). A commit status, or another App's check run (an
+   external scanner, CodeCoverage's own checks), is never dropped: it may report late, and C3 names it instead.
+3. The gate's stuck state holds: no pending check, no pending suite (`RunsFollow` included), only `Missing`.
+4. The same stuck state held at the previous poll too, one `ChecksPollInterval` (2 min) earlier. This covers a
+   workflow that `workflow_run` starts: its suite appears only once the run that triggers it has completed, so for a
+   moment every suite on the commit can look complete. This repository has no such workflow (no `workflow_run`,
+   `check_suite` or `repository_dispatch` trigger under `.github/workflows`), but other repositories on the queue may.
+
+A required name (from a ruleset) is never dropped: GitHub would refuse the merge anyway. For it, the fix is C2's
+re-read.
+
+Implementation constraints found:
+- `ExpectedChecks` stores names only. `GetCheckNamesOnCommitAsync` returns the names of check runs and statuses,
+  without their App (`GitHubForgeMergeQueue.cs:352-365`).
+- Condition 2 therefore needs each expected name's App, captured at enable time. Two ways:
+  - return `ForgeReportedCheck` (name, kind, App; `IForgeMergeQueue.cs:383`) from that call;
+  - read `Repository.KnownChecks`. That list may have dropped old names (`ForgeCheck.MaxKnown`), so it is the weaker
+    source.
+- `MergeQueueEntry` is stored. A new property is safe. Changing the type of `ExpectedChecks` would change its stored
+  format, which needs a RavenDB data migration (feedback: write a migration, don't freeze the format).
+- Condition 4 needs a "stuck since" time on the entry: one more new property.
+
+The tests (M2), one per case:
+- each of the four conditions failing alone, and the entry waits;
+- all four holding, and the name is dropped and the entry merges;
+- the two "keep waiting" cases: a commit status, and another App's check run.
+
+**S5: nothing ruleset 2 requires falls outside the aggregate.** Head `6b25997d7` (#697's last head, merged) has 36
+check runs and no commit status:
+- 30 from `github-actions` (App 15368):
+  - the 21 per-job contexts ruleset 2 requires, every one of them in `pull-request.needs`;
+  - `pull-request` itself;
+  - 8 "Build the … image (no push)" jobs from path-filtered workflows. Ruleset 2 does not require those today, and the
+    queue waits for them anyway, because it waits for everything that reports (`CheckGate.cs:84-87`).
+- 5 from `coverageproduction` (App 4574022): `coverage/patch` and `coverage/project` (both `neutral`), `Merge queue`,
+  `PR size` and `Backport targets`.
+- 1 from GitGuardian, which ruleset 2 does not require.
+
+So the "required but not covered" list is empty, and A1 loses nothing. One correction to F5: the coverage checks are
+check runs, not commit statuses. Evidence: GET `commits/6b25997d7…/check-runs` and `…/status`, 2026-11-27.
 
 ## 7. Milestones (one pull request)
 
-- **M0.** S1 first, before the next `/release`; then S3 and S5. The owner answers Q1–Q5. S2 and S4 only after
-  approval.
+- **M0.** S1, S3 and S5 are done (§6.1). The owner answers Q1–Q5. S2 and S4 only after approval.
 - **M1. Spark.** The owner changes rulesets 2 and 3 (Q1). Add the D1 guard test and the `CLAUDE.md` CI-layout note.
 - **M2. Engine.**
   - `ForgeBranchRules` keeps each ruleset's required checks, in the GitHub forge and in the fake.
@@ -258,7 +339,8 @@ rulesets" or GitHub's UI.
 
 From comment 2, with F3 and F4 added.
 - When a pull request renames, joins or splits a required job, update ruleset 2 by hand to the new names first. Do the
-  same for ruleset 3 when the change reaches the lines (F4).
+  same for ruleset 3 when the change reaches the lines (F4). That only matters for a pull request against a line,
+  because `/release` pushes past ruleset 3 (S1).
 - Then `/dequeue` and `/queue` every pull request that is already queued. Its entry holds the old required list (F2)
   and the old expected list (F3).
 - Other open pull requests: their finished CI carries the old names. The new name appears with their next CI run (a
@@ -270,3 +352,8 @@ From comment 2, with F3 and F4 added.
 - **2026-11-27.** Read issue #714 and both comments. Ran three read-only investigations: the setup, the engine, and CI
   with the rulesets. Checked F1–F6 again against the code, the lines' `test.yml`, and the live rulesets 26719109 and
   27018553. Wrote this file.
+- **2026-11-27, later.** Ran spikes S1, S3 and S5 (read-only, §6.1):
+  - S1 found that `/release` is a direct push by the exempt App, so F4 has no deadline (marked superseded).
+  - S5 found nothing ruleset 2 requires outside the aggregate, and corrected F5 (the coverage checks are check runs).
+    It also gave the App ids behind A1's hardening.
+  - S3 wrote C4's rule.
