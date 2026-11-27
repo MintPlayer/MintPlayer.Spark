@@ -37,6 +37,7 @@ internal static class RavenStorageSeam
     {
         var services = new ServiceCollection();
         services.AddSingleton(store);
+        services.AddLogging(); // the index deployment logs (#716 D3)
         services.AddRavenDbSessions();
         var provider = services.BuildServiceProvider();
         deployed.GetValue(store, _ =>

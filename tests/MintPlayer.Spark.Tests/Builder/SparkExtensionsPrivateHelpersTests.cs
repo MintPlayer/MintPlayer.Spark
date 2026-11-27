@@ -180,7 +180,7 @@ public class SparkExtensionsPrivateHelpersTests : RavenSparkTestDriver
         services.AddSingleton(store);
         services.AddSingleton(indexCatalog);
         // The provider writes the definitions (#551 D20).
-        services.AddSingleton<Abstractions.Storage.ISparkIndexDeployment>(new RavenIndexDeployment(store));
+        services.AddSingleton<Abstractions.Storage.ISparkIndexDeployment>(new RavenIndexDeployment(store, Microsoft.Extensions.Logging.Abstractions.NullLogger<RavenIndexDeployment>.Instance));
         var app = Substitute.For<IApplicationBuilder>();
         app.ApplicationServices.Returns(services.BuildServiceProvider());
         return app;

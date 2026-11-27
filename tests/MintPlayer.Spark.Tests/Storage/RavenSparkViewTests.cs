@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Indexes;
 using MintPlayer.Spark.Services;
@@ -5,6 +8,8 @@ using MintPlayer.Spark.Storage.Raven;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Indexes;
+using Raven.Client.Documents.Operations.Indexes;
 using static MintPlayer.Spark.Tests.Storage.SparkViewTests;
 
 namespace MintPlayer.Spark.Tests.Storage;
@@ -33,7 +38,7 @@ public class RavenSparkViewTests : IAsyncLifetime
             await seed.SaveChangesAsync();
         }
 
-        new RavenIndexDeployment(driver.DocumentStore).Deploy([typeof(SparkViewTests).Assembly], t => t == typeof(EmployeesWithCompany));
+        new RavenIndexDeployment(driver.DocumentStore, NullLogger<RavenIndexDeployment>.Instance).Deploy([typeof(SparkViewTests).Assembly], t => t == typeof(EmployeesWithCompany));
         driver.WaitForIndexes();
 
         using var session = store.OpenSession();
@@ -49,6 +54,54 @@ public class RavenSparkViewTests : IAsyncLifetime
         rows[0].SkillCount.Should().Be(2);
         rows[1].CompanyName.Should().BeNull("a missing reference loads as null");
         rows[1].EmployerName.Should().BeNull();
+    }
+
+    /// <summary>
+    /// #716: a class-based index <c>Employee_Names</c> was deployed as <c>Employee/Names</c>, and RavenDB keeps both names
+    /// in one folder, <c>Employee_Names</c>. When a view of that name replaces the class, the server refuses the view while
+    /// the old index exists ("would result in directory name collision"), so deployment removes the old index first.
+    /// </summary>
+    [Fact]
+    public async Task A_view_replaces_the_class_based_index_it_superseded()
+    {
+        await driver.DocumentStore.Maintenance.SendAsync(new PutIndexesOperation(new IndexDefinition
+        {
+            Name = "Employee/Names",
+            Maps = ["from e in docs.ViewEmployees select new { e.LastName }"],
+        }));
+
+        new RavenIndexDeployment(driver.DocumentStore, NullLogger<RavenIndexDeployment>.Instance)
+            .Deploy([typeof(SparkViewTests).Assembly], t => t == typeof(EmployeeNames) || t == typeof(EmployeesWithCompany));
+
+        var names = await driver.DocumentStore.Maintenance.SendAsync(new GetIndexNamesOperation(0, int.MaxValue));
+        names.Should().Contain("Employee_Names");
+        names.Should().Contain(nameof(EmployeesWithCompany));
+        names.Should().NotContain("Employee/Names");
+    }
+
+    /// <summary>
+    /// #716: the views were deployed in one batch, which RavenDB applies all or nothing, so one refused view kept every
+    /// other view out of the database (messaging's <c>SparkMessages_ByState</c> among them). Each view now deploys on its
+    /// own, and a refusal is logged as an error. An index locked with <see cref="IndexLockMode.LockedError"/> refuses the
+    /// changed definition.
+    /// </summary>
+    [Fact]
+    public async Task A_view_the_server_refuses_keeps_no_other_view_out()
+    {
+        await driver.DocumentStore.Maintenance.SendAsync(new PutIndexesOperation(new IndexDefinition
+        {
+            Name = nameof(EmployeesWithCompany),
+            Maps = ["from e in docs.ViewEmployees select new { e.FirstName }"],
+            LockMode = IndexLockMode.LockedError,
+        }));
+        var log = new RecordingLogger();
+
+        new RavenIndexDeployment(driver.DocumentStore, log)
+            .Deploy([typeof(SparkViewTests).Assembly], t => t == typeof(EmployeeNames) || t == typeof(EmployeesWithCompany));
+
+        var names = await driver.DocumentStore.Maintenance.SendAsync(new GetIndexNamesOperation(0, int.MaxValue));
+        names.Should().Contain("Employee_Names");
+        log.Entries.Should().Contain(e => e.Level == LogLevel.Error && e.Message.Contains(nameof(EmployeesWithCompany)));
     }
 
     [Fact]
@@ -84,5 +137,16 @@ public class RavenSparkViewTests : IAsyncLifetime
         public IDocumentStore DocumentStore => Store;
 
         public void WaitForIndexes() => WaitForIndexing(Store);
+    }
+
+    private sealed class RecordingLogger : ILogger<RavenIndexDeployment>
+    {
+        public ConcurrentQueue<(LogLevel Level, string Message)> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Enqueue((logLevel, formatter(state, exception)));
     }
 }
