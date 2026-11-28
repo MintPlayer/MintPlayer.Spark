@@ -223,6 +223,17 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.MergeQueue.RefreshKnownChecksMessage>));
 
     /// <summary>
+    /// What the managers hear about their merge-queue rulesets (#714 Dec5, Dec11). Without the notices the queue cannot
+    /// record a drift; without the bell nobody is told; without the recipient the post-deploy offer is consumed with nothing
+    /// done. None of them fails loudly.
+    /// </summary>
+    [Fact]
+    public void The_ruleset_notices_are_registered() => AssertRegistered(
+        typeof(global::CodeCoverage.MergeQueue.IRulesetNotices),
+        typeof(global::CodeCoverage.MergeQueue.IRulesetNoticeBell),
+        typeof(IRecipient<global::CodeCoverage.MergeQueue.OfferSummaryJobMessage>));
+
+    /// <summary>
     /// The PR size labeller (#527, M6). Without its lane's recipient every apply would be consumed with nothing done; without
     /// the GitHub seam the lane finds no forge and skips every repository, with no error either way.
     /// </summary>

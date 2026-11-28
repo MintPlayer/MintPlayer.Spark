@@ -3,8 +3,10 @@ using CodeCoverage.Dependencies.Onboarding;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.MergeQueue;
+using CodeCoverage.Tests.CommitGraph;
 using CodeCoverage.Tests.Dependencies.Lifecycle;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
@@ -80,18 +82,20 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
             Manager.GetTranslatedMessage(Arg.Any<string>(), Arg.Any<object[]>()).Returns(call => call.ArgAt<string>(0));
         }
 
-        public MergeQueueRulesetSetup Setup()
+        public MutableTime Time { get; } = new(new DateTimeOffset(2026, 11, 27, 9, 0, 0, TimeSpan.Zero));
+
+        public MergeQueueRulesetSetup Setup(Raven.Client.Documents.Session.IAsyncDocumentSession session)
             => new([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance,
-                new SingleForgeResolver(Forge));
+                new SingleForgeResolver(Forge), new RulesetNotices(session, Time), session, Time);
 
         public SetUpRulesetsAction Action(IAsyncDocumentSessionHolder holder)
-            => new(new ScriptedOnboarding(), Setup(), holder.Session, Manager);
+            => new(new ScriptedOnboarding(), Setup(holder.Session), holder.Session, Manager);
     }
 
     /// <summary>Keeps the session the action reads with.</summary>
     private sealed record IAsyncDocumentSessionHolder(Raven.Client.Documents.Session.IAsyncDocumentSession Session);
 
-    private static PersistentObject Form(int? approvals, bool? admins, object? checks = null, object? lineChecks = null) => new()
+    private static PersistentObject Form(int? approvals, bool? admins, object? checks = null, object? lineChecks = null, object? summaryJob = null) => new()
     {
         Id = null, Name = "SetUpRulesets", ObjectTypeId = FormType,
         Attributes =
@@ -99,6 +103,11 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredApprovals), Value = approvals },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest), Value = admins },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.RequiredChecks), Value = checks },
+            new PersistentObjectAttribute
+            {
+                Name = nameof(MergeQueueRulesetChoices.SummaryJob),
+                Value = summaryJob,
+            },
             new PersistentObjectAttribute { Name = nameof(MergeQueueRulesetChoices.LineRequiredChecks), Value = lineChecks },
         ],
     };
@@ -199,7 +208,9 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
             new RetryResult { Option = "onboarding.plan", PersistentObject = Form(1, false, Wire("build")) },
             new RetryResult { Option = "onboarding.plan", PersistentObject = Form(2, true, Wire("lint", "test")) });
 
-        var planned = await f.Setup().ChooseAsync([Read("Repositories/github/1", "acme/one"), Read("Repositories/github/2", "acme/two")], CancellationToken.None);
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var planned = await f.Setup(session).ChooseAsync([Read("Repositories/github/1", "acme/one"), Read("Repositories/github/2", "acme/two")], CancellationToken.None);
 
         prompted.Select(p => p.Parent?.Id).Should().Equal("repositories/github/1", "repositories/github/2");
         prompted.Should().OnlyContain(p => p.Parent!.Name == nameof(Repository));
@@ -225,7 +236,9 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         var state = new ForgeRulesetState(77, [], null);
         f.Manager.Retry.Result.Returns(new RetryResult { Option = "onboarding.plan", PersistentObject = Form(0, false, Wire("build"), Wire("build")) });
 
-        var planned = await f.Setup().ChooseAsync([new RulesetRead(new RulesetTarget(repository, f.Queue, "master"), state, MergeQueueRulesetPlanner.Defaults(state))],
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var planned = await f.Setup(session).ChooseAsync([new RulesetRead(new RulesetTarget(repository, f.Queue, "master"), state, MergeQueueRulesetPlanner.Defaults(state))],
             CancellationToken.None, releaseLinesComing: true);
 
         planned!.Single().Plan.Steps.OfType<CreateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.LineChecksName)
@@ -302,5 +315,228 @@ public class SetUpRulesetsActionTests : CoverageRavenTest
         ((SetUpRulesetsResult)args.Result!).NotApplied.Should().ContainSingle().Which.Message.Should().Be("Must have admin rights to Repository.");
         f.Manager.Retry.DidNotReceiveWithAnyArgs().Action(default!, default!);
         f.Lease.Disposed.Should().Be(1);
+    }
+
+    private const long GitHubActions = 15368;
+
+    /// <summary>A required check as GitHub stores it on a ruleset, pinned to <paramref name="app"/> when given.</summary>
+    private static JsonObject Required(string context, long? app = null)
+    {
+        var check = new JsonObject { ["context"] = context };
+        if (app is { } id)
+            check["integration_id"] = id;
+        return check;
+    }
+
+    /// <summary>The state with ruleset 2 requiring <paramref name="checks"/>, and ruleset 1 as the plan writes it.</summary>
+    private static ForgeRulesetState Requiring(params JsonObject[] checks)
+    {
+        var ruleset1 = new ForgeRulesetDefinition(MergeQueueRulesetPlanner.RestrictUpdatesName, "branch", "active", ["~DEFAULT_BRANCH"], [],
+            [new("update"), new("deletion"), new("non_fast_forward")], [new ForgeRulesetActor(77, "Integration", "exempt")]);
+        var ruleset2 = new ForgeRulesetDefinition(MergeQueueRulesetPlanner.ReviewsAndChecksName, "branch", "active", ["~DEFAULT_BRANCH"], [],
+        [
+            new("pull_request", new JsonObject
+            {
+                ["required_approving_review_count"] = 0,
+                ["dismiss_stale_reviews_on_push"] = false,
+                ["require_last_push_approval"] = false,
+                ["require_code_owner_review"] = false,
+                ["required_review_thread_resolution"] = false,
+            }),
+            new("required_status_checks", new JsonObject
+            {
+                ["strict_required_status_checks_policy"] = true,
+                ["required_status_checks"] = new JsonArray([.. checks]),
+            }),
+        ], []);
+        return new ForgeRulesetState(77, [new(1, ruleset1), new(2, ruleset2)], null);
+    }
+
+    /// <summary>Writes what the queue would have written, in its own session.</summary>
+    private static async Task<string> NoticeAsync(Raven.Client.Documents.IDocumentStore store, MutableTime time, Func<IRulesetNotices, Repository, Task> raise)
+    {
+        using var session = store.OpenAsyncSession();
+        var repository = (await session.LoadAsync<Repository>(RepositoryId))!;
+        await raise(new RulesetNotices(session, time), repository);
+        await session.SaveChangesAsync();
+        return repository.Id.Value;
+    }
+
+    private static async Task SeeAsync(Raven.Client.Documents.IDocumentStore store, params ForgeCheck[] known)
+    {
+        using var session = store.OpenAsyncSession();
+        (await session.LoadAsync<Repository>(RepositoryId))!.KnownChecks.AddRange(known);
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>The prompted forms and their messages.</summary>
+    private static List<(PersistentObject Form, string Message)> Prompts(Fixture f)
+    {
+        var prompts = new List<(PersistentObject, string)>();
+        f.Manager.Retry.When(r => r.Action(Arg.Any<string>(), Arg.Any<string[]>(), Arg.Any<string?>(), Arg.Any<PersistentObject?>(), Arg.Any<string?>(), Arg.Any<bool>()))
+            .Do(call =>
+            {
+                if (call.ArgAt<PersistentObject?>(3) is { } form)
+                    prompts.Add((form, call.ArgAt<string>(4)));
+            });
+        return prompts;
+    }
+
+    private static string[] Contexts(MergeQueueRulesetPlan plan, string ruleset)
+        => [.. plan.Steps.OfType<UpdateRulesetStep>().Single(s => s.Definition.Name == ruleset).Definition.Rules
+            .Single(r => r.Type == "required_status_checks").Parameters!["required_status_checks"]!.AsArray().Select(c => c!["context"]!.GetValue<string>())];
+
+    private static long? PinOf(MergeQueueRulesetPlan plan, string context)
+        => plan.Steps.OfType<UpdateRulesetStep>().Single(s => s.Definition.Name == MergeQueueRulesetPlanner.ReviewsAndChecksName).Definition.Rules
+            .Single(r => r.Type == "required_status_checks").Parameters!["required_status_checks"]!.AsArray().OfType<JsonObject>()
+            .Single(c => c["context"]!.GetValue<string>() == context)["integration_id"]?.GetValue<long>();
+
+    /// <summary>
+    /// #714 Dec6: opened from the bell about a check that never reported, the form starts without it and says why; the
+    /// confirmation names what changes (Dec10 B1), and the apply resolves the notice.
+    /// </summary>
+    [Fact]
+    public async Task A_check_that_never_reported_is_taken_out_of_the_form_and_the_apply_resolves_the_notice()
+    {
+        var holder = await SeedAsync();
+        var store = holder.Session.Advanced.DocumentStore;
+        var f = new Fixture();
+        var repositoryId = await NoticeAsync(store, f.Time, (n, r) => n.RaiseMissingCheckAsync(r, "master", ["test"], ["build", "lint"], 7));
+        f.Queue.GetRulesetStateAsync(Arg.Any<Repository>(), "master", Token, Arg.Any<CancellationToken>())
+            .Returns(Requiring(Required("build"), Required("test")));
+        var prompts = Prompts(f);
+        f.Manager.Retry.Result.Returns(
+            new RetryResult
+            {
+                Option = "onboarding.plan",
+                PersistentObject = Form(0, false, Wire("build")),
+            },
+            new RetryResult { Option = "rulesets.apply" });
+
+        await f.Action(holder).ExecuteAsync(Selected(RepositoryId));
+
+        var (form, message) = prompts.Should().ContainSingle().Which;
+        ((string[])form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value!).Should().Equal(["build"]);
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.prefill.removed", Arg.Is<object[]>(a => (string)a[0] == "test" && (int)a[1] == 7));
+        message.Should().StartWith("rulesets.chooseMessage<br><br>rulesets.prefill.removed");
+        f.Manager.Retry.Received(1).Action("rulesets.confirmTitle", Arg.Any<string[]>(), "rulesets.apply", null,
+            Arg.Is<string>(m => m.Contains("required checks dropped: test")), true);
+        Contexts(f.Applied!, MergeQueueRulesetPlanner.ReviewsAndChecksName).Should().Equal(["build"]);
+
+        using var check = store.OpenAsyncSession();
+        (await check.LoadAsync<RulesetNotice>(RulesetNotice.DocumentId(repositoryId, ERulesetNoticeKind.MissingCheck)))!.IsOpen()
+            .Should().BeFalse("the managers confirmed the rulesets they want");
+    }
+
+    /// <summary>#714 Dec4, Dec6: a check a refused merge showed pinned to the wrong App is pinned to the App that reports it now.</summary>
+    [Fact]
+    public async Task A_pin_mismatch_is_pinned_to_the_App_that_reports_the_check_now()
+    {
+        var holder = await SeedAsync();
+        var store = holder.Session.Advanced.DocumentStore;
+        var f = new Fixture();
+        await NoticeAsync(store, f.Time, (n, r) => n.RaisePinMismatchAsync(r, "master", new Dictionary<string, long> { ["build"] = GitHubActions }, 7));
+        f.Queue.GetRulesetStateAsync(Arg.Any<Repository>(), "master", Token, Arg.Any<CancellationToken>())
+            .Returns(Requiring(Required("build", 999)));
+        f.Manager.Retry.Result.Returns(
+            new RetryResult
+            {
+                Option = "onboarding.plan",
+                PersistentObject = Form(0, false, Wire("build")),
+            },
+            new RetryResult { Option = "rulesets.apply" });
+
+        await f.Action(holder).ExecuteAsync(Selected(RepositoryId));
+
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.prefill.repinned", Arg.Is<object[]>(a => (string)a[0] == "build (App 15368)"));
+        PinOf(f.Applied!, "build").Should().Be(GitHubActions);
+        f.Manager.Retry.Received(1).Action("rulesets.confirmTitle", Arg.Any<string[]>(), "rulesets.apply", null,
+            Arg.Is<string>(m => m.Contains("&quot;build&quot; pinned: App 999 → App 15368")), true);
+    }
+
+    /// <summary>
+    /// #714 Dec6: a summary job that never reported is left empty and asked for again, with what did report; the job picked
+    /// then stands alone beside the App's own checks (Dec3), each pinned to the App that reports it (Dec4).
+    /// </summary>
+    [Fact]
+    public async Task A_lost_summary_job_is_asked_for_again_and_the_new_one_is_pinned()
+    {
+        var holder = await SeedAsync();
+        var store = holder.Session.Advanced.DocumentStore;
+        var f = new Fixture();
+        await SeeAsync(store, new ForgeCheck
+        {
+            Id = "pull-request",
+            Name = "pull-request",
+            Kind = EForgeCheckKind.CheckRun,
+            AppSlug = "github-actions",
+            AppId = GitHubActions,
+            LastSeenUtc = f.Time.GetUtcNow().UtcDateTime,
+            OnPullRequest = true,
+        });
+        await NoticeAsync(store, f.Time, (n, r) => n.RaiseMissingCheckAsync(r, "master", ["ci"], ["pull-request", "build"], 7));
+        f.Queue.GetRulesetStateAsync(Arg.Any<Repository>(), "master", Token, Arg.Any<CancellationToken>())
+            .Returns(Requiring(Required("ci"), Required("coverage/patch")));
+        var prompts = Prompts(f);
+        f.Manager.Retry.Result.Returns(
+            new RetryResult
+            {
+                Option = "onboarding.plan",
+                PersistentObject = Form(0, false, Wire("coverage/patch", "build"), summaryJob: JsonSerializer.SerializeToElement("pull-request")),
+            },
+            new RetryResult { Option = "rulesets.apply" });
+
+        await f.Action(holder).ExecuteAsync(Selected(RepositoryId));
+
+        var summaryField = prompts.Should().ContainSingle().Which.Form[nameof(MergeQueueRulesetChoices.SummaryJob)];
+        summaryField.Value.Should().BeNull("nothing is guessed");
+        summaryField.IsRequired.Should().BeTrue();
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.prefill.summaryJobLost",
+            Arg.Is<object[]>(a => (string)a[0] == "ci" && (int)a[1] == 7 && (string)a[2] == "build, pull-request"));
+        Contexts(f.Applied!, MergeQueueRulesetPlanner.ReviewsAndChecksName).Should().Equal(["coverage/patch", "pull-request"], "build is a job the summary job waits for");
+        PinOf(f.Applied!, "coverage/patch").Should().Be(77, "the App's own check, pinned to the App");
+        PinOf(f.Applied!, "pull-request").Should().Be(GitHubActions);
+    }
+
+    /// <summary>
+    /// #714 Dec10 B2 and Dec11: opened by hand on rules with one check per job, the form offers the summary job and marks the
+    /// required names no pull request reported in 14 days; it removes nothing.
+    /// </summary>
+    [Fact]
+    public async Task The_form_offers_the_summary_job_and_marks_checks_not_seen_lately()
+    {
+        var holder = await SeedAsync();
+        var store = holder.Session.Advanced.DocumentStore;
+        var f = new Fixture();
+        var now = f.Time.GetUtcNow().UtcDateTime;
+        await SeeAsync(store,
+            new ForgeCheck
+            {
+                Id = "build",
+                Name = "build",
+                LastSeenUtc = now.AddDays(-1),
+                OnPullRequest = true,
+            },
+            new ForgeCheck
+            {
+                Id = "test",
+                Name = "test",
+                LastSeenUtc = now.AddDays(-20),
+                OnPullRequest = true,
+            });
+        f.Queue.GetRulesetStateAsync(Arg.Any<Repository>(), "master", Token, Arg.Any<CancellationToken>())
+            .Returns(Requiring(Required("build"), Required("test"), Required("lint")));
+        var prompts = Prompts(f);
+        f.Manager.Retry.Result.Returns(new RetryResult { Option = RetryResult.CancelOption });
+
+        await f.Action(holder).ExecuteAsync(Selected(RepositoryId));
+
+        ((string[])prompts.Should().ContainSingle().Which.Form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value!)
+            .Should().Equal(["build", "lint", "test"], "a mark removes nothing");
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.summaryJobOffer", Arg.Any<object[]>());
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.stale.notSeenSince", Arg.Is<object[]>(a => (string)a[0] == "test" && (string)a[1] == "2026-11-07"));
+        f.Manager.Received(1).GetTranslatedMessage("rulesets.stale.neverSeen", Arg.Is<object[]>(a => (string)a[0] == "lint"));
+        f.Manager.DidNotReceive().GetTranslatedMessage("rulesets.stale.notSeenSince", Arg.Is<object[]>(a => (string)a[0] == "build"));
+        await f.Queue.DidNotReceiveWithAnyArgs().ApplyRulesetPlanAsync(default!, default!, default!, default!, default);
     }
 }

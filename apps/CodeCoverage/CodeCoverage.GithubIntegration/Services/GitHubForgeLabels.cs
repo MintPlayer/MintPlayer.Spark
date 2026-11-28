@@ -6,8 +6,12 @@ using System.Text.Json.Nodes;
 using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
+using Octokit.GraphQL;
 using Raven.Client.Documents.Session;
+using static Octokit.GraphQL.Variable;
 using Account = CodeCoverage.Entities.Account;
+using GraphQLQuery = Octokit.GraphQL.Query;
+using IGraphQLConnection = Octokit.GraphQL.IConnection;
 using Repository = CodeCoverage.Entities.Repository;
 
 namespace CodeCoverage.Services;
@@ -23,7 +27,8 @@ namespace CodeCoverage.Services;
 /// a 422 <c>already_exists</c> come back as outcomes rather than exceptions.
 /// </para>
 /// <para>
-/// <b>GraphQL for the files</b> (S2): REST pages carry every file's patch, which a size count never reads.
+/// <b>GraphQL for the files</b> (S2): REST pages carry every file's patch, which a size count never reads. A typed
+/// Octokit.GraphQL document, read to its end with <c>AllPages</c> (#714, 2026-11-27).
 /// </para>
 /// </remarks>
 [Register(typeof(IForgeLabels), ServiceLifetime.Scoped)]
@@ -40,8 +45,6 @@ public partial class GitHubForgeLabels : IForgeLabels
     private const int PageSize = 100;
     /// <summary>A repository with more labels than this is not one the reconciler can reason about anyway.</summary>
     private const int MaxLabelPages = 20;
-    /// <summary>GitHub lists at most 3 000 files of a pull request: 30 pages of 100.</summary>
-    private const int MaxFilePages = 30;
 
     public EForgeProvider Provider => EForgeProvider.GitHub;
 
@@ -126,19 +129,16 @@ public partial class GitHubForgeLabels : IForgeLabels
     {
         var installationId = await ResolveInstallationAsync(repository, cancellationToken);
         var connection = await installationService.CreateGraphQLConnectionAsync(installationId, EClientType.Installation);
-
-        var files = new List<ForgePullRequestFile>();
-        string? cursor = null;
-        for (var page = 0; page < MaxFilePages; page++)
+        var variables = new Dictionary<string, object>
         {
-            var body = await connection.Run(FilesRequest(repository, number, cursor), cancellationToken);
-            var (nodes, next) = ParseFiles(body, repository, number);
-            files.AddRange(nodes);
-            if (next is null) return files;
-            cursor = next;
-        }
+            ["owner"] = repository.OwnerLogin,
+            ["name"] = repository.Name,
+            ["number"] = number,
+        };
 
-        return files;
+        var files = await new ErrorReadingConnection(connection, $"listing the files of {repository.FullName}#{number}")
+            .Run(FilesQuery, variables, cancellationToken);
+        return [.. files ?? []];
     }
 
     public async Task<long> PublishSizeCheckAsync(Repository repository, string sha, ForgeSizeCheck check, long? existingId, CancellationToken cancellationToken = default)
@@ -190,45 +190,51 @@ public partial class GitHubForgeLabels : IForgeLabels
             ? runs[0].GetProperty("id").GetInt64()
             : null;
 
-    /// <summary>One page of <c>pullRequest.files</c>: path and counts only, every value a variable.</summary>
-    internal static string FilesRequest(Repository repository, int number, string? cursor)
+    /// <summary>
+    /// Every file of one pull request, path and counts only: Octokit.GraphQL sends the first page and fetches the rest by
+    /// cursor (<c>AllPages</c>). GitHub lists at most 3 000 files of a pull request. Every value is a variable.
+    /// </summary>
+    private static readonly ICompiledQuery<IEnumerable<ForgePullRequestFile>> FilesQuery = new GraphQLQuery()
+        .Repository(owner: Var("owner"), name: Var("name"))
+        .PullRequest(Var("number"))
+        .Files()
+        .AllPages()
+        .Select(file => new ForgePullRequestFile(file.Path, file.Additions, file.Deletions))
+        .Compile();
+
+    /// <summary>
+    /// Passes every page through, after reading GitHub's GraphQL <c>errors</c> itself: Octokit.GraphQL's deserializer throws
+    /// them as a bare message, losing the <c>type</c> that tells a refusal from a rate limit (measured 2026-11-27, #714).
+    /// </summary>
+    private sealed class ErrorReadingConnection(IGraphQLConnection inner, string what) : IGraphQLConnection
     {
-        const string query = "query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) "
-            + "{ pullRequest(number: $number) { files(first: 100, after: $after) { nodes { path additions deletions } pageInfo { hasNextPage endCursor } } } } }";
-        var variables = new Dictionary<string, object?>
+        public Uri Uri => inner.Uri;
+
+        public async Task<string> Run(string query, CancellationToken cancellationToken = default)
         {
-            ["owner"] = repository.OwnerLogin,
-            ["name"] = repository.Name,
-            ["number"] = number,
-            ["after"] = cursor,
-        };
-        return JsonSerializer.Serialize(new { query, variables });
+            var body = await inner.Run(query, cancellationToken);
+            ThrowOnErrors(body, what);
+            return body;
+        }
     }
 
-    /// <summary>A page's files and the cursor of the next page, null on the last.</summary>
-    internal static (List<ForgePullRequestFile> Files, string? Next) ParseFiles(string body, Repository repository, int number)
+    /// <summary>
+    /// A rate limit is a 429 <see cref="ForgeRequestException"/>, a <c>FORBIDDEN</c> names the permission, any other error
+    /// is a <see cref="ForgeRequestException"/> with GitHub's message.
+    /// </summary>
+    internal static void ThrowOnErrors(string body, string what)
     {
         using var json = JsonDocument.Parse(body);
-        var root = json.RootElement;
-        if (root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
-        {
-            var what = $"listing the files of {repository.FullName}#{number}";
-            if (GitHubRateLimits.FromGraphQLErrors(errors.EnumerateArray().Select(e => (Str(e, "type"), Str(e, "message"))), _ => null, DateTimeOffset.UtcNow, what) is { } limited)
-                throw new ForgeRequestException($"GitHub rate limit reached {what}.", 429, limited);
-            var first = errors[0];
-            var message = Str(first, "message") ?? "GraphQL error";
-            if (Str(first, "type") is "FORBIDDEN")
-                throw new ForgeAccessDeniedException(message, "pull_requests=read");
-            throw new ForgeRequestException($"GitHub refused {what}: {message}", null);
-        }
+        if (!json.RootElement.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Array || errors.GetArrayLength() == 0)
+            return;
 
-        var connection = root.GetProperty("data").GetProperty("repository").GetProperty("pullRequest").GetProperty("files");
-        var files = connection.GetProperty("nodes").EnumerateArray()
-            .Select(n => new ForgePullRequestFile(Str(n, "path") ?? "", n.GetProperty("additions").GetInt32(), n.GetProperty("deletions").GetInt32()))
-            .ToList();
-        var pageInfo = connection.GetProperty("pageInfo");
-        var next = pageInfo.GetProperty("hasNextPage").GetBoolean() ? Str(pageInfo, "endCursor") : null;
-        return (files, next);
+        if (GitHubRateLimits.FromGraphQLErrors(errors.EnumerateArray().Select(e => (Str(e, "type"), Str(e, "message"))), _ => null, DateTimeOffset.UtcNow, what) is { } limited)
+            throw new ForgeRequestException($"GitHub rate limit reached {what}.", 429, limited);
+        var first = errors[0];
+        var message = Str(first, "message") ?? "GraphQL error";
+        if (Str(first, "type") is "FORBIDDEN")
+            throw new ForgeAccessDeniedException(message, "pull_requests=read");
+        throw new ForgeRequestException($"GitHub refused {what}: {message}", null);
     }
 
     internal static ForgeLabel ReadLabel(JsonElement label)

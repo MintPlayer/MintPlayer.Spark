@@ -193,7 +193,8 @@ internal sealed class MergeQueueHarness
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
             Commands.CommandTestKit.Lifecycle(store, Reactions, Time, Logs),
-            NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance), Webhooks.Publisher);
+            NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance), Webhooks.Publisher,
+            new RulesetNotices(session, Time));
 
     public async Task SignalAsync(MergeQueueSignalMessage signal)
     {

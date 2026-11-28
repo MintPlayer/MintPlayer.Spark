@@ -89,7 +89,7 @@ public class SetUpFeaturesRulesetsTests : CoverageRavenTest
         public SetUpFeaturesAction Action(Raven.Client.Documents.Session.IAsyncDocumentSession session)
             => new(new Managed(), Onboarding,
                 new MergeQueueRulesetSetup([Queue], OAuth, Microsoft.Extensions.Options.Options.Create(Options), Manager, NullLogger<MergeQueueRulesetSetup>.Instance,
-                    new SingleForgeResolver(Forge)),
+                    new SingleForgeResolver(Forge), new RulesetNotices(session, TimeProvider.System), session, TimeProvider.System),
                 session, Manager);
     }
 

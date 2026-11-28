@@ -259,4 +259,38 @@ public class CheckGateTests
     public void Nothing_reported_and_nothing_expected_passes()
         // A repository with no CI at all: the expected-minimum set (the base's checks) is empty too.
         => Evaluate(State(suites: [])).Verdict.Should().Be(ECheckVerdict.Passed);
+
+    // ── #714 C1: stuck, waiting only for names that never reported ─────────────────────────────────────────
+
+    [Fact]
+    public void Waiting_only_for_a_name_that_never_reported_is_stuck()
+    {
+        var result = Evaluate(State([Run("build")]), required: ["test"]);
+
+        result.Verdict.Should().Be(ECheckVerdict.Pending);
+        result.Missing.Should().Equal(["test"]);
+        result.Stuck.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_running_check_is_not_stuck()
+        => Evaluate(State([Run("build", "in_progress")], suites: [Suite(1, "in_progress")]), required: ["test"]).Stuck.Should().BeFalse();
+
+    [Fact]
+    public void A_workflow_that_has_not_started_is_not_stuck()
+        // Its jobs may be the missing name (#616: GitHub creates the suite seconds before the first run).
+        => Evaluate(State([Run("build")], suites: [Suite(1), new ForgeCheckSuite(2, "queued", null, "github-actions", 0, RunsFollow: true)]),
+                expected: ["lint"])
+            .Stuck.Should().BeFalse();
+
+    [Fact]
+    public void A_failure_or_nothing_missing_is_not_stuck()
+    {
+        Evaluate(State([Run("build", conclusion: "failure")]), required: ["test"]).Stuck.Should().BeFalse("it failed, and fails now");
+        Evaluate(State([Run("build")]), required: ["build"]).Stuck.Should().BeFalse("it passed");
+    }
+
+    [Fact]
+    public void An_excluded_expected_name_is_not_waited_for_so_not_stuck()
+        => Evaluate(State([Run("build")]), exclusions: ["lint"], expected: ["build", "lint"]).Stuck.Should().BeFalse();
 }

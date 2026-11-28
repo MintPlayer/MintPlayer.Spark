@@ -18,8 +18,6 @@ namespace CodeCoverage.Tests.PrSize;
 /// </summary>
 public class GitHubForgeLabelsTests
 {
-    private static readonly Repository Repo = new() { OwnerLogin = "acme", Name = "web", FullName = "acme/web" };
-
     [Fact]
     public void An_archived_label_reads_as_archived()
     {
@@ -58,42 +56,11 @@ public class GitHubForgeLabelsTests
     }
 
     [Fact]
-    public void The_files_request_asks_for_path_and_counts_with_every_value_a_variable()
-    {
-        using var body = JsonDocument.Parse(GitHubForgeLabels.FilesRequest(Repo, 7, "Y3Vyc29y"));
-        var query = body.RootElement.GetProperty("query").GetString()!;
-        var variables = body.RootElement.GetProperty("variables");
-
-        query.Should().Contain("nodes { path additions deletions }");
-        query.Should().NotContain("acme");
-        variables.GetProperty("owner").GetString().Should().Be("acme");
-        variables.GetProperty("name").GetString().Should().Be("web");
-        variables.GetProperty("number").GetInt32().Should().Be(7);
-        variables.GetProperty("after").GetString().Should().Be("Y3Vyc29y");
-    }
-
-    [Fact]
-    public void A_page_with_more_gives_its_cursor_and_the_last_page_none()
-    {
-        var (files, next) = GitHubForgeLabels.ParseFiles("""
-            {"data":{"repository":{"pullRequest":{"files":{"nodes":[{"path":"a.cs","additions":3,"deletions":1}],
-             "pageInfo":{"hasNextPage":true,"endCursor":"MQ"}}}}}}
-            """, Repo, 7);
-        files.Should().ContainSingle().Which.Should().Be(new ForgePullRequestFile("a.cs", 3, 1));
-        next.Should().Be("MQ");
-
-        var (_, last) = GitHubForgeLabels.ParseFiles("""
-            {"data":{"repository":{"pullRequest":{"files":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}
-            """, Repo, 7);
-        last.Should().BeNull();
-    }
-
-    [Fact]
     public void A_forbidden_answer_names_the_permission()
     {
-        var error = Record.Exception(() => GitHubForgeLabels.ParseFiles("""
+        var error = Record.Exception(() => GitHubForgeLabels.ThrowOnErrors("""
             {"data":null,"errors":[{"type":"FORBIDDEN","message":"Resource not accessible by integration"}]}
-            """, Repo, 7));
+            """, "listing the files of acme/web#7"));
 
         error.Should().BeOfType<ForgeAccessDeniedException>().Which.RequiredPermission.Should().Be("pull_requests=read");
     }
@@ -101,16 +68,18 @@ public class GitHubForgeLabelsTests
     [Fact]
     public void A_rate_limited_or_other_graphql_error_is_a_request_error()
     {
-        var limited = Record.Exception(() => GitHubForgeLabels.ParseFiles("""
+        var limited = Record.Exception(() => GitHubForgeLabels.ThrowOnErrors("""
             {"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}
-            """, Repo, 7));
-        var other = Record.Exception(() => GitHubForgeLabels.ParseFiles("""
+            """, "listing the files of acme/web#7"));
+        var other = Record.Exception(() => GitHubForgeLabels.ThrowOnErrors("""
             {"data":null,"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a PullRequest with the number of 7."}]}
-            """, Repo, 7));
+            """, "listing the files of acme/web#7"));
+        var none = Record.Exception(() => GitHubForgeLabels.ThrowOnErrors("""{"data":{"repository":null}}""", "listing the files of acme/web#7"));
 
         limited.Should().BeOfType<ForgeRequestException>().Which.StatusCode.Should().Be(429);
         other.Should().BeOfType<ForgeRequestException>().Which.Message
             .Should().Be("GitHub refused listing the files of acme/web#7: Could not resolve to a PullRequest with the number of 7.");
+        none.Should().BeNull();
     }
 
     // ── Against a scripted GitHub ────────────────────────────────────────────────────────────────
@@ -139,6 +108,57 @@ public class GitHubForgeLabelsTests
 
     private static async Task<T> Throws<T>(Func<Task> act) where T : Exception
         => (await act.Should().ThrowAsync<T>()).Which;
+
+    /// <summary>
+    /// The files read pages through <c>AllPages</c>: the first page by owner, name and number, the next by the pull request's
+    /// node id and the cursor. Both documents and both answer shapes as captured live against #715 on 2026-11-27.
+    /// </summary>
+    [Fact]
+    public async Task The_files_are_read_page_by_page_with_path_and_counts_only_and_every_value_a_variable()
+    {
+        var github = new StubGitHub()
+            .OnGraphQL("""
+                {"data":{"repository":{"pullRequest":{"id":"PR_kwDOAAAB","files":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},
+                 "nodes":[{"path":"a.cs","additions":3,"deletions":1}]}}}}}
+                """)
+            .OnGraphQL("""
+                {"data":{"node":{"__typename":"PullRequest","files":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},
+                 "nodes":[{"path":"b.cs","additions":0,"deletions":7}]}}}}
+                """);
+
+        var files = await Forge(github).ListPullRequestFilesAsync(Installed, 7);
+
+        files.Should().Equal([new ForgePullRequestFile("a.cs", 3, 1), new ForgePullRequestFile("b.cs", 0, 7)]);
+        github.GraphQLBodies.Should().HaveCount(2);
+        using var first = JsonDocument.Parse(github.GraphQLBodies[0]);
+        first.RootElement.GetProperty("query").GetString().Should().Be(
+            "query($name:String!,$owner:String!,$number:Int!){repository(name:$name,owner:$owner){pullRequest(number:$number)"
+            + "{id files(first:100){pageInfo{hasNextPage endCursor} nodes{path additions deletions}}}}}");
+        var variables = first.RootElement.GetProperty("variables");
+        variables.GetProperty("owner").GetString().Should().Be("acme");
+        variables.GetProperty("name").GetString().Should().Be("widget");
+        variables.GetProperty("number").GetInt32().Should().Be(7);
+        using var next = JsonDocument.Parse(github.GraphQLBodies[1]);
+        next.RootElement.GetProperty("query").GetString().Should().Be(
+            "query($__id:ID!,$__after:String){node(id:$__id){__typename ... on PullRequest"
+            + "{files(first:100,after:$__after){pageInfo{hasNextPage endCursor} nodes{path additions deletions}}}}}");
+        next.RootElement.GetProperty("variables").GetProperty("__id").GetString().Should().Be("PR_kwDOAAAB");
+        next.RootElement.GetProperty("variables").GetProperty("__after").GetString().Should().Be("MQ");
+    }
+
+    [Fact]
+    public async Task A_graphql_error_on_the_files_read_keeps_its_type()
+    {
+        var refused = new StubGitHub().OnGraphQL("""
+            {"data":{"repository":{"pullRequest":null}},"errors":[{"type":"FORBIDDEN","path":["repository","pullRequest"],"message":"Resource not accessible by integration"}]}
+            """);
+        var limited = new StubGitHub().OnGraphQL("""{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}""");
+
+        (await Throws<ForgeAccessDeniedException>(() => Forge(refused).ListPullRequestFilesAsync(Installed, 7)))
+            .RequiredPermission.Should().Be("pull_requests=read");
+        (await Throws<ForgeRequestException>(() => Forge(limited).ListPullRequestFilesAsync(Installed, 7)))
+            .StatusCode.Should().Be(429);
+    }
 
     [Fact]
     public async Task The_repository_labels_are_read_page_by_page_until_a_short_page()
@@ -231,20 +251,6 @@ public class GitHubForgeLabelsTests
         (await forge.RemoveLabelAsync(Installed, 7, "size/XL")).Should().BeFalse("a label the pull request does not carry is already the state we wanted");
 
         added.Should().Equal("""{"labels":["size/M"]}""");
-    }
-
-    [Fact]
-    public async Task The_files_of_a_pull_request_are_read_page_by_page_over_graphql()
-    {
-        var github = new StubGitHub()
-            .OnGraphQL("""{"data":{"repository":{"pullRequest":{"files":{"nodes":[{"path":"a.cs","additions":3,"deletions":1}],"pageInfo":{"hasNextPage":true,"endCursor":"MQ"}}}}}}""")
-            .OnGraphQL("""{"data":{"repository":{"pullRequest":{"files":{"nodes":[{"path":"b.cs","additions":0,"deletions":9}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}""");
-
-        var files = await Forge(github).ListPullRequestFilesAsync(Installed, 7);
-
-        files.Should().Equal(new ForgePullRequestFile("a.cs", 3, 1), new ForgePullRequestFile("b.cs", 0, 9));
-        github.GraphQLBodies.Should().HaveCount(2);
-        github.GraphQLBodies[1].Should().Contain("\"after\":\"MQ\"");
     }
 
     [Fact]

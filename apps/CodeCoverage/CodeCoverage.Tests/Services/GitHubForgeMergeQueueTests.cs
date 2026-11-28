@@ -145,6 +145,41 @@ public class GitHubForgeMergeQueueTests
         rules.Rulesets[0].Bypass.Should().Be(EForgeRulesetBypass.Exempt);
         rules.Rulesets[1].Bypass.Should().Be(EForgeRulesetBypass.Never);
         rules.Rulesets[1].RuleTypes.Should().Equal(["pull_request", "required_status_checks"]);
+        rules.Rulesets[0].RequiredChecks.Should().BeNull();
+        rules.Rulesets[1].RequiredChecks.Should().Equal([new ForgeRequiredCheck("ci")]);
+        rules.RequiredCheckSources().Should().Equal([new ForgeRequiredCheckSource(new ForgeRequiredCheck("ci"), 25066861, "mq-2-reviews-checks")],
+            "#714 C3: the check run names the ruleset that waits for a name");
+    }
+
+    /// <summary>
+    /// #714 Dec4: a required check pinned to an App carries GitHub's <c>integration_id</c>; one rule pinned, one not, one
+    /// pinned to nothing (0, which GitHub answers for "any source"), and a name two rulesets require.
+    /// </summary>
+    [Fact]
+    public async Task A_rulesets_required_checks_carry_their_App_pins()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/main", HttpStatusCode.OK, """
+                [
+                  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"acme/widget","ruleset_id":2,
+                   "parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[
+                     {"context":"coverage/patch","integration_id":4574022},{"context":"ci"},{"context":"lint","integration_id":0},{"context":"ci"}]}},
+                  {"type":"required_status_checks","ruleset_source_type":"Repository","ruleset_source":"acme/widget","ruleset_id":3,
+                   "parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"ci","integration_id":15368}]}}
+                ]
+                """)
+            .On(HttpMethod.Get, $"{Repo}/rulesets/2", HttpStatusCode.OK, Ruleset(2, "mq-2-reviews-checks", "never"))
+            .On(HttpMethod.Get, $"{Repo}/rulesets/3", HttpStatusCode.OK, Ruleset(3, "mq-3-line-checks", "exempt"))
+            .On(HttpMethod.Get, $"{Repo}/branches/main", HttpStatusCode.OK, UnprotectedBranch);
+
+        var rules = await Queue(github).GetBranchRulesAsync(Target(), "main");
+
+        rules.Rulesets[0].RequiredChecks.Should().Equal(
+            [new ForgeRequiredCheck("coverage/patch", 4574022), new ForgeRequiredCheck("ci"), new ForgeRequiredCheck("lint")],
+            "a name once per ruleset, and integration_id 0 is no pin");
+        rules.Rulesets[1].RequiredChecks.Should().Equal([new ForgeRequiredCheck("ci", 15368)]);
+        rules.RequiredCheckSources().Where(source => source.Check.Context == "ci").Select(source => source.RulesetId)
+            .Should().Equal([2L, 3L], "a name two rulesets require is named twice");
     }
 
     /// <summary>
@@ -244,6 +279,8 @@ public class GitHubForgeMergeQueueTests
 
         rules.ClassicProtection.Should().Be(EForgeClassicProtection.ChecksOnly);
         rules.RequiredChecks.Should().Equal(["build"]);
+        rules.ClassicRequiredChecks.Should().Equal([new ForgeRequiredCheck("build", 15368)], "#714 Dec4: classic protection pins by app_id");
+        rules.RequiredCheckSources().Should().ContainSingle().Which.RulesetId.HasValue.Should().BeFalse("classic protection is no ruleset");
     }
 
     [Fact]
@@ -263,6 +300,7 @@ public class GitHubForgeMergeQueueTests
         rules.ClassicProtection.Should().Be(EForgeClassicProtection.Read);
         rules.RequiredApprovals.Should().Be(2);
         rules.RequiredChecks.Should().Equal(["test"]);
+        rules.ClassicRequiredChecks.Should().Equal([new ForgeRequiredCheck("test")], "app_id null is no pin");
         rules.RequireUpToDateBranch.Should().BeTrue();
         rules.HasNativeMergeQueue.Should().BeFalse("the GraphQL read was not answered");
     }
@@ -294,6 +332,10 @@ public class GitHubForgeMergeQueueTests
         rules.HasNativeMergeQueue.Should().BeTrue();
         rules.ClassicProtection.Should().Be(EForgeClassicProtection.Read);
         asked.Should().Contain("\"branch\":\"master\"").And.Contain("\"owner\":\"acme\"", "values go as variables, never into the query");
+        using var json = JsonDocument.Parse(asked!);
+        json.RootElement.GetProperty("query").GetString().Should().Be(
+            "query($name:String!,$owner:String!,$branch:String){repository(name:$name,owner:$owner){mergeQueue(branch:$branch){id}}}",
+            "the typed document as sent, captured live on 2026-11-27");
     }
 
     [Fact]
@@ -306,6 +348,28 @@ public class GitHubForgeMergeQueueTests
             .On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """{"data":{"repository":{"mergeQueue":null}}}""");
 
         (await Queue(github).GetBranchRulesAsync(Target(), "master")).HasNativeMergeQueue.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A GraphQL error on the merge-queue read is no queue, and a rate limit is thrown. Octokit.GraphQL's own connection would
+    /// turn both into one ResponseDeserializerException with the message only (measured 2026-11-27); the adapter reads the
+    /// error types itself.
+    /// </summary>
+    [Fact]
+    public async Task A_graphql_error_on_the_merge_queue_read_is_no_queue_and_a_rate_limit_is_thrown()
+    {
+        StubGitHub Classic(string answer) => new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/master", HttpStatusCode.OK, "[]")
+            .On(HttpMethod.Get, $"{Repo}/branches/master", HttpStatusCode.OK, """{"name":"master","protected":true,"protection":{"enabled":true}}""")
+            .On(HttpMethod.Get, $"{Repo}/branches/master/protection", HttpStatusCode.OK, """{"enforce_admins":{"enabled":false}}""")
+            .On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, answer);
+        var missing = Classic("""
+            {"data":{"repository":null},"errors":[{"type":"NOT_FOUND","path":["repository"],"message":"Could not resolve to a Repository with the name 'acme/widget'."}]}
+            """);
+        var limited = Classic("""{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}""");
+
+        (await Queue(missing).GetBranchRulesAsync(Target(), "master")).HasNativeMergeQueue.Should().BeFalse();
+        await Throws<ForgeRequestException>(() => Queue(limited).GetBranchRulesAsync(Target(), "master"));
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────────────────────────
@@ -332,7 +396,8 @@ public class GitHubForgeMergeQueueTests
         var state = await Queue(github).GetCheckStateAsync(Target(), Head);
 
         state.CheckRuns.Should().HaveCount(2);
-        state.CheckRuns[0].Should().Be(new ForgeCheckRun(1, "ci", "completed", "success", 11, "github-actions", "https://github.com/acme/widget/actions/runs/1/job/1"));
+        state.CheckRuns[0].Should().Be(new ForgeCheckRun(1, "ci", "completed", "success", 11, "github-actions", "https://github.com/acme/widget/actions/runs/1/job/1",
+            AppId: 15368), "#714 Dec4: the App a pinned check must come from");
         state.CheckRuns[1].Conclusion.Should().BeNull();
         state.Statuses.Should().Equal([new ForgeCommitStatus("GitGuardian Security Checks", "failure", "https://dashboard.gitguardian.com/x")]);
         state.Suites.Should().Equal([new ForgeCheckSuite(11, "completed", "success", "github-actions", 1, RunsFollow: true)]);
@@ -378,8 +443,13 @@ public class GitHubForgeMergeQueueTests
             $"[{CheckRun(1, "ci", "completed", "success")},{CheckRun(2, CheckGate.QueueCheckName, status, conclusion)},{CheckRun(3, "build", "completed", "failure")}]",
             """[{"context":"ci","state":"success","target_url":null},{"context":"GitGuardian Security Checks","state":"success","target_url":null}]""");
 
-        (await Queue(github).GetCheckNamesOnCommitAsync(Target(), Head))
-            .Should().Equal(["GitGuardian Security Checks", "build", "ci"]);
+        var checks = await Queue(github).GetChecksOnCommitAsync(Target(), Head);
+
+        checks.Select(check => check.Name).Should().Equal(["GitGuardian Security Checks", "build", "ci"]);
+        checks.Should().AllSatisfy(check => check.OnPullRequest.Should().BeTrue("the head of a pull request"));
+        checks[0].Should().Be(new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.Status, null, OnPullRequest: true));
+        checks[2].Should().Be(new ForgeReportedCheck("ci", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
+            "a run and a status of one name are one name, and the run says which App reported it (#714 Dec4)");
     }
 
     [Fact]
@@ -1047,9 +1117,12 @@ public class GitHubForgeMergeQueueTests
 
     // ── Linked issues (§0 D106) ──────────────────────────────────────────────────────────────────
 
-    /// <summary>The documented GraphQL shape of <c>closingIssuesReferences</c>: one issue here, one elsewhere, one closed.</summary>
+    /// <summary>
+    /// The GraphQL shape of <c>closingIssuesReferences</c> read with <c>AllPages</c> (the pull request's id and the page
+    /// info beside the nodes, captured live on 2026-11-27): one issue here, one elsewhere, one closed.
+    /// </summary>
     private const string ClosingIssues = """
-        {"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"nodes":[
+        {"data":{"repository":{"pullRequest":{"id":"PR_kwDOAAAB","closingIssuesReferences":{"pageInfo":{"hasNextPage":false,"endCursor":"Mw"},"nodes":[
           {"number":284,"state":"OPEN","repository":{"nameWithOwner":"acme/widget"}},
           {"number":12,"state":"OPEN","repository":{"nameWithOwner":"acme/other"}},
           {"number":154,"state":"CLOSED","repository":{"nameWithOwner":"acme/widget"}}]}}}}}
@@ -1073,13 +1146,46 @@ public class GitHubForgeMergeQueueTests
             new ForgeClosingIssue(154, "acme/widget", false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
-        query.Should().Be(GitHubForgeMergeQueue.ClosingIssuesQuery);
+        // The typed document (Octokit.GraphQL, AllPages) as sent, captured live on 2026-11-27 against #717.
+        query.Should().Be("query($name:String!,$owner:String!,$number:Int!){repository(name:$name,owner:$owner){pullRequest(number:$number)"
+            + "{id closingIssuesReferences(first:100){pageInfo{hasNextPage endCursor} nodes{number state repository{nameWithOwner}}}}}}");
         query.Should().NotContain("acme").And.NotContain("518");
         var variables = json.RootElement.GetProperty("variables");
         variables.GetProperty("owner").GetString().Should().Be("acme");
         variables.GetProperty("name").GetString().Should().Be("widget");
         variables.GetProperty("number").GetInt32().Should().Be(518);
-        variables.GetProperty("first").GetInt32().Should().Be(ForgeClosingIssue.MaxListed);
+    }
+
+    [Fact]
+    public async Task Closing_issues_are_read_to_the_last_page()
+    {
+        var posted = new List<string?>();
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", (_, body) =>
+        {
+            posted.Add(body);
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK, posted.Count == 1
+                ? """
+                  {"data":{"repository":{"pullRequest":{"id":"PR_kwDOAAAB","closingIssuesReferences":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},
+                   "nodes":[{"number":284,"state":"OPEN","repository":{"nameWithOwner":"acme/widget"}}]}}}}}
+                  """
+                : """
+                  {"data":{"node":{"__typename":"PullRequest","closingIssuesReferences":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},
+                   "nodes":[{"number":285,"state":"CLOSED","repository":{"nameWithOwner":"acme/widget"}}]}}}}
+                  """);
+        });
+
+        var issues = await Queue(github).GetClosingIssuesAsync(Target(), 518);
+
+        issues.Should().Equal([new ForgeClosingIssue(284, "acme/widget", true), new ForgeClosingIssue(285, "acme/widget", false)]);
+        posted.Should().HaveCount(2);
+        using var next = JsonDocument.Parse(posted[1]!);
+        // The next page goes by the pull request's node id and the cursor, as Octokit.GraphQL pages (the files read's twin
+        // was captured live on 2026-11-27).
+        next.RootElement.GetProperty("query").GetString().Should().Be(
+            "query($__id:ID!,$__after:String){node(id:$__id){__typename ... on PullRequest"
+            + "{closingIssuesReferences(first:100,after:$__after){pageInfo{hasNextPage endCursor} nodes{number state repository{nameWithOwner}}}}}}");
+        next.RootElement.GetProperty("variables").GetProperty("__id").GetString().Should().Be("PR_kwDOAAAB");
+        next.RootElement.GetProperty("variables").GetProperty("__after").GetString().Should().Be("MQ");
     }
 
     [Fact]
@@ -1111,20 +1217,26 @@ public class GitHubForgeMergeQueueTests
 
     /// <summary>
     /// The documented shape of <c>statusCheckRollup</c>: the default branch's head with a check run and a status, and two
-    /// open pull requests, one repeating <c>build</c> and carrying the queue's own check, one with no rollup at all.
+    /// open pull requests, one repeating <c>build</c> and carrying the queue's own check, one with no rollup at all. The
+    /// target names its type, and every paged connection carries its page info and its parent's id, as GitHub answers the
+    /// typed <c>AllPages</c> document (captured live on 2026-11-27).
     /// </summary>
     private const string ReportedChecks = """
-        {"data":{"repository":{
-          "defaultBranchRef":{"target":{"statusCheckRollup":{"contexts":{"nodes":[
-            {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions"}}},
+        {"data":{"repository":{"id":"R_kgDOAAAB",
+          "defaultBranchRef":{"target":{"__typename":"Commit","statusCheckRollup":{"id":"SCR_head","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+            {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
             {"__typename":"StatusContext","context":"ci/legacy"}]}}}},
-          "pullRequests":{"nodes":[
-            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[
-              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions"}}},
-              {"__typename":"CheckRun","name":"Merge queue","checkSuite":{"app":{"slug":"coveragedevelopment"}}},
-              {"__typename":"CheckRun","name":"GitGuardian Security Checks","checkSuite":{"app":{"slug":"gitguardian"}}}]}}}}]}},
+          "pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"id":"SCR_pull","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"Mw"},"nodes":[
+              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}},
+              {"__typename":"CheckRun","name":"Merge queue","checkSuite":{"app":{"slug":"coveragedevelopment","databaseId":4574022}}},
+              {"__typename":"CheckRun","name":"GitGuardian Security Checks","checkSuite":{"app":{"slug":"gitguardian","databaseId":46505}}}]}}}}]}},
             {"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}]}}}}
         """;
+
+    /// <summary>The rollup selection both halves of the reported-checks document share, as sent.</summary>
+    private const string RollupContexts = "contexts(first:100){pageInfo{hasNextPage endCursor} nodes{__typename ... on CheckRun"
+        + "{name checkSuite{app{slug databaseId}}} ... on StatusContext{context}}}";
 
     [Fact]
     public async Task Reported_checks_are_read_through_one_graphql_query_with_every_value_a_variable()
@@ -1141,18 +1253,69 @@ public class GitHubForgeMergeQueueTests
         // #554: build, seen on the default branch first, is marked by the pull request that repeats it; ci/legacy reported
         // on the default branch alone, so it is not offered as a required check.
         checks.Should().Equal([
-            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian", OnPullRequest: true),
-            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true),
+            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian", OnPullRequest: true, AppId: 46505),
+            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
             new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null, OnPullRequest: false)]);
         using var json = JsonDocument.Parse(posted!);
         var query = json.RootElement.GetProperty("query").GetString();
-        query.Should().Be(GitHubForgeMergeQueue.ReportedChecksQuery);
+        // The typed AllPages document as sent, captured live on 2026-11-27 (34 contexts and 9 open pull requests: one request).
+        const string rollup = "statusCheckRollup{id " + RollupContexts + "}";
+        query.Should().Be("query($name:String!,$owner:String!){repository(name:$name,owner:$owner){id defaultBranchRef{target{__typename ... on Commit{"
+            + rollup + "}}} pullRequests(states:[OPEN],first:100){pageInfo{hasNextPage endCursor} nodes{commits(last:1){nodes{commit{"
+            + rollup + "}}}}}}}");
         query.Should().NotContain("acme").And.NotContain("widget");
         var variables = json.RootElement.GetProperty("variables");
         variables.GetProperty("owner").GetString().Should().Be("acme");
         variables.GetProperty("name").GetString().Should().Be("widget");
-        variables.GetProperty("pulls").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPullRequests);
-        variables.GetProperty("contexts").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPerCommit);
+    }
+
+    /// <summary>
+    /// A rollup with more contexts than a page, and more open pull requests than a page: each next page goes by its parent's
+    /// node id and the cursor (the shapes captured live on 2026-11-27 with pages of 5 contexts and 3 pull requests).
+    /// </summary>
+    [Fact]
+    public async Task Reported_checks_are_read_to_the_last_page_of_every_connection()
+    {
+        var posted = new List<string>();
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", (_, body) =>
+        {
+            posted.Add(body!);
+            var query = JsonDocument.Parse(body!).RootElement.GetProperty("query").GetString()!;
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK,
+                query.Contains("... on StatusCheckRollup", StringComparison.Ordinal)
+                    ? """
+                      {"data":{"node":{"__typename":"StatusCheckRollup","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+                        {"__typename":"StatusContext","context":"ci/second-page"}]}}}}
+                      """
+                    : query.Contains("... on Repository", StringComparison.Ordinal)
+                        ? """
+                          {"data":{"node":{"__typename":"Repository","pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":"Mg"},"nodes":[
+                            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"id":"SCR_pull2","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"MQ"},"nodes":[
+                              {"__typename":"CheckRun","name":"lint","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}}]}}}}]}}]}}}}
+                          """
+                        : """
+                          {"data":{"repository":{"id":"R_kgDOAAAB",
+                            "defaultBranchRef":{"target":{"__typename":"Commit","statusCheckRollup":{"id":"SCR_head","contexts":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},"nodes":[
+                              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}}]}}}},
+                            "pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"MQ"},"nodes":[
+                              {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"id":"SCR_pull1","contexts":{"pageInfo":{"hasNextPage":false,"endCursor":"MQ"},"nodes":[
+                                {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions","databaseId":15368}}}]}}}}]}}]}}}}
+                          """);
+        });
+
+        var checks = await Queue(github).GetReportedCheckNamesAsync(Target());
+
+        checks.Should().Equal([
+            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368),
+            new ForgeReportedCheck("ci/second-page", EForgeCheckKind.Status, null, OnPullRequest: false),
+            new ForgeReportedCheck("lint", EForgeCheckKind.CheckRun, "github-actions", OnPullRequest: true, AppId: 15368)]);
+        posted.Should().HaveCount(3);
+        var next = posted.Skip(1).Select(body => JsonDocument.Parse(body).RootElement).ToList();
+        next.Select(body => body.GetProperty("variables").GetProperty("__id").GetString())
+            .Should().BeEquivalentTo(["R_kgDOAAAB", "SCR_head"]);
+        next.Select(body => body.GetProperty("query").GetString()).Should().Contain(
+            "query($__id:ID!,$__after:String){node(id:$__id){__typename ... on StatusCheckRollup{contexts(first:100,after:$__after)"
+            + "{pageInfo{hasNextPage endCursor} nodes{__typename ... on CheckRun{name checkSuite{app{slug databaseId}}} ... on StatusContext{context}}}}}}");
     }
 
     [Fact]

@@ -35,6 +35,12 @@ public static class CheckGate
     /// <summary>The name of the queue's own check run.</summary>
     public const string QueueCheckName = "Merge queue";
 
+    /// <summary>
+    /// The App of the forge's own workflow runs (GitHub Actions). Only its runs come and go with the workflow files, so only
+    /// an expected name it reported may be dropped once the base changed them (#714 Dec9, S3's rule).
+    /// </summary>
+    public const string WorkflowRunsAppSlug = "github-actions";
+
     /// <summary>Evaluates <paramref name="state"/>.</summary>
     /// <param name="exclusions">Names the owner excluded (O12), matched ignoring case (D118). Ignored for names in
     /// <paramref name="required"/>, also compared ignoring case.</param>
@@ -166,4 +172,11 @@ public sealed record CheckGateResult(
     IReadOnlyList<string> Missing,
     IReadOnlyList<string> PendingSuites,
     IReadOnlyList<string> Passed,
-    IReadOnlyList<string> Excluded);
+    IReadOnlyList<string> Excluded)
+{
+    /// <summary>
+    /// Stuck (#714 C1): nothing failed, nothing is pending, no suite is running, and a required or expected name has not
+    /// reported. Only a late workflow or an outside status can still free it, or a change to the rules.
+    /// </summary>
+    public bool Stuck => Verdict == ECheckVerdict.Pending && Pending.Count == 0 && PendingSuites.Count == 0 && Missing.Count > 0;
+}

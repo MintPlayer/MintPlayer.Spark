@@ -7,7 +7,8 @@
     "repository, so RequiredChecks offers the checks seen on its pull requests (Repository_PullRequestChecks), and \"Add",
     "new\" names one that has not reported yet. LineRequiredChecks (R2, docs/release_lines_recovery_plan.md) are the release",
     "lines' own required checks (ruleset 3); the action hides the field for a repository without release lines, where the",
-    "planner ignores it."
+    "planner ignores it. SummaryJob (#714 Dec3) is the one CI job that waits for every other job: with it, rulesets 2 and 3",
+    "require that job and the App's own checks only, so a renamed job never touches them."
   ],
   "persistentObject": {
     "id": "c5980da3-b622-46cb-b65e-e6fcbbbd48e7",
@@ -54,12 +55,27 @@
         "rules": []
       },
       {
+        "id": "cb2ed736-06d1-451c-9da6-202b2891d53d",
+        "name": "SummaryJob",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "query": "Repository_PullRequestChecks",
+        "referenceType": "CodeCoverage.Entities.ForgeCheck",
+        "canAddNewReference": true,
+        "defaultAttribute": "Name",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "cac3a7e6-a236-44e7-9ae0-52bd8362e230",
         "name": "LineRequiredChecks",
         "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 4,
+        "order": 5,
         "query": "Repository_PullRequestChecks",
         "referenceType": "CodeCoverage.Entities.ForgeCheck",
         "canAddNewReference": true,

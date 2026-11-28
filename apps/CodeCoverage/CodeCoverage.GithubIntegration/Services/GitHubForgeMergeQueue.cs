@@ -9,9 +9,14 @@ using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit;
+using Octokit.GraphQL;
 using Raven.Client.Documents.Session;
+using static Octokit.GraphQL.Variable;
 using Account = CodeCoverage.Entities.Account;
 using EForgeCheckKind = CodeCoverage.Entities.EForgeCheckKind;
+using Gql = Octokit.GraphQL.Model;
+using GraphQLQuery = Octokit.GraphQL.Query;
+using IGraphQLConnection = Octokit.GraphQL.IConnection;
 using Repository = CodeCoverage.Entities.Repository;
 
 namespace CodeCoverage.Services;
@@ -26,6 +31,12 @@ namespace CodeCoverage.Services;
 /// <c>current_user_can_bypass</c>), and <c>merge-async</c> needs its own <c>X-GitHub-Api-Version</c>, which
 /// Octokit cannot send per request. The installation token is the bearer, exactly as Octokit would send it.
 /// The check run, labels and comments go through Octokit, like the coverage feedback.
+/// </para>
+/// <para>
+/// <b>GraphQL as typed documents.</b> The merge-queue, reported-checks and closing-issues reads are Octokit.GraphQL
+/// queries (<c>new Query()…Compile()</c>, every value a <c>Var</c>), run over this class's own plumbing through
+/// <see cref="GraphQLConnection"/>: Octokit builds the document and reads the answer, while the token, the rate-limit
+/// classification and the GraphQL error types stay this class's (measured live on 2026-11-27, #714).
 /// </para>
 /// <para>
 /// The response shapes are the ones measured live on 2026-10-14 (the PRD's D13–D19, spike notes
@@ -123,73 +134,78 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
 
         var typesByRuleset = new Dictionary<long, List<string>>();
+        var checksByRuleset = new Dictionary<long, List<ForgeRequiredCheck>>();
         foreach (var rule in rules)
         {
             var type = Str(rule, "type") ?? string.Empty;
-            accumulator.AddRule(type, rule.TryGetProperty("parameters", out var parameters) ? parameters : default);
+            var parameters = rule.TryGetProperty("parameters", out var found) ? found : default;
+            accumulator.AddRule(type, parameters);
             if (Num(rule, "ruleset_id") is { } rulesetId)
             {
                 if (!typesByRuleset.TryGetValue(rulesetId, out var types))
                     typesByRuleset[rulesetId] = types = [];
                 if (!types.Contains(type)) types.Add(type);
+                if (type == "required_status_checks")
+                {
+                    if (!checksByRuleset.TryGetValue(rulesetId, out var checks))
+                        checksByRuleset[rulesetId] = checks = [];
+                    checks.AddRange(RulesetRequiredChecks(parameters).Where(check => !checks.Contains(check)));
+                }
             }
         }
 
         var rulesets = new List<ForgeRuleset>();
         foreach (var (rulesetId, types) in typesByRuleset.OrderBy(pair => pair.Key))
-            rulesets.Add(await ReadRulesetAsync(repository, rulesetId, types, cancellationToken));
+            rulesets.Add(await ReadRulesetAsync(repository, rulesetId, types, checksByRuleset.GetValueOrDefault(rulesetId), cancellationToken));
 
         var classic = await ReadClassicProtectionAsync(repository, branchPath, accumulator, cancellationToken);
 
         return accumulator.Build(rulesetsAvailable, rulesets, classic);
     }
 
-    private const string MergeQueueQuery = """
-        query($owner: String!, $name: String!, $branch: String!) {
-          repository(owner: $owner, name: $name) { mergeQueue(branch: $branch) { id } }
-        }
-        """;
+    /// <summary>GraphQL <c>repository.mergeQueue(branch)</c>; owner, name and branch are variables, never part of the text.</summary>
+    private static readonly ICompiledQuery<MergeQueueAnswer> MergeQueueQuery = new GraphQLQuery()
+        .Repository(owner: Var("owner"), name: Var("name"))
+        .Select(r => new MergeQueueAnswer(r.MergeQueue(Var("branch")).Select(queue => queue.Id.Value).SingleOrDefault()))
+        .Compile();
 
     /// <summary>
     /// GitHub's own merge queue is on for <paramref name="branchPath"/> (GraphQL <c>repository.mergeQueue</c>, non-null for a
-    /// ruleset's queue and a classic rule's alike). Owner, name and branch go as variables. A reply that is not an answer
-    /// (no GraphQL access, a missing repository) reads as no queue and is logged; a rate limit is thrown, as elsewhere.
+    /// ruleset's queue and a classic rule's alike). A reply that is not an answer (no GraphQL access, a missing repository)
+    /// reads as no queue and is logged; a rate limit is thrown, as elsewhere.
     /// </summary>
     private async Task<bool> HasMergeQueueAsync(Repository repository, string branchPath, CancellationToken cancellationToken)
     {
-        var body = new Dictionary<string, object?>
+        var variables = new Dictionary<string, object>
         {
-            ["query"] = MergeQueueQuery,
-            ["variables"] = new Dictionary<string, object?>
-            {
-                ["owner"] = repository.OwnerLogin,
-                ["name"] = repository.Name,
-                ["branch"] = Uri.UnescapeDataString(branchPath),
-            },
+            ["owner"] = repository.OwnerLogin,
+            ["name"] = repository.Name,
+            ["branch"] = Uri.UnescapeDataString(branchPath),
         };
-        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
-        if (reply.Status != HttpStatusCode.OK)
+        try
+        {
+            var answer = await RunGraphQLAsync(repository, MergeQueueQuery, variables, cancellationToken);
+            return answer?.MergeQueueId is not null;
+        }
+        catch (GraphQLReplyException reply) when (reply.HttpFailure is not null)
         {
             logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue ({Status}).", repository.FullName, (int)reply.Status);
             return false;
         }
-        var root = reply.Json?.RootElement ?? default;
-        var errors = Items(root, "errors").ToList();
-        if (errors.Count > 0)
+        catch (GraphQLReplyException reply)
         {
-            if (GraphQLRateLimit(errors, $"the merge queue of {repository.FullName}") is { } limited)
+            if (GraphQLRateLimit(reply.Errors, $"the merge queue of {repository.FullName}") is { } limited)
                 throw new ForgeRequestException($"GitHub rate-limited the merge-queue read of {repository.FullName}.", (int)reply.Status, limited);
-            logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue: {Errors}", repository.FullName,
-                string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message")));
+            logger.LogWarning("Could not ask GitHub whether {FullName} has a merge queue: {Errors}", repository.FullName, reply.Messages);
             return false;
         }
-        return Child(Child(Child(root, "data"), "repository"), "mergeQueue").ValueKind == JsonValueKind.Object;
     }
 
     private static bool IsPlanWithoutRulesets(string message)
         => message.Contains("Upgrade to GitHub Pro", StringComparison.OrdinalIgnoreCase);
 
-    private async Task<ForgeRuleset> ReadRulesetAsync(Repository repository, long rulesetId, List<string> types, CancellationToken cancellationToken)
+    private async Task<ForgeRuleset> ReadRulesetAsync(
+        Repository repository, long rulesetId, List<string> types, List<ForgeRequiredCheck>? requiredChecks, CancellationToken cancellationToken)
     {
         using var reply = await SendAsync(repository, HttpMethod.Get,
             $"{RepoPath(repository)}/rulesets/{rulesetId.ToString(CultureInfo.InvariantCulture)}", null, DefaultApiVersion, cancellationToken);
@@ -197,13 +213,25 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         {
             // Unknown, not Never: the enable-time check (T7) must refuse what it could not read.
             logger.LogWarning("Could not read ruleset {RulesetId} on {FullName} ({Status}).", rulesetId, repository.FullName, (int)reply.Status);
-            return new ForgeRuleset(rulesetId, null, types, EForgeRulesetBypass.Unknown);
+            return new ForgeRuleset(rulesetId, null, types, EForgeRulesetBypass.Unknown, requiredChecks);
         }
         EnsureSuccess(reply);
 
         var root = reply.Json!.RootElement;
-        return new ForgeRuleset(rulesetId, Str(root, "name"), types, ParseBypass(Str(root, "current_user_can_bypass")));
+        return new ForgeRuleset(rulesetId, Str(root, "name"), types, ParseBypass(Str(root, "current_user_can_bypass")), requiredChecks);
     }
+
+    /// <summary>
+    /// A ruleset's <c>required_status_checks</c> rule: each <c>context</c> with its <c>integration_id</c>, the App the check
+    /// is pinned to (absent: any source may report it).
+    /// </summary>
+    private static IEnumerable<ForgeRequiredCheck> RulesetRequiredChecks(JsonElement parameters)
+        => Items(parameters, "required_status_checks")
+            .Where(check => Str(check, "context") is { Length: > 0 })
+            .Select(check => new ForgeRequiredCheck(Str(check, "context")!, AppPin(Num(check, "integration_id"))));
+
+    /// <summary>A pin as GitHub states it; classic protection's <c>-1</c> ("any App") and a missing value both mean none.</summary>
+    private static long? AppPin(long? id) => id is > 0 ? id : null;
 
     internal static EForgeRulesetBypass ParseBypass(string? word) => word switch
     {
@@ -259,6 +287,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     private sealed class RulesAccumulator
     {
         private readonly SortedSet<string> requiredChecks = new(StringComparer.Ordinal);
+        // Classic protection lists each check twice (`contexts`, then `checks` with its App); a pin wins over none.
+        private readonly SortedDictionary<string, long?> classicChecks = new(StringComparer.Ordinal);
         private int approvals;
         private bool dismissStale;
         private bool lastPush;
@@ -291,9 +321,15 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             if (checks.ValueKind != JsonValueKind.Object) return;
             upToDate |= Flag(checks, "strict");
             foreach (var context in Items(checks, "contexts"))
-                if (context.ValueKind == JsonValueKind.String && context.GetString() is { Length: > 0 } name) requiredChecks.Add(name);
+                if (context.ValueKind == JsonValueKind.String && context.GetString() is { Length: > 0 } name) AddClassic(name, null);
             foreach (var check in Items(checks, "checks"))
-                if (Str(check, "context") is { Length: > 0 } name) requiredChecks.Add(name);
+                if (Str(check, "context") is { Length: > 0 } name) AddClassic(name, AppPin(Num(check, "app_id")));
+        }
+
+        private void AddClassic(string name, long? appId)
+        {
+            requiredChecks.Add(name);
+            classicChecks[name] = appId ?? classicChecks.GetValueOrDefault(name);
         }
 
         public void AddClassicReviews(JsonElement reviews)
@@ -305,7 +341,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
 
         public ForgeBranchRules Build(bool rulesetsAvailable, IReadOnlyList<ForgeRuleset> rulesets, EForgeClassicProtection classic)
-            => new(rulesetsAvailable, [.. requiredChecks], approvals, dismissStale, lastPush, upToDate, nativeQueue, rulesets, classic);
+            => new(rulesetsAvailable, [.. requiredChecks], approvals, dismissStale, lastPush, upToDate, nativeQueue, rulesets, classic,
+                classicChecks.Count == 0 ? null : [.. classicChecks.Select(pair => new ForgeRequiredCheck(pair.Key, pair.Value))]);
     }
 
     // ── Checks ───────────────────────────────────────────────────────────────────────────────────
@@ -327,8 +364,9 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 Str(run, "status") ?? "queued",
                 Str(run, "conclusion"),
                 run.TryGetProperty("check_suite", out var suite) ? Num(suite, "id") : null,
-                run.TryGetProperty("app", out var app) ? Str(app, "slug") : null,
-                Str(run, "details_url") ?? Str(run, "html_url")))],
+                Str(Child(run, "app"), "slug"),
+                Str(run, "details_url") ?? Str(run, "html_url"),
+                Num(Child(run, "app"), "id")))],
             [.. statuses.Select(status => new ForgeCommitStatus(
                 Str(status, "context") ?? string.Empty,
                 Str(status, "state") ?? "pending",
@@ -349,111 +387,105 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <summary>GitHub Actions' App: its suite belongs to a workflow run, so it always gets runs (#616).</summary>
     internal const string ActionsAppSlug = "github-actions";
 
-    public async Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ForgeReportedCheck>> GetChecksOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
     {
         RequireSha(sha);
         var commit = $"{RepoPath(repository)}/commits/{sha}";
         var runs = await GetPagedAsync(repository, $"{commit}/check-runs?filter=latest", "check_runs", cancellationToken);
         var statuses = await GetPagedAsync(repository, $"{commit}/status", "statuses", cancellationToken);
 
-        return [.. runs.Select(run => Str(run, "name"))
-            .Concat(statuses.Select(status => Str(status, "context")))
-            .OfType<string>()
-            .Where(name => name.Length > 0 && name != CheckGate.QueueCheckName)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)];
+        // The head of a pull request (D45), so every check on it reported on a pull request (#554).
+        return [.. runs
+            .Select(run => Str(run, "name") is { Length: > 0 } name
+                ? new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(run, "app"), "slug"), OnPullRequest: true,
+                    AppId: Num(Child(run, "app"), "id"))
+                : null)
+            .Concat(statuses.Select(status => Str(status, "context") is { Length: > 0 } name
+                ? new ForgeReportedCheck(name, EForgeCheckKind.Status, null, OnPullRequest: true)
+                : null))
+            .OfType<ForgeReportedCheck>()
+            .Where(check => check.Name != CheckGate.QueueCheckName)
+            .DistinctBy(check => check.Name, StringComparer.Ordinal)
+            .OrderBy(check => check.Name, StringComparer.Ordinal)];
     }
 
     // ── The checks a repository has seen (§11 D109) ──────────────────────────────────────────────
 
-    /// <summary>The open pull requests whose head commit the backfill reads: one page, most recently updated first.</summary>
-    internal const int ReportedChecksPullRequests = 50;
-
-    /// <summary>The checks read per commit; a commit with more is rare, and the webhooks fill in the rest.</summary>
-    internal const int ReportedChecksPerCommit = 100;
-
     /// <summary>
-    /// The status check rollup of the default branch's head and of every listed open pull request's head commit, in one
-    /// request. Every value is a variable, never part of the text.
+    /// The status check rollup of the default branch's head and of every open pull request's head commit. Every
+    /// connection is read to its end (<c>AllPages</c>, owner's decision 2026-11-27): Octokit.GraphQL sends the first page
+    /// of each in one request and fetches the rest by cursor. Every value is a variable, never part of the text.
     /// </summary>
-    internal const string ReportedChecksQuery = """
-        query($owner: String!, $name: String!, $pulls: Int!, $contexts: Int!) {
-          repository(owner: $owner, name: $name) {
-            defaultBranchRef { target { ... on Commit { ...Reported } } }
-            pullRequests(states: OPEN, first: $pulls, orderBy: { field: UPDATED_AT, direction: DESC }) {
-              nodes { commits(last: 1) { nodes { commit { ...Reported } } } }
-            }
-          }
-        }
-        fragment Reported on Commit {
-          statusCheckRollup {
-            contexts(first: $contexts) {
-              nodes {
-                __typename
-                ... on CheckRun { name checkSuite { app { slug } } }
-                ... on StatusContext { context }
-              }
-            }
-          }
-        }
-        """;
+    /// <remarks>
+    /// The rollup selection is written twice: Octokit.GraphQL 0.4.0-beta threw a NullReferenceException compiling it as a
+    /// <c>Fragment</c> (measured live on 2026-11-27).
+    /// </remarks>
+    private static readonly ICompiledQuery<ReportedAnswer> ReportedChecksQuery = new GraphQLQuery()
+        .Repository(owner: Var("owner"), name: Var("name"))
+        .Select(r => new ReportedAnswer(
+            r.DefaultBranchRef
+                .Select(branch => branch.Target.Cast<Gql.Commit>().StatusCheckRollup
+                    .Select(rollup => rollup.Contexts(null, null, null, null).AllPages()
+                        .Select(context => context.Switch<RollupContext>(when => when
+                            .CheckRun(run => new RollupContext(EForgeCheckKind.CheckRun, run.Name,
+                                run.CheckSuite.App.Select(app => new CheckApp(app.Slug, app.DatabaseId)).SingleOrDefault()))
+                            .StatusContext(status => new RollupContext(EForgeCheckKind.Status, status.Context, null))))
+                        .ToList())
+                    .SingleOrDefault())
+                .SingleOrDefault(),
+            r.PullRequests(null, null, null, null, null, null, null, null, new[] { Gql.PullRequestState.Open })
+                .AllPages()
+                .Select(pull => new PullHead(pull.Commits(null, null, 1, null).Nodes
+                    .Select(node => node.Commit.StatusCheckRollup
+                        .Select(rollup => rollup.Contexts(null, null, null, null).AllPages()
+                            .Select(context => context.Switch<RollupContext>(when => when
+                                .CheckRun(run => new RollupContext(EForgeCheckKind.CheckRun, run.Name,
+                                    run.CheckSuite.App.Select(app => new CheckApp(app.Slug, app.DatabaseId)).SingleOrDefault()))
+                                .StatusContext(status => new RollupContext(EForgeCheckKind.Status, status.Context, null))))
+                            .ToList())
+                        .SingleOrDefault())
+                    .ToList()))
+                .ToList()))
+        .Compile();
 
     /// <remarks>
-    /// GraphQL's <c>statusCheckRollup</c>, through the same raw plumbing as <see cref="GetClosingIssuesAsync"/>: REST would
-    /// take three calls per commit. A refusal is a 200 with a <c>FORBIDDEN</c> error, a missing repository a 200 with
-    /// <c>NOT_FOUND</c>. An installation without Commit statuses: read loses the <c>StatusContext</c> entries only, which
+    /// GraphQL's <c>statusCheckRollup</c>, as a typed document over this class's plumbing (<see cref="RunGraphQLAsync"/>):
+    /// REST would take three calls per commit. A refusal is a 200 with a <c>FORBIDDEN</c> error, a missing repository a 200
+    /// with <c>NOT_FOUND</c>. An installation without Commit statuses: read loses the <c>StatusContext</c> entries only, which
     /// the D95 notice already reports.
     /// </remarks>
     public async Task<IReadOnlyList<ForgeReportedCheck>> GetReportedCheckNamesAsync(Repository repository, CancellationToken cancellationToken = default)
     {
-        var body = new Dictionary<string, object?>
+        var variables = new Dictionary<string, object>
         {
-            ["query"] = ReportedChecksQuery,
-            ["variables"] = new Dictionary<string, object?>
-            {
-                ["owner"] = repository.OwnerLogin,
-                ["name"] = repository.Name,
-                ["pulls"] = ReportedChecksPullRequests,
-                ["contexts"] = ReportedChecksPerCommit,
-            },
+            ["owner"] = repository.OwnerLogin,
+            ["name"] = repository.Name,
         };
 
-        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
-        EnsureSuccess(reply);
-        var root = reply.Json?.RootElement ?? default;
-
-        var errors = Items(root, "errors").ToList();
-        if (errors.Count > 0)
+        ReportedAnswer? answer;
+        try
         {
-            var messages = string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message"));
-            if (errors.Any(e => Str(e, "type") == "FORBIDDEN"))
-                throw new ForgeAccessDeniedException($"GitHub refused the checks of {repository.FullName}: {messages}", reply.AcceptedPermissions);
-            if (errors.All(e => Str(e, "type") == "NOT_FOUND"))
-                return [];
-            throw new ForgeRequestException($"GitHub answered the checks of {repository.FullName} with errors: {messages}", (int)reply.Status,
-                GraphQLRateLimit(errors, $"the checks of {repository.FullName}"));
+            answer = await RunGraphQLAsync(repository, ReportedChecksQuery, variables, cancellationToken);
+        }
+        catch (GraphQLReplyException reply)
+        {
+            reply.ThrowUnlessNotFound($"the checks of {repository.FullName}");
+            return [];
         }
 
-        var repo = Child(Child(root, "data"), "repository");
         // A pull request's head commit marks its checks OnPullRequest (#554); the default branch's head does not, because a
         // push-only job reports there and must never be offered as a required check.
-        var commits = new List<(JsonElement Commit, bool OnPullRequest)> { (Child(Child(repo, "defaultBranchRef"), "target"), false) };
-        foreach (var pull in Items(Child(repo, "pullRequests"), "nodes"))
-            commits.AddRange(Items(Child(pull, "commits"), "nodes").Select(node => (Child(node, "commit"), true)));
+        var rollups = new List<(IEnumerable<RollupContext?>? Contexts, bool OnPullRequest)> { (answer?.DefaultBranch, false) };
+        foreach (var pull in answer?.PullRequests ?? [])
+            rollups.AddRange((pull?.Commits ?? []).Select(contexts => ((IEnumerable<RollupContext?>?)contexts, true)));
 
         var found = new Dictionary<string, ForgeReportedCheck>(StringComparer.Ordinal);
-        foreach (var (commit, onPullRequest) in commits)
-        foreach (var context in Items(Child(Child(commit, "statusCheckRollup"), "contexts"), "nodes"))
+        foreach (var (contexts, onPullRequest) in rollups)
+        foreach (var context in contexts ?? [])
         {
-            var check = Str(context, "__typename") switch
-            {
-                "CheckRun" when Str(context, "name") is { Length: > 0 } name
-                    => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(Child(context, "checkSuite"), "app"), "slug"), onPullRequest),
-                "StatusContext" when Str(context, "context") is { Length: > 0 } name
-                    => new ForgeReportedCheck(name, EForgeCheckKind.Status, null, onPullRequest),
-                _ => null,
-            };
-            if (check is null || check.Name == CheckGate.QueueCheckName) continue;
+            // Null: a union member the document does not select.
+            if (context is not { Name.Length: > 0 } || context.Name == CheckGate.QueueCheckName) continue;
+            var check = new ForgeReportedCheck(context.Name, context.Kind, context.App?.Slug, onPullRequest, context.App?.DatabaseId);
             if (!found.TryAdd(check.Name, check) && check.OnPullRequest && !found[check.Name].OnPullRequest)
                 found[check.Name] = found[check.Name] with { OnPullRequest = true };
         }
@@ -1233,58 +1265,48 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
 
     // ── Linked issues (§0 D106) ──────────────────────────────────────────────────────────────────
 
-    /// <summary>The closing issue references of one pull request; every value is a variable, never part of the text.</summary>
-    internal const string ClosingIssuesQuery = """
-        query($owner: String!, $name: String!, $number: Int!, $first: Int!) {
-          repository(owner: $owner, name: $name) {
-            pullRequest(number: $number) {
-              closingIssuesReferences(first: $first) { nodes { number state repository { nameWithOwner } } }
-            }
-          }
-        }
-        """;
+    /// <summary>
+    /// Every closing issue reference of one pull request, page after page (<c>AllPages</c>, owner's decision 2026-11-27);
+    /// every value is a variable, never part of the text.
+    /// </summary>
+    private static readonly ICompiledQuery<IEnumerable<ClosingIssueAnswer>> ClosingIssuesQuery = new GraphQLQuery()
+        .Repository(owner: Var("owner"), name: Var("name"))
+        .PullRequest(Var("number"))
+        .ClosingIssuesReferences()
+        .AllPages()
+        .Select(issue => new ClosingIssueAnswer(issue.Number, issue.State, issue.Repository.NameWithOwner))
+        .Compile();
 
     /// <remarks>
-    /// GraphQL's <c>closingIssuesReferences</c>: REST lists no closing references. Sent raw like the rest of this class,
-    /// owner, name and number as variables. GraphQL answers a refusal with 200 and an <c>errors</c> entry of type
+    /// GraphQL's <c>closingIssuesReferences</c>: REST lists no closing references. A typed document over this class's
+    /// plumbing (<see cref="RunGraphQLAsync"/>). GraphQL answers a refusal with 200 and an <c>errors</c> entry of type
     /// <c>FORBIDDEN</c>, and a missing repository or pull request with 200 and <c>NOT_FOUND</c>.
     /// </remarks>
     public async Task<IReadOnlyList<ForgeClosingIssue>> GetClosingIssuesAsync(Repository repository, int number, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(number);
-        var body = new Dictionary<string, object?>
+        var variables = new Dictionary<string, object>
         {
-            ["query"] = ClosingIssuesQuery,
-            ["variables"] = new Dictionary<string, object?>
-            {
-                ["owner"] = repository.OwnerLogin,
-                ["name"] = repository.Name,
-                ["number"] = number,
-                ["first"] = ForgeClosingIssue.MaxListed,
-            },
+            ["owner"] = repository.OwnerLogin,
+            ["name"] = repository.Name,
+            ["number"] = number,
         };
 
-        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
-        EnsureSuccess(reply);
-        var root = reply.Json?.RootElement ?? default;
-
-        var errors = Items(root, "errors").ToList();
-        if (errors.Count > 0)
+        IEnumerable<ClosingIssueAnswer?>? issues;
+        try
         {
-            var messages = string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message"));
-            if (errors.Any(e => Str(e, "type") == "FORBIDDEN"))
-                throw new ForgeAccessDeniedException($"GitHub refused the closing issues of #{number}: {messages}", reply.AcceptedPermissions);
-            if (errors.All(e => Str(e, "type") == "NOT_FOUND"))
-                return [];
-            throw new ForgeRequestException($"GitHub answered the closing issues of #{number} with errors: {messages}", (int)reply.Status,
-                GraphQLRateLimit(errors, $"the closing issues of #{number}"));
+            issues = await RunGraphQLAsync(repository, ClosingIssuesQuery, variables, cancellationToken);
+        }
+        catch (GraphQLReplyException reply)
+        {
+            reply.ThrowUnlessNotFound($"the closing issues of #{number}");
+            return [];
         }
 
-        var references = Child(Child(Child(Child(root, "data"), "repository"), "pullRequest"), "closingIssuesReferences");
-        return [.. Items(references, "nodes")
-            .Select(node => (Number: Num(node, "number"), Repository: Str(Child(node, "repository"), "nameWithOwner"), State: Str(node, "state")))
-            .Where(n => n.Number is > 0 and <= int.MaxValue && n.Repository is not null)
-            .Select(n => new ForgeClosingIssue((int)n.Number!.Value, n.Repository!, n.State == "OPEN"))];
+        return [.. (issues ?? [])
+            .OfType<ClosingIssueAnswer>()
+            .Where(issue => issue.Number > 0 && issue.Repository is { Length: > 0 })
+            .Select(issue => new ForgeClosingIssue(issue.Number, issue.Repository, issue.State == Gql.IssueState.Open))];
     }
 
     /// <remarks>
@@ -1496,13 +1518,104 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <param name="forbiddenNeeds">The permission a 403 names when GitHub's own header does not say.</param>
     private static void EnsureSuccess(Reply reply, string? forbiddenNeeds = null)
     {
-        if (reply.IsSuccess) return;
+        if (FailureOf(reply, forbiddenNeeds) is { } failure)
+            throw failure;
+    }
+
+    /// <summary>The neutral exception <see cref="EnsureSuccess"/> throws for a reply that is not a 2xx; null for a 2xx.</summary>
+    private static Exception? FailureOf(Reply reply, string? forbiddenNeeds = null)
+    {
+        if (reply.IsSuccess) return null;
 
         var what = $"GitHub answered {(int)reply.Status} to {reply.Method} {reply.Path}: {reply.Message ?? "no message"}";
-        throw reply.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        return reply.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
             ? new ForgeAccessDeniedException(what, reply.AcceptedPermissions ?? (reply.Status == HttpStatusCode.Forbidden ? forbiddenNeeds : null))
             : new ForgeRequestException(what, (int)reply.Status);
     }
+
+    // ── GraphQL: typed documents over this plumbing ──────────────────────────────────────────────
+
+    /// <summary>Runs a typed Octokit.GraphQL document as the repository's installation; see <see cref="GraphQLConnection"/>.</summary>
+    private Task<T> RunGraphQLAsync<T>(Repository repository, ICompiledQuery<T> query, Dictionary<string, object> variables, CancellationToken cancellationToken)
+        => new GraphQLConnection(this, repository).Run(query, variables, cancellationToken);
+
+    /// <summary>
+    /// Octokit.GraphQL's connection over <see cref="SendAsync(Repository, HttpMethod, string, object?, string, CancellationToken)"/>:
+    /// Octokit compiles the document and reads the answer, and the request is this class's, with its installation token, its
+    /// rate-limit classification and <c>X-Accepted-GitHub-Permissions</c>. Octokit's own <c>Connection</c> turns any GraphQL
+    /// error, a <c>NOT_FOUND</c> that came with data included, into one <c>ResponseDeserializerException</c> carrying the message
+    /// only (measured live on 2026-11-27), and the error type decides between an access failure, nothing, and a retry. This
+    /// one throws a <see cref="GraphQLReplyException"/> instead and hands Octokit only answers without errors.
+    /// </summary>
+    private sealed class GraphQLConnection(GitHubForgeMergeQueue adapter, Repository repository) : IGraphQLConnection
+    {
+        public Uri Uri { get; } = new(ApiBase, "graphql");
+
+        public async Task<string> Run(string query, CancellationToken cancellationToken = default)
+        {
+            // Octokit's payload is the whole request body, {"query":…,"variables":…}; a JsonElement serializes as itself.
+            using var payload = JsonDocument.Parse(query);
+            using var reply = await adapter.SendAsync(repository, HttpMethod.Post, "graphql", payload.RootElement, DefaultApiVersion, cancellationToken);
+            if (FailureOf(reply) is { } failure)
+                throw new GraphQLReplyException(reply.Status, failure, [], reply.AcceptedPermissions);
+
+            var root = reply.Json?.RootElement ?? default;
+            if (root.ValueKind != JsonValueKind.Object)
+                throw new GraphQLReplyException(reply.Status, new ForgeRequestException("GitHub's answer to POST graphql is not JSON.", (int)reply.Status), [], reply.AcceptedPermissions);
+
+            var errors = Items(root, "errors").Select(error => error.Clone()).ToList();
+            if (errors.Count > 0)
+                throw new GraphQLReplyException(reply.Status, null, errors, reply.AcceptedPermissions);
+            return root.GetRawText();
+        }
+    }
+
+    /// <summary>
+    /// A GraphQL reply that is not an answer: a status that is not a 2xx (<see cref="HttpFailure"/>, the exception any other
+    /// call would throw), or a 200 with <c>errors</c>. The caller decides what it means; <see cref="ThrowUnlessNotFound"/> is
+    /// the usual reading.
+    /// </summary>
+    private sealed class GraphQLReplyException(HttpStatusCode status, Exception? httpFailure, IReadOnlyList<JsonElement> errors, string? acceptedPermissions)
+        : Exception(httpFailure?.Message ?? "GitHub answered a GraphQL request with errors.", httpFailure)
+    {
+        public HttpStatusCode Status { get; } = status;
+        public Exception? HttpFailure { get; } = httpFailure;
+        public IReadOnlyList<JsonElement> Errors { get; } = errors;
+        public string? AcceptedPermissions { get; } = acceptedPermissions;
+        public string Messages => string.Join("; ", Errors.Select(error => Str(error, "message") ?? "no message"));
+
+        /// <summary>
+        /// A failed status throws as any other call would, <c>FORBIDDEN</c> is an access failure, errors that are all
+        /// <c>NOT_FOUND</c> mean there is nothing (this returns), and anything else is retryable, carrying the rate limit when
+        /// it is one.
+        /// </summary>
+        public void ThrowUnlessNotFound(string what)
+        {
+            if (HttpFailure is not null)
+                throw HttpFailure;
+            if (Errors.Any(error => Str(error, "type") == "FORBIDDEN"))
+                throw new ForgeAccessDeniedException($"GitHub refused {what}: {Messages}", AcceptedPermissions);
+            if (Errors.All(error => Str(error, "type") == "NOT_FOUND"))
+                return;
+            throw new ForgeRequestException($"GitHub answered {what} with errors: {Messages}", (int)Status, GraphQLRateLimit(Errors, what));
+        }
+    }
+
+    private sealed record MergeQueueAnswer(string? MergeQueueId);
+
+    private sealed record CheckApp(string? Slug, long? DatabaseId);
+
+    private sealed record RollupContext(EForgeCheckKind Kind, string Name, CheckApp? App);
+
+    /// <summary>
+    /// One open pull request: the rollup of its last commit, a list of one. An entry is null when nothing reported on the
+    /// commit: Octokit.GraphQL reads a null <c>statusCheckRollup</c> as null whatever the declared type.
+    /// </summary>
+    private sealed record PullHead(List<List<RollupContext>>? Commits);
+
+    private sealed record ReportedAnswer(List<RollupContext>? DefaultBranch, List<PullHead>? PullRequests);
+
+    private sealed record ClosingIssueAnswer(int Number, Gql.IssueState State, string Repository);
 
     /// <summary>
     /// Every item of a listing, following <c>page</c> until a short page. <paramref name="arrayProperty"/> names

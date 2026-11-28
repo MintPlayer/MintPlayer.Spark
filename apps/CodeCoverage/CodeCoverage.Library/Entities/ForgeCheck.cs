@@ -52,6 +52,12 @@ public partial class ForgeCheck : IHasNaturalId
     /// <summary>The App that made the check run, when the forge says so.</summary>
     public string? AppSlug { get; set; }
 
+    /// <summary>
+    /// That App's id, when the forge says so: what "Set up rulesets" pins a required check to, so that only this App's
+    /// run satisfies it (#714 Dec4). Null for a commit status, and for a check last written before #714.
+    /// </summary>
+    public long? AppId { get; set; }
+
     /// <summary>When the check last reported, as far as this app has written it down (at most <see cref="RefreshAfter"/> stale).</summary>
     public DateTime LastSeenUtc { get; set; }
 
@@ -64,8 +70,8 @@ public partial class ForgeCheck : IHasNaturalId
 
     /// <summary>
     /// The sightings in <paramref name="reported"/> worth a write against <paramref name="known"/>: a name not known yet,
-    /// one last seen <see cref="RefreshAfter"/> or longer ago, one that now says what kind or App it is, or one first seen
-    /// on a pull request. One per name, the queue's own check left out.
+    /// one last seen <see cref="RefreshAfter"/> or longer ago, one that now says what kind or App (slug or id) it is, or
+    /// one first seen on a pull request. One per name, the queue's own check left out.
     /// </summary>
     public static IReadOnlyList<ForgeCheck> Due(IEnumerable<ForgeCheck>? known, IEnumerable<ForgeCheck> reported, DateTime nowUtc)
     {
@@ -81,12 +87,19 @@ public partial class ForgeCheck : IHasNaturalId
 
             var sighting = new ForgeCheck
             {
-                Id = name, Name = name, Kind = check.Kind, AppSlug = check.AppSlug, LastSeenUtc = nowUtc, OnPullRequest = check.OnPullRequest,
+                Id = name,
+                Name = name,
+                Kind = check.Kind,
+                AppSlug = check.AppSlug,
+                AppId = check.AppId,
+                LastSeenUtc = nowUtc,
+                OnPullRequest = check.OnPullRequest,
             };
             if (due.TryGetValue(name, out var earlier))
             {
                 earlier.Kind ??= sighting.Kind;
                 earlier.AppSlug ??= sighting.AppSlug;
+                earlier.AppId ??= sighting.AppId;
                 earlier.OnPullRequest |= sighting.OnPullRequest;
                 continue;
             }
@@ -95,6 +108,7 @@ public partial class ForgeCheck : IHasNaturalId
                 || nowUtc - stored.LastSeenUtc >= RefreshAfter
                 || (stored.Kind is null && sighting.Kind is not null)
                 || (stored.AppSlug is null && sighting.AppSlug is not null)
+                || (stored.AppId is null && sighting.AppId is not null)
                 || (!stored.OnPullRequest && sighting.OnPullRequest))
             {
                 due[name] = sighting;

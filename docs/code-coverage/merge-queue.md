@@ -536,7 +536,7 @@ not named like its check, "GitGuardian Security Checks"). So push a commit or op
   the oldest dropped); the picker never asks GitHub while it is open. Three sources fill it: the `check_run` and
   `status` webhooks, whether or not anything is queued (the App's own check runs are left out, and a `check_suite`
   names no check); the queue's own reads of a pull request's checks; and a backfill of the default branch's head and
-  the 50 most recently updated open pull requests' heads, one GraphQL query per repository, run after every account
+  every open pull request's head, one paged GraphQL read per repository, run after every account
   reconcile (the nightly one and the one an installation change queues) at most once a day, and once for every
   repository by the deploy that introduced it. Disconnected and archived repositories are skipped. A name is written
   again only when it is new or last seen a day ago, so a busy repository is not rewritten on every delivery. An
@@ -595,10 +595,59 @@ never hold Administration. With that token CodeCoverage:
    have;
 3. shows each repository's exact plan, or why it can't be applied;
 4. after the confirmation, applies it one repository at a time. Ruleset 1 is applied first, so a classic protection
-   that is moved into the rulesets never leaves the branch open. Ruleset 2 requires the checks the default branch's
-   head reports, never the queue's own.
+   that is moved into the rulesets never leaves the branch open. Rulesets 2 and 3 require the checks picked in the
+   form, never the queue's own. With a **summary job** (below) they require only that job and the App's own checks.
 
 Every repository gets its own success or warning.
+
+**The summary job (#714 Dec3).** A required check is a name, and GitHub knows nothing about the workflow that once
+reported it. Renaming, joining or splitting a required job leaves every queued pull request waiting for a name that
+never comes back, until the 60-minute `checks.timeout` evicts it. So the form's **Summary job** field takes the one
+CI job that waits for every other job and fails when any of them fails, is cancelled or is skipped (Spark's is
+`pull-request`, guarded by `tools/verify-pull-request-summary.test.mjs`). With it, rulesets 2 and 3 require:
+
+- that job;
+- the App's own checks among the picks (`coverage/patch`, `coverage/project`);
+- `Line policy` on ruleset 3, as before.
+
+A job inside the workflow can then change freely. Only renaming the summary job itself still needs the setup again.
+
+- **The App never edits workflows** ([onboarding.md](onboarding.md), "Left to you"), so it cannot add the job for you.
+  Add it on every branch the rulesets cover, the release lines included, then pick it in the form. Left empty, the
+  rulesets require each picked check, as before.
+- **The form recognizes the shape.** It starts with the field filled when ruleset 2 already requires one job beside the
+  App's checks, and ruleset 3 nothing else. When ruleset 2 requires more than one job, the form explains why switching
+  is worth it.
+- **Every required check is pinned** (Dec4) to the App that reports it, GitHub's `integration_id`: the App's own checks to
+  the App, the summary job to the App last seen reporting it (GitHub Actions is 15368). That App is read from the
+  check-run webhooks (`ForgeCheck.AppId`). A name no App has been seen reporting stays unpinned.
+- **The confirmation lists the changes** (Dec10, B1): for each ruleset, the checks it adds, the checks it drops and the
+  pins it changes. When the form is opened by hand, a required name that no pull request reported in the last 14 days
+  is marked "not seen since …". The mark removes nothing.
+
+**When the rulesets drift (#714 Dec5, Dec6, Dec11).** Nobody edits a ruleset by hand. The queue notices drift
+itself, at two moments:
+
+- an entry is stuck on a required name (§3.4);
+- GitHub refuses a merge because a pinned check was reported by another App.
+
+It records each as a notice on the repository. Each manager of the repository gets one bell notification the next time
+they sign in or open CodeCoverage. A manager is a manager of the account, or an admin of the repository on GitHub. The
+notification links to the account's page; selecting the repository there and running **Set up rulesets** opens the form
+already corrected:
+
+- a pin mismatch is re-pinned to the App that reports the name now;
+- a dead name in a one-check-per-job list is removed, and the names reported on the stuck pull request are listed
+  unticked;
+- a renamed summary job is removed and its field left empty, with the names reported on the stuck pull request listed
+  to pick from. Nothing is guessed.
+
+Nothing changes until the confirmation. Applying the rulesets resolves the repository's notices. A manager is told
+once per drift; a new drift on the same repository is told again.
+
+A repository whose rulesets still require one check per job also gets one notice, offering the switch. It is raised
+when the queue reads the rules at enable. It was also raised once for every repository with the merge queue on, right
+after #714 deployed.
 
 Requirements and limits:
 
@@ -753,7 +802,8 @@ Notes on the two rulesets:
   the regenerate step did its job (T4, O19). The queue waits for every check anyway (O12); requiring it makes GitHub
   enforce it too, and a required check can never be excluded. **Never require the "Merge queue" check itself**: it is
   still in progress while the queue merges, so GitHub would refuse every merge the queue requests. The queue refuses
-  such a branch at enqueue (`self-required`, D62).
+  such a branch at enqueue (`self-required`, D62). Prefer one summary job over one entry per job (#714, above), and
+  pin each entry with the reporting App's `integration_id` (GitHub Actions is 15368).
 - `strict_required_status_checks_policy: true` costs nothing: the queue only merges a commit built on the base as it is
   at merge time, and goes back to PREPARE when the base moves.
 - GitHub adds defaults on creation, among them `allowed_merge_methods` (keep `squash` in it) and
@@ -829,6 +879,42 @@ branch** on the pull request, then queue it again.
 
 The admin's merge is GitHub's own: nothing is rebased or regenerated, and the queue's own checks (the approval floor,
 the check gate) do not run.
+
+### 3.4 Troubleshooting: a required check never reports (#714)
+
+**The symptom.** A queued pull request sits in "Waiting for checks" although its CI finished green. The cause is
+usually a required job that was renamed, joined or split: the ruleset still requires the old name, and nothing will
+ever report it.
+
+**What the queue does** while it waits for nothing but names that never reported (`MergeQueueEngine.StuckAsync`):
+
+- **It names them.** The check run's title becomes "Waiting for checks that never reported". Its summary lists each
+  missing name with the ruleset that requires it. A name that is only expected says "reported on the queued head".
+- **It re-reads the rules** at every poll (every 2 minutes), as long as a required name is missing. A ruleset fixed by
+  anyone frees the entry at the next poll. GitHub sends ruleset events only to an App with Administration, which this
+  App never gets, so polling is the only way to see the fix.
+- **It comments once**, after the state has held for a poll interval: each missing name and its ruleset, the advice
+  below, and when the entry will be removed otherwise. It says "haven't reported", never "doesn't exist": the queue
+  never reads workflow files. When the pull request changes workflow files, the comment says a job it renamed may still
+  be required under its old name.
+- **It tells the managers** (§3, "When the rulesets drift"): a missing required name becomes a notice for their bell.
+- **It drops a stale expected name.** A name the queue expects because it reported on the pull request's head before
+  enqueue is dropped, with a note, only when all of these hold:
+  - the base changed its workflows;
+  - the name was a GitHub Actions run;
+  - the state held for a poll interval.
+
+  A required name, a commit status or another App's run is never dropped.
+- **It still evicts at `checks.timeout`** (60 minutes by default) and names the missing checks. It never evicts
+  earlier: a workflow started by `workflow_run`, or an outside status, may legitimately come late.
+
+**What to do.** Follow the bell, or select the repository on the account's page and run **Set up rulesets**. The
+form opens with the dead names removed. Once applied, the queue frees the entry by itself at its next poll; there is no
+need to `/dequeue` and `/queue`. For good, switch the rulesets to a summary job (§3).
+
+**A pinned check reported by another App** (a summary job moved to another CI service) looks green to the queue, which
+ignores pins, and GitHub refuses the merge (`merge-refused`). The queue records that as drift too, and the form
+re-pins the name to the App that reports it now.
 
 ## 4. Using it
 

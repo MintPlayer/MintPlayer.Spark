@@ -1,4 +1,5 @@
 using CodeCoverage.Controllers;
+using CodeCoverage.MergeQueue;
 using CodeCoverage.Services;
 using CodeCoverage.Tests.Services;
 using Microsoft.AspNetCore.Hosting;
@@ -34,8 +35,16 @@ public class MeControllerTests : CoverageRavenTest
         // Spark query, and these tests are about what that aggregation reports —
         // stubbing it would leave the reauth flag asserted against nothing.
         services.AddScoped<IMyAccountsService, MyAccountsService>();
+        // The controller also delivers the ruleset notices (#714); these tests never reach that action.
+        services.AddSingleton<IRulesetNoticeBell, UnusedRulesetNoticeBell>();
         services.AddScoped<MeController>();
         return services.BuildServiceProvider().GetRequiredService<MeController>();
+    }
+
+    private sealed class UnusedRulesetNoticeBell : IRulesetNoticeBell
+    {
+        public Task<int> DeliverAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("The accounts tests never deliver ruleset notices.");
     }
 
     private static MeController.AccountsResponse Body(ActionResult<MeController.AccountsResponse> result)

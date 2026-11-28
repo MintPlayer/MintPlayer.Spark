@@ -9,6 +9,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Authorization.OneShotOAuth;
+using Raven.Client.Documents.Session;
+using System.Globalization;
 using System.Text.Json;
 
 namespace CodeCoverage.MergeQueue;
@@ -38,8 +40,9 @@ public interface IMergeQueueRulesetSetup
         IReadOnlyList<RulesetTarget> targets, string accessToken, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The form (approvals, admin bypass), starting from what the repositories agree on, and each repository's plan with
-    /// the answer. <see langword="null"/> when the admin cancelled. Ruleset 1 also covers a repository's release lines
+    /// The form (approvals, admin bypass, checks, summary job), starting from what the repositories agree on with their open
+    /// <see cref="RulesetNotice"/>s applied (#714 Dec6), and each repository's plan with the answer. <see langword="null"/>
+    /// when the admin cancelled. Ruleset 1 also covers a repository's release lines
     /// (<see cref="RulesetRead.Lines"/>); <paramref name="releaseLinesComing"/> (the chooser with Release lines picked)
     /// assumes the default pattern where coverage.yml has none yet, because the onboarding pull request adds it.
     /// </summary>
@@ -88,6 +91,12 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
     [Inject] private readonly IManager manager;
     [Inject] private readonly ILogger<MergeQueueRulesetSetup> logger;
     [Inject] private readonly IForgeIntegrationResolver integrations;
+    [Inject] private readonly IRulesetNotices notices;
+    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly TimeProvider time;
+
+    /// <summary>How long a required check may go unseen before the form marks it (#714 Dec10 B2).</summary>
+    internal static readonly TimeSpan StaleAfter = TimeSpan.FromDays(14);
 
     public bool IsConfigured => GitHubRulesetsOAuth.IsConfigured(oauthOptions.Value);
 
@@ -153,41 +162,136 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
         foreach (var r in read)
         {
             var repository = r.Target.Repository;
+            // #714 Dec6: open notices fix the starting answers (dead names out, pins re-pinned), and the message says so.
+            var prefill = Prefill(r.Defaults, repository.KnownChecks, await notices.ListOpenAsync(repository.Id.Value, cancellationToken));
+            var defaults = prefill.Choices;
             var form = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.SetUpRulesets), cancellationToken: cancellationToken);
             // The parent makes the RequiredChecks picker query this repository's checks (CustomQueryArgs.Parent), and its
             // "Add new" confirm run against it.
             form.Parent = new PersistentObject { Id = repository.Id.Value, Name = nameof(Repository), ObjectTypeId = Guid.Empty };
-            form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = r.Defaults.RequiredApprovals;
-            form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = r.Defaults.AdminsMayMergeByPullRequest ?? false;
-            form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value = r.Defaults.RequiredChecks.ToArray();
+            form[nameof(MergeQueueRulesetChoices.RequiredApprovals)].Value = defaults.RequiredApprovals;
+            form[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].Value = defaults.AdminsMayMergeByPullRequest ?? false;
+            form[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value = defaults.RequiredChecks.ToArray();
+            if (form.TryGetAttribute(nameof(MergeQueueRulesetChoices.SummaryJob), out var summaryField))
+            {
+                summaryField.Value = defaults.SummaryJob;
+                // Dec6: a summary job that never reported is left empty and asked for again.
+                summaryField.IsRequired = prefill.LostSummaryJob is not null;
+            }
             // Ruleset 3 (R2): the lines' checks, from ruleset 3, else the default branch's. Ignored without release lines.
             var lines = r.Lines ?? (releaseLinesComing ? ReleaseLinePattern.Default : null);
-            form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].Value = (r.Defaults.LineRequiredChecks ?? r.Defaults.RequiredChecks).ToArray();
+            form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].Value = (defaults.LineRequiredChecks ?? defaults.RequiredChecks).ToArray();
             form[nameof(MergeQueueRulesetChoices.LineRequiredChecks)].ShowedOn = lines is not null ? EShowedOn.PersistentObject : EShowedOn.None;
             manager.Retry.Action(manager.GetTranslatedMessage("rulesets.chooseTitle", repository.FullName), [next], next, form,
-                manager.GetTranslatedMessage("rulesets.chooseMessage"), cancellable: true);
+                ChooseMessage(prefill, repository.KnownChecks), cancellable: true);
             var chosen = manager.Retry.Result!;
             if (chosen.Option == RetryResult.CancelOption)
                 return null;
 
             var answer = chosen.PersistentObject;
-            var approvals = Math.Max(0, answer?[nameof(MergeQueueRulesetChoices.RequiredApprovals)].GetValue<int?>() ?? r.Defaults.RequiredApprovals);
-            var admins = answer?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? r.Defaults.AdminsMayMergeByPullRequest;
-            var checks = answer is null ? r.Defaults.RequiredChecks
+            var approvals = Math.Max(0, answer?[nameof(MergeQueueRulesetChoices.RequiredApprovals)].GetValue<int?>() ?? defaults.RequiredApprovals);
+            var admins = answer?[nameof(MergeQueueRulesetChoices.AdminsMayMergeByPullRequest)].GetValue<bool?>() ?? defaults.AdminsMayMergeByPullRequest;
+            var checks = answer is null ? defaults.RequiredChecks
                 : Names(answer[nameof(MergeQueueRulesetChoices.RequiredChecks)].Value);
             // An answer without the field keeps ruleset 3's own checks (or the default branch's, when it does not exist).
             var lineChecks = answer?.TryGetAttribute(nameof(MergeQueueRulesetChoices.LineRequiredChecks), out var lineAnswer) == true
-                ? Names(lineAnswer.Value) : r.Defaults.LineRequiredChecks;
-            planned.Add(new RulesetPlanned(r.Target, MergeQueueRulesetPlanner.Plan(r.State, r.Defaults with
+                ? Names(lineAnswer.Value) : defaults.LineRequiredChecks;
+            // Likewise the summary job; an emptied field means none. The queue's own check is left to the plan's blocker (D62).
+            var summaryJob = answer?.TryGetAttribute(nameof(MergeQueueRulesetChoices.SummaryJob), out var summaryAnswer) == true
+                ? Names(summaryAnswer.Value).Select(ForgeCheck.GetId).FirstOrDefault(name => name.Length > 0)
+                : defaults.SummaryJob;
+            planned.Add(new RulesetPlanned(r.Target, MergeQueueRulesetPlanner.Plan(r.State, defaults with
             {
                 RequiredApprovals = approvals,
                 AdminsMayMergeByPullRequest = admins,
                 RequiredChecks = CheckIds(checks),
                 ReleaseLines = lines is not null ? [lines.RefGlob] : null,
                 LineRequiredChecks = lineChecks is null ? null : CheckIds(lineChecks),
+                SummaryJob = summaryJob,
             })));
         }
         return planned;
+    }
+
+    /// <summary>
+    /// The form's starting answers once the repository's open notices are applied (#714 Dec6), and what the message says
+    /// about them.
+    /// </summary>
+    /// <param name="Removed">Required names a stuck pull request never saw, taken out of the picks.</param>
+    /// <param name="LostSummaryJob">The summary job, when it was one of them: the field is left empty and asked for again.</param>
+    /// <param name="Repinned">The names a refused merge showed pinned to the wrong App, with the App that reports them now.</param>
+    internal sealed record RulesetPrefill(
+        MergeQueueRulesetChoices Choices,
+        IReadOnlyList<string> Removed,
+        string? LostSummaryJob,
+        RulesetNotice? Missing,
+        IReadOnlyDictionary<string, long> Repinned);
+
+    /// <summary>
+    /// <paramref name="defaults"/> with the App of every known check (Dec4), the open notices' fixes applied (Dec6): a pin
+    /// mismatch is re-pinned to the App that reports the name now, and a check that never reported is taken out of both
+    /// lists. Nothing is guessed: a lost summary job leaves the field empty.
+    /// </summary>
+    internal static RulesetPrefill Prefill(MergeQueueRulesetChoices defaults, IEnumerable<ForgeCheck> known, IReadOnlyList<RulesetNotice> open)
+    {
+        var checkApps = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var check in known)
+            if (check.AppId is { } app && ForgeCheck.GetId(check.Id) is { Length: > 0 } name)
+                checkApps.TryAdd(name, app);
+
+        var repinned = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (open.FirstOrDefault(n => n.Kind == ERulesetNoticeKind.PinMismatch) is { } pins)
+            foreach (var (name, app) in pins.ReportingApps)
+                checkApps[name] = repinned[name] = app;
+
+        var choices = defaults with { CheckApps = checkApps };
+        if (open.FirstOrDefault(n => n.Kind == ERulesetNoticeKind.MissingCheck) is not { } missing)
+            return new RulesetPrefill(choices, [], null, null, repinned);
+
+        var dead = missing.Checks.ToHashSet(StringComparer.Ordinal);
+        var removed = defaults.RequiredChecks.Concat(defaults.LineRequiredChecks ?? []).Append(defaults.SummaryJob ?? string.Empty)
+            .Where(dead.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var lost = defaults.SummaryJob is { } job && dead.Contains(job) ? job : null;
+        choices = choices with
+        {
+            RequiredChecks = [.. defaults.RequiredChecks.Where(name => !dead.Contains(name))],
+            LineRequiredChecks = defaults.LineRequiredChecks is null ? null : [.. defaults.LineRequiredChecks.Where(name => !dead.Contains(name))],
+            SummaryJob = lost is null ? defaults.SummaryJob : null,
+        };
+        return new RulesetPrefill(choices, removed, lost, missing, repinned);
+    }
+
+    /// <summary>
+    /// The form's message as HTML: what the open notices changed (Dec6), the offer to switch to a summary job (Dec11), and
+    /// the required names no pull request reported lately (Dec10 B2), which are marked and never removed.
+    /// </summary>
+    private string ChooseMessage(RulesetPrefill prefill, IReadOnlyList<ForgeCheck> known)
+    {
+        var choices = prefill.Choices;
+        List<string> parts = [HtmlMessage.Encode(manager.GetTranslatedMessage("rulesets.chooseMessage"))];
+        if (prefill.Missing is { } missing && prefill.Removed.Count > 0)
+            parts.Add(HtmlMessage.Encode(manager.GetTranslatedMessage("rulesets.prefill.removed", string.Join(", ", prefill.Removed), missing.PullRequest ?? 0)));
+        if (prefill.LostSummaryJob is { } lost)
+            parts.Add(HtmlMessage.Encode(manager.GetTranslatedMessage("rulesets.prefill.summaryJobLost", lost, prefill.Missing?.PullRequest ?? 0,
+                string.Join(", ", prefill.Missing?.ReportedOnHead ?? []))));
+        if (prefill.Repinned.Count > 0)
+            parts.Add(HtmlMessage.Encode(manager.GetTranslatedMessage("rulesets.prefill.repinned",
+                string.Join(", ", prefill.Repinned.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} (App {p.Value})")))));
+        if (choices.SummaryJob is null && prefill.LostSummaryJob is null && MergeQueueRulesetPlanner.RequiresOneCheckPerJob(choices.RequiredChecks))
+            parts.Add(HtmlMessage.Encode(manager.GetTranslatedMessage("rulesets.summaryJobOffer")));
+
+        var since = time.GetUtcNow().UtcDateTime - StaleAfter;
+        var stale = choices.RequiredChecks.Concat(choices.LineRequiredChecks ?? []).Append(choices.SummaryJob ?? string.Empty)
+            .Where(name => name.Length > 0).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+            .Select(name => (Name: name, Seen: known.FirstOrDefault(c => c.Id == name)))
+            .Where(c => c.Seen is null || c.Seen.LastSeenUtc < since)
+            .Select(c => c.Seen is null
+                ? manager.GetTranslatedMessage("rulesets.stale.neverSeen", c.Name)
+                : manager.GetTranslatedMessage("rulesets.stale.notSeenSince", c.Name, c.Seen.LastSeenUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)))
+            .ToList();
+        if (stale.Count > 0)
+            parts.Add(HtmlMessage.Section(manager.GetTranslatedMessage("rulesets.stale.heading"), stale));
+        return string.Join("<br><br>", parts);
     }
 
     /// <summary>The picked checks' names (a <see cref="ForgeCheck"/> id), never the queue's own check (D62).</summary>
@@ -236,6 +340,8 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
             {
                 var steps = await queue.ApplyRulesetPlanAsync(repository, branch, plan, accessToken, cancellationToken);
                 applied.Add(new RulesetRepositoryResult(repository.Id.Value, repository.FullName, string.Join(" ", steps.Select(s => s.Description)), [.. steps]));
+                // #714: the managers confirmed the rulesets they want, so what the bell would tell them no longer applies.
+                await notices.ResolveAllAsync(repository.Id.Value, cancellationToken);
             }
             catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
             {
@@ -243,6 +349,8 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
                 failed.Add(RulesetRepositoryResult.Failure(repository, ex.Message));
             }
         }
+        if (applied.Count > 0)
+            await session.SaveChangesAsync(cancellationToken);
         return (applied, failed);
     }
 
@@ -263,6 +371,8 @@ public partial class MergeQueueRulesetSetup : IMergeQueueRulesetSetup
         null => [],
         JsonElement { ValueKind: JsonValueKind.Array } array
             => [.. array.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!)],
+        // A single reference (the summary job) answers with the one id.
+        JsonElement { ValueKind: JsonValueKind.String } single => [single.GetString()!],
         JsonElement => [],
         string single => [single],
         IEnumerable<object?> items => [.. items.OfType<string>()],

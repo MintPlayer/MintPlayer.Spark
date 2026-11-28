@@ -102,15 +102,17 @@ public interface IForgeMergeQueue
     Task<int> RerunChecksAsync(Repository repository, IReadOnlyCollection<ForgeCheckRun> checkRuns, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The names of every check run and commit status on <paramref name="sha"/>, ordinal-sorted and distinct, the
-    /// queue's own check left out: O12's expected-minimum set when <paramref name="sha"/> is the head pinned at enqueue
-    /// (D45; not the base branch's latest commit, whose push-only workflows never run on a pull request's commit).
+    /// Every check run and commit status on <paramref name="sha"/>, one per name (a check run wins over a status of the
+    /// same name), ordinal-sorted by name, the queue's own check left out: O12's expected-minimum set when
+    /// <paramref name="sha"/> is the head pinned at enqueue (D45; not the base branch's latest commit, whose push-only
+    /// workflows never run on a pull request's commit). Each carries its kind and App, which decide whether the name may
+    /// be dropped once a workflow change made it stale (#714 Dec9).
     /// </summary>
-    Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ForgeReportedCheck>> GetChecksOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Every check run and commit status that reported, with any outcome, on the default branch's head and on the heads
-    /// of the open pull requests (one page of the most recently updated), distinct by name, the queue's own check left
+    /// of every open pull request, distinct by name, the queue's own check left
     /// out: the backfill of the names the exclusion lists pick from (merge-queue PRD §11, D109). No forge lists the checks
     /// a repository <em>can</em> produce, only those that reported on a commit.
     /// </summary>
@@ -262,9 +264,9 @@ public interface IForgeMergeQueue
 
     /// <summary>
     /// The issues pull request <paramref name="number"/> says it closes (closing keywords in its description, or issues
-    /// linked to it by hand), each with its repository and whether it is still open, in the forge's order; at most
-    /// <see cref="ForgeClosingIssue.MaxListed"/>. Empty when there is none, or the pull request does not exist. Which of
-    /// them to close is the caller's call (merge-queue PRD §0 D106).
+    /// linked to it by hand), each with its repository and whether it is still open, in the forge's order; all of them,
+    /// page after page. Empty when there is none, or the pull request does not exist. Which of them to close is the
+    /// caller's call (merge-queue PRD §0 D106).
     /// </summary>
     Task<IReadOnlyList<ForgeClosingIssue>> GetClosingIssuesAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
@@ -334,6 +336,7 @@ public enum EForgeRepositoryRole
 /// <param name="HasNativeMergeQueue">The forge's own merge queue is required on this branch (D8 refuses it).</param>
 /// <param name="Rulesets">Each ruleset that applies, with whether this App may bypass it (D16).</param>
 /// <param name="ClassicProtection">Whether classic branch protection is on and how much of it could be read.</param>
+/// <param name="ClassicRequiredChecks">The checks classic branch protection requires, with their App pins; null for none.</param>
 public sealed record ForgeBranchRules(
     bool RulesetsAvailable,
     IReadOnlyList<string> RequiredChecks,
@@ -343,12 +346,33 @@ public sealed record ForgeBranchRules(
     bool RequireUpToDateBranch,
     bool HasNativeMergeQueue,
     IReadOnlyList<ForgeRuleset> Rulesets,
-    EForgeClassicProtection ClassicProtection);
+    EForgeClassicProtection ClassicProtection,
+    IReadOnlyList<ForgeRequiredCheck>? ClassicRequiredChecks = null)
+{
+    /// <summary>
+    /// Where each required check comes from, for the queue's account of a check that never reports (#714 C3): the name
+    /// and id of every ruleset that requires it, or classic branch protection. A name required twice is named twice.
+    /// </summary>
+    public IReadOnlyList<ForgeRequiredCheckSource> RequiredCheckSources()
+        => [.. Rulesets
+            .SelectMany(ruleset => (ruleset.RequiredChecks ?? []).Select(check => new ForgeRequiredCheckSource(check, ruleset.Id, ruleset.Name)))
+            .Concat((ClassicRequiredChecks ?? []).Select(check => new ForgeRequiredCheckSource(check, null, null)))
+            .OrderBy(source => source.Check.Context, StringComparer.Ordinal)];
+}
 
 /// <summary>One ruleset that applies to the branch.</summary>
 /// <param name="RuleTypes">The forge's rule type names on this branch from this ruleset (<c>update</c>, <c>pull_request</c>, …).</param>
 /// <param name="Bypass">Whether this App may bypass it (T7: ruleset 2 must be <see cref="EForgeRulesetBypass.Never"/>).</param>
-public sealed record ForgeRuleset(long Id, string? Name, IReadOnlyList<string> RuleTypes, EForgeRulesetBypass Bypass);
+/// <param name="RequiredChecks">The checks this ruleset requires on the branch, with their App pins; null for none.</param>
+public sealed record ForgeRuleset(long Id, string? Name, IReadOnlyList<string> RuleTypes, EForgeRulesetBypass Bypass,
+    IReadOnlyList<ForgeRequiredCheck>? RequiredChecks = null);
+
+/// <summary>A required check as a rule states it.</summary>
+/// <param name="IntegrationId">The App the check is pinned to (GitHub's <c>integration_id</c>, #714 Dec4); null when any source may report it.</param>
+public sealed record ForgeRequiredCheck(string Context, long? IntegrationId = null);
+
+/// <summary>A required check and the rule that requires it: a ruleset (<paramref name="RulesetId"/>), or classic protection when that is null.</summary>
+public sealed record ForgeRequiredCheckSource(ForgeRequiredCheck Check, long? RulesetId, string? RulesetName);
 
 /// <summary>GitHub's <c>current_user_can_bypass</c>, for the calling App.</summary>
 public enum EForgeRulesetBypass
@@ -380,7 +404,8 @@ public enum EForgeClassicProtection
 /// <summary>A check that reported on some commit of the repository (<see cref="IForgeMergeQueue.GetReportedCheckNamesAsync"/>).</summary>
 /// <param name="AppSlug">The App that made the check run, when the forge says so; null for a commit status.</param>
 /// <param name="OnPullRequest">It reported on a pull request's head commit, not only on the default branch (#554).</param>
-public sealed record ForgeReportedCheck(string Name, EForgeCheckKind Kind, string? AppSlug, bool OnPullRequest = false);
+/// <param name="AppId">The App's id, when the forge says so: what a ruleset pins the check to (#714 Dec4).</param>
+public sealed record ForgeReportedCheck(string Name, EForgeCheckKind Kind, string? AppSlug, bool OnPullRequest = false, long? AppId = null);
 
 /// <summary>Everything that reported on one commit.</summary>
 public sealed record ForgeCheckState(
@@ -392,7 +417,8 @@ public sealed record ForgeCheckState(
 /// <summary>A check run. <paramref name="Conclusion"/> is null until <paramref name="Status"/> is <c>completed</c>.</summary>
 /// <param name="Status">The forge's word: <c>queued</c>, <c>in_progress</c>, <c>completed</c>, <c>waiting</c>, <c>requested</c>, <c>pending</c>.</param>
 /// <param name="Conclusion">The forge's word: <c>success</c>, <c>failure</c>, <c>neutral</c>, <c>cancelled</c>, <c>skipped</c>, <c>timed_out</c>, <c>action_required</c>, <c>stale</c>.</param>
-public sealed record ForgeCheckRun(long Id, string Name, string Status, string? Conclusion, long? SuiteId, string? AppSlug, string? DetailsUrl);
+/// <param name="AppId">The App's id, when the forge says so: a pinned required check counts only from that App (#714 Dec4).</param>
+public sealed record ForgeCheckRun(long Id, string Name, string Status, string? Conclusion, long? SuiteId, string? AppSlug, string? DetailsUrl, long? AppId = null);
 
 /// <summary>A commit status (the older API). <paramref name="State"/>: <c>pending</c>, <c>success</c>, <c>failure</c>, <c>error</c>.</summary>
 public sealed record ForgeCommitStatus(string Context, string State, string? TargetUrl);
@@ -517,11 +543,7 @@ public sealed record ForgeOpenPullRequest(int Number, string Title, string BaseR
 /// <param name="Number">The issue's number in <paramref name="RepositoryFullName"/>.</param>
 /// <param name="RepositoryFullName">The repository the issue lives in, <c>owner/name</c>: a pull request may name an issue of another repository.</param>
 /// <param name="IsOpen">The issue is still open.</param>
-public sealed record ForgeClosingIssue(int Number, string RepositoryFullName, bool IsOpen)
-{
-    /// <summary>The most closing issues read of one pull request; the rest are left as they are.</summary>
-    public const int MaxListed = 50;
-}
+public sealed record ForgeClosingIssue(int Number, string RepositoryFullName, bool IsOpen);
 
 /// <summary>One pull-request review.</summary>
 /// <param name="CommitSha">The head the review was given on; an approval counts for that commit only (O11).</param>

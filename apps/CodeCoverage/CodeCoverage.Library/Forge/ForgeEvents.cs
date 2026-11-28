@@ -309,7 +309,8 @@ public sealed record PullRequestReviewed(string RepositoryId, int Number) : IFor
 /// It reported on a pull request (or on the queue's commit for one), which makes it eligible as a ruleset's required
 /// check (#554).
 /// </param>
-public sealed record CheckReported(string RepositoryId, string Name, Entities.EForgeCheckKind? Kind, string? AppSlug, bool OnPullRequest = false) : IForgeEvent;
+public sealed record CheckReported(string RepositoryId, string Name, Entities.EForgeCheckKind? Kind, string? AppSlug, bool OnPullRequest = false,
+    long? AppId = null) : IForgeEvent;
 
 // ── The dependency updater (dependency-updates PRD §7.5, §7.6, R10) ────────────────────────────────────────────────
 //

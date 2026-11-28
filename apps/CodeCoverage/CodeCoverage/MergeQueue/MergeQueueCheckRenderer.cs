@@ -17,6 +17,9 @@ public static class MergeQueueCheckRenderer
     /// <summary>The title of the check on a pull request the queue does not hold (§0 O30).</summary>
     public const string NotQueuedTitle = "Not queued";
 
+    /// <summary>The title while the gate waits only for names that never reported (#714 C3).</summary>
+    public const string StuckTitle = "Waiting for checks that never reported";
+
     /// <param name="offer">
     /// The run ended without merging and the pull request may be queued again: the check keeps the "Add to merge queue"
     /// button and says how to queue it (§0 O30).
@@ -32,7 +35,8 @@ public static class MergeQueueCheckRenderer
             EMergeQueueEntryState.Preparing => (EForgeQueueCheckState.InProgress, "Rebasing onto the latest base"),
             EMergeQueueEntryState.Regenerating => (EForgeQueueCheckState.InProgress, "Regenerating generated files"),
             EMergeQueueEntryState.Publishing => (EForgeQueueCheckState.InProgress, "Publishing the rebased commit"),
-            EMergeQueueEntryState.AwaitingChecks => (EForgeQueueCheckState.InProgress, "Waiting for checks"),
+            // #714 C3: a wait that only a late workflow, an outside status or a change to the rules can end says so.
+            EMergeQueueEntryState.AwaitingChecks => (EForgeQueueCheckState.InProgress, entry.StuckChecks.Count > 0 ? StuckTitle : "Waiting for checks"),
             EMergeQueueEntryState.Merging => (EForgeQueueCheckState.InProgress, "Merging"),
             EMergeQueueEntryState.Merged => (EForgeQueueCheckState.Success, "Merged by the queue"),
             // The title says why the pull request left; with the button (§0 O30), the summary says how to queue it again.
@@ -81,6 +85,27 @@ public static class MergeQueueCheckRenderer
         if (note is { Length: > 0 })
         {
             summary.AppendLine(note);
+            summary.AppendLine();
+        }
+        // #714 C3: each name the wait is stuck on, and the rule that waits for it.
+        if (entry.State == EMergeQueueEntryState.AwaitingChecks && entry.StuckChecks.Count > 0)
+        {
+            summary.AppendLine("Every other check has finished, but these have not reported on the queue's commit:");
+            summary.AppendLine();
+            foreach (var missing in entry.StuckChecks.Take(50))
+                summary.AppendLine(CultureInfo.InvariantCulture, $"- `{Cell(missing.Name)}`: {Cell(missing.Source())}");
+            summary.AppendLine();
+            summary.AppendLine(entry.StuckChecks.Any(m => m.Required)
+                ? (entry.StuckCommented ? "The repository's managers are notified in CodeCoverage. " : string.Empty)
+                    + "Running \"Set up rulesets\" there brings the rulesets in line; the queue picks the fix up by itself at its next look."
+                : "A check that reported on the pull request before it was queued is waited for until it reports here too.");
+            summary.AppendLine();
+        }
+        // #714 Dec9: expected names the base's workflow change removed.
+        if (entry.DroppedExpectedChecks.Count > 0)
+        {
+            summary.AppendLine("**No longer waited for** (reported on the queued head, gone since the base changed its workflows): "
+                + string.Join(", ", entry.DroppedExpectedChecks.Take(50).Select(c => $"`{Cell(c)}`")));
             summary.AppendLine();
         }
 
