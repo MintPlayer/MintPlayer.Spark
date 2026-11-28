@@ -580,6 +580,20 @@ describe('SparkPoDetailComponent', () => {
     expect(lastRequest).toBeLessThan((service.get as any).mock.invocationCallOrder[0]);
   });
 
+  /** #721: a sub-query card's section id is its query's alias, which the server serves as the entry's query. */
+  it('gives each sub-query card its alias as section id (#721)', async () => {
+    const withSubQuery = { ...personType, queries: ['person-friends', { query: 'person-pets' }] } as any;
+    const { harness } = await setup({
+      getEntityTypes: vi.fn().mockResolvedValue([withSubQuery]),
+      getQuery: vi.fn().mockReturnValue(new Promise(() => undefined)),
+    } as any);
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    const cards = [...harness.routeNativeElement!.querySelectorAll('spark-query-card')];
+    expect(cards.map(card => card.id)).toEqual(['person-friends', 'person-pets']);
+  });
+
   it('onCustomAction failure sets actionError and keeps the page', async () => {
     const { harness } = await setup({
       executeCustomAction: vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 500, error: { error: 'Boom' } })),

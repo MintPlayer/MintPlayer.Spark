@@ -10,6 +10,7 @@ export const SparkFeatureOrder = {
   hydration: 10,
   languageUrls: 15,
   serviceWorker: 20,
+  fragmentScrolling: 30,
   auth: 100,
   clientOperations: 110,
   modules: 200,

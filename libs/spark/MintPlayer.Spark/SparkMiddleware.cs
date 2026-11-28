@@ -720,6 +720,10 @@ public static class SparkExtensions
         if (referenceProblems.Count > 0)
             throw new InvalidOperationException(
                 "Invalid Reference attribute: " + string.Join(" ", referenceProblems));
+
+        // Two sections of one type with the same section id would make a #fragment link reach either, and a name that
+        // gives no id would render none (#721, Dec7). Refused here, naming every offender.
+        SparkSectionIds.ThrowIfInvalid(app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes(), queries);
     }
 
     /// <summary>

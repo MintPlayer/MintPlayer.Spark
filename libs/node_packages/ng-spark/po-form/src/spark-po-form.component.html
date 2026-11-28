@@ -3,7 +3,7 @@
     <bs-grid>
       <bs-tab-control>
         @for (tab of resolvedTabs(); track tab.id) {
-          <bs-tab-page>
+          <bs-tab-page [tabId]="tab.id">
             <ng-template bsTabPageHeader>{{ tab.label | resolveTranslation:tab.name }}</ng-template>
             <ng-container *ngTemplateOutlet="tabContent; context: { $implicit: tab }"></ng-container>
           </bs-tab-page>
@@ -11,6 +11,8 @@
       </bs-tab-control>
 
     <ng-template #tabContent let-tab>
+      <!-- The tab's section id (#721): a #fragment link reaches it, and a section inside it reveals it (data-spark-tab). -->
+      <div [attr.id]="sectionIds ? (tab.anchor ?? null) : null" [attr.data-spark-tab]="tab.id" class="spark-section">
       @if (tab.id === '__default__') {
         @if (ungroupedAttributes().length > 0) {
           <bs-card class="m-3">
@@ -25,7 +27,7 @@
       @for (group of groupsForTab(tab); track group.id) {
         @if (attrsForGroup(group); as groupAttrs) {
           @if (groupAttrs.length > 0) {
-            <bs-card class="m-3">
+            <bs-card class="m-3 spark-section" [attr.id]="sectionIds ? (group.anchor ?? null) : null">
               @if (group.label) {
                 <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
               }
@@ -38,6 +40,7 @@
           }
         }
       }
+      </div>
     </ng-template>
 
     <ng-template #attrField let-attr>

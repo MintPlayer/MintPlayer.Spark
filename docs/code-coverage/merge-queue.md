@@ -633,8 +633,8 @@ itself, at two moments:
 
 It records each as a notice on the repository. Each manager of the repository gets one bell notification the next time
 they sign in or open CodeCoverage. A manager is a manager of the account, or an admin of the repository on GitHub. The
-notification links to the account's page; selecting the repository there and running **Set up rulesets** opens the form
-already corrected:
+notification links to the account page's repository list (`/github/a/{owner}#account-repositories`, #721), and the page
+scrolls to it. Selecting the repository there and running **Set up rulesets** opens the form already corrected:
 
 - a pin mismatch is re-pinned to the App that reports the name now;
 - a dead name in a one-check-per-job list is removed, and the names reported on the stuck pull request are listed

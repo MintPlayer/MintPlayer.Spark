@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, PendingTasks, Type, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, PendingTasks, Type, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsGridColumnDirective, BsGridComponent, BsGridRowDirective } from '@mintplayer/ng-bootstrap/grid';
+import { BsModalComponent } from '@mintplayer/ng-bootstrap/modal';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { SparkService } from '@mintplayer/ng-spark/services';
@@ -37,6 +38,7 @@ import {
   hasShowedOnFlag,
   isDisplayableImageUrl,
   isPrimitiveArrayAttribute,
+  sparkRevealedTab,
 } from '@mintplayer/ng-spark/models';
 
 /**
@@ -54,12 +56,24 @@ import {
   templateUrl: './spark-po-presenter.component.html',
   styleUrl: './spark-po-presenter.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    // A #fragment link's scroller asks for a section before it scrolls to it (#721): open the tab that holds it.
+    '(spark-reveal)': 'reveal($event)',
+  },
 })
 export class SparkPoPresenterComponent {
   private readonly sparkService = inject(SparkService);
   private readonly pendingTasks = inject(PendingTasks);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
   protected readonly isDisplayableImageUrl = isDisplayableImageUrl;
+  private readonly tabControl = viewChild(BsTabControlComponent);
+
+  /**
+   * Whether the tabs and group cards carry their section ids (#721, Dec4): on a page, not inside a `<bs-modal>`. Ids
+   * are document-wide, so a modal's copy of a section would make a `#fragment` link reach either one.
+   */
+  protected readonly sectionIds = !inject(BsModalComponent, { optional: true });
 
   /** The loaded object. */
   readonly item = input.required<PersistentObject>();
@@ -146,6 +160,13 @@ export class SparkPoPresenterComponent {
 
   attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
     return this.visibleAttributes().filter(a => a.group === group.id);
+  }
+
+  /** Opens the tab holding the section a `spark-reveal` event came from (#721, Part E step 3). */
+  protected reveal(event: Event): void {
+    const tab = sparkRevealedTab(event, this.host.nativeElement);
+    if (tab && this.resolvedTabs().some(t => t.id === tab))
+      this.tabControl()?.activeTab.set(tab);
   }
 
   /** A list of plain values (`List<string>`, `int[]`): one chip per item. */

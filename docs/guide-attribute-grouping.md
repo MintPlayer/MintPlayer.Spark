@@ -192,6 +192,7 @@ export interface AttributeTab {
   label?: TranslatedString;
   order: number;
   columnCount?: number;
+  anchor?: string;    // the section id, served by the server (see "Section ids")
 }
 
 export interface AttributeGroup {
@@ -200,6 +201,7 @@ export interface AttributeGroup {
   label?: TranslatedString;
   tab?: string;       // references AttributeTab.id
   order: number;
+  anchor?: string;    // the section id, served by the server (see "Section ids")
 }
 
 export interface EntityType {
@@ -223,9 +225,11 @@ The `spark-po-detail` and `spark-po-form` components both use `bs-tab-control` f
 ```html
 <bs-tab-control>
   @for (tab of resolvedTabs(); track tab.id) {
-    <bs-tab-page>
+    <bs-tab-page [tabId]="tab.id">
       <ng-template bsTabPageHeader>{{ tab.label | resolveTranslation:tab.name }}</ng-template>
-      <!-- tab content with groups -->
+      <div [attr.id]="sectionIds ? (tab.anchor ?? null) : null" [attr.data-spark-tab]="tab.id" class="spark-section">
+        <!-- tab content with groups -->
+      </div>
     </bs-tab-page>
   }
 </bs-tab-control>
@@ -237,7 +241,7 @@ Within each tab, groups are rendered as `bs-card` components with optional heade
 @for (group of groupsForTab(tab); track group.id) {
   @if (attrsForGroup(group); as groupAttrs) {
     @if (groupAttrs.length > 0) {
-      <bs-card class="d-block m-3">
+      <bs-card class="m-3 spark-section" [attr.id]="sectionIds ? (group.anchor ?? null) : null">
         @if (group.label) {
           <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
         }
@@ -304,6 +308,36 @@ attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
 }
 ```
 
+## Section ids and `#fragment` links
+
+Every group card, tab and sub-query card of an object page carries a DOM id, so a link can name a section:
+`/po/person/people-1#career` opens the page on the Career card (#721,
+[section_fragment_links_PRD.md](section_fragment_links_PRD.md)). The ids come from the model, so they stay the same across
+languages and builds:
+
+| Section | Its id | Example |
+|---|---|---|
+| A group card | the group's `name` in kebab case | `Career` → `career`, `PrSizeLabels` → `pr-size-labels` |
+| A tab | the tab's `name` in kebab case | `Employment` → `employment` |
+| A sub-query card | its query's alias (declared, else derived from the query's name) | `Company_People` → `company-people` |
+
+- **The server computes the id** and sends it as `anchor` on each group and tab of the entity type (HTTP responses only;
+  the model files never hold it). A sub-query entry that names its query by id is served by alias. The client renders
+  what it receives.
+- **Kebab case is acronym-aware:** `URLPath` → `url-path`, `Step2Details` → `step2-details`.
+- **No id for** the default "General" tab (`__default__`) or the ungrouped attributes' card, which have no name of their
+  own; nor anywhere on a page inside a modal or nested inside another form, where the ids would clash with the page
+  behind it.
+
+**The name must give a valid id.** It has to match `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` after the conversion, must not start
+with `spark-` (the shell's ids) or `bs-` (the tab control's), and no two sections of one type may give the same id. The
+name is not stripped into shape: it is an identifier that translation keys use too, so a bad one is a model problem.
+`--spark-verify-model`, the app's startup and `--spark-synchronize-model` all refuse it, naming each offender.
+
+**Opening a section.** A link to a section on another tab opens that tab: the page listens for the bubbling `spark-reveal`
+event (`SPARK_REVEAL_EVENT` in `@mintplayer/ng-spark/models`) and activates the tab that holds its target. Scrolling to the
+section is the app's choice: see [Object URLs](guide-object-urls.md#section-links-fragment).
+
 ## Backward Compatibility
 
 Entities that don't define any `tabs` or `groups` continue to work exactly as before. All attributes are rendered as a flat list on a single default "General" tab within a single card. No changes to existing model JSON files are required.
@@ -317,7 +351,8 @@ The backward-compatible behavior activates when:
 
 See the HR demo app for a working example:
 - `apps/HR/HR/App_Data/Model/Person.json` -- model JSON with tabs, groups, and group-assigned attributes
-- `node_packages/ng-spark/src/lib/components/po-form/spark-po-form.component.html` -- form template with tab/group rendering
-- `node_packages/ng-spark/src/lib/components/po-detail/spark-po-detail.component.html` -- detail template with tab/group rendering
-- `node_packages/ng-spark/src/lib/models/entity-type.ts` -- TypeScript interfaces for `AttributeTab`, `AttributeGroup`
-- `MintPlayer.Spark.Abstractions/EntityTypeDefinition.cs` -- C# classes for `AttributeTab`, `AttributeGroup`
+- `libs/node_packages/ng-spark/po-form/src/spark-po-form.component.html` -- form template with tab/group rendering
+- `libs/node_packages/ng-spark/po-detail/src/spark-po-presenter.component.html` -- detail template with tab/group rendering
+- `libs/node_packages/ng-spark/models/src/entity-type.ts` -- TypeScript interfaces for `AttributeTab`, `AttributeGroup`
+- `libs/spark/MintPlayer.Spark.Abstractions/EntityTypeDefinition.cs` -- C# classes for `AttributeTab`, `AttributeGroup`
+- `libs/spark/MintPlayer.Spark/Services/SparkSectionIds.cs` -- the section ids, their kebab case and their validation

@@ -105,11 +105,12 @@ public partial class RulesetNoticeBell : IRulesetNoticeBell
     }
 
     /// <summary>
-    /// The account page, whose repository list carries "Set up rulesets": Spark has no link that opens a query action on a
-    /// selected row, so the notification says which repository to select.
+    /// The account page's repository list, which carries "Set up rulesets": Spark has no link that opens a query action on
+    /// a selected row, so the notification says which repository to select. The fragment is that list's section id, the
+    /// <c>account-repositories</c> query's alias (#721): the page scrolls to it.
     /// </summary>
     internal static string AccountUrl(Repository repository)
-        => $"/{repository.Provider.ToCanonicalString()}/a/{Uri.EscapeDataString(repository.OwnerLogin)}";
+        => $"/{repository.Provider.ToCanonicalString()}/a/{Uri.EscapeDataString(repository.OwnerLogin)}#account-repositories";
 
     private (string Title, string Body) Text(RulesetNotice notice, Repository repository)
     {

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, model, output, signal, effect, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, input, model, output, signal, effect, Type, viewChild } from '@angular/core';
 import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -68,6 +68,7 @@ import {
   mergeRefreshValues,
   overlayFromResponse,
   resolveTranslation,
+  sparkRevealedTab,
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
@@ -97,16 +98,19 @@ export interface NestedTriggerRequest {
   selector: 'spark-po-form',
   imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsTreeSelectFooterDirective, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, SparkPrimitiveListEditorComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
-  // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
-  // height). Hide its contents but keep it occupying space, so the drop gap is blank and
-  // the surrounding rows don't shift. ::ng-deep because the cloned node is styled by CDK.
-  styles: [`:host ::ng-deep .cdk-drag-placeholder { visibility: hidden; }`],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  styleUrl: './spark-po-form.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    // A #fragment link's scroller asks for a section before it scrolls to it (#721): open the tab that holds it.
+    '(spark-reveal)': 'reveal($event)',
+  },
 })
 export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  private readonly tabControl = viewChild(BsTabControlComponent);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
@@ -164,6 +168,13 @@ export class SparkPoFormComponent {
   /** The form whose row modal this form is in, if any. */
   private readonly outerForm = inject(SparkPoFormComponent, { optional: true, skipSelf: true });
   private readonly newModal = inject(SparkPoNewModalService);
+
+  /**
+   * Whether the tabs and group cards carry their section ids (#721, Dec4): on a page, not inside a `<bs-modal>` (an
+   * AsDetail row's form, an **Add new** popup). Ids are document-wide, so a modal's copy of a section would make a
+   * `#fragment` link reach either one.
+   */
+  protected readonly sectionIds = !inject(BsModalComponent, { optional: true }) && !this.outerForm;
 
   /**
    * This form's object as it is now, with its `parent` chain: the owner an **Add new** sends (D12).
@@ -460,6 +471,13 @@ export class SparkPoFormComponent {
 
   attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
     return this.editableAttributes().filter(a => a.group === group.id);
+  }
+
+  /** Opens the tab holding the section a `spark-reveal` event came from (#721, Part E step 3). */
+  protected reveal(event: Event): void {
+    const tab = sparkRevealedTab(event, this.host.nativeElement);
+    if (tab && this.resolvedTabs().some(t => t.id === tab))
+      this.tabControl()?.activeTab.set(tab);
   }
 
   constructor() {

@@ -73,8 +73,10 @@
       <ng-container *ngTemplateOutlet="beforeQueriesTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
     }
     @for (subQuery of (showQueries() ? subQueries() : []); track subQuery.query) {
-      <!-- The entry's selectionMode overrides the query's own for this parent (#460, D17). -->
-      <spark-query-card [queryId]="subQuery.query" [parentId]="currentItem.id!" [parentType]="et.name"
+      <!-- The entry's selectionMode overrides the query's own for this parent (#460, D17). Its section id is the query's
+           alias (#721), which the server serves as the entry's query. -->
+      <spark-query-card class="spark-section" [attr.id]="sectionIds ? subQuery.query : null"
+                        [queryId]="subQuery.query" [parentId]="currentItem.id!" [parentType]="et.name"
                         [selectionMode]="subQuery.selectionMode ?? null"
                         [parentDeleted]="isDeletedView()"
                         [iconTemplate]="queryIconTemplate()" [captionTemplate]="queryCaptionTemplate()"

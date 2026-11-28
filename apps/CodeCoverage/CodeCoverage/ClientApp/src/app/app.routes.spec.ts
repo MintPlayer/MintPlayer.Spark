@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub } from '../testing/test-utils';
 import { routes } from './app.routes';
 import { ShellComponent } from './shell/shell.component';
-import { HOME_URL } from './spark/home-route';
+import { HOME_URL, redirectToHome } from './spark/home-route';
 
 /**
  * The route table's ORDER is its collision story: `:provider/...` matches any first segment,
@@ -31,7 +31,8 @@ describe('app routes: declaration order', () => {
     const root = routes[0];
 
     expect(root.path).toBe('');
-    expect(root.redirectTo).toBe(HOME_URL);
+    // The redirect function that keeps the #fragment (#721); the navigation tests below follow it to HOME_URL.
+    expect(root.redirectTo).toBe(redirectToHome);
     expect(root.pathMatch).toBe('full');
     // Before the shell, which also has path '' and would otherwise consume the empty URL.
     expect(routes.indexOf(root)).toBeLessThan(routes.findIndex(r => r.component === ShellComponent));
@@ -183,6 +184,29 @@ describe('app routes: navigation', () => {
     await harness.navigateByUrl('/po/x');  // leave Home, so the next redirect is observable
     await harness.navigateByUrl('/home');
     expect(router.url).toBe(HOME_URL);
+  });
+
+  it('keeps the #fragment through the / and /home redirects (#721)', async () => {
+    const { harness, router } = await setup();
+
+    await harness.navigateByUrl('/#merge-queue');
+    expect(router.url).toBe(`${HOME_URL}#merge-queue`);
+    await harness.navigateByUrl('/po/x');
+    await harness.navigateByUrl('/home#merge-queue');
+    expect(router.url).toBe(`${HOME_URL}#merge-queue`);
+  });
+
+  it('keeps the #fragment through the vanity guards (#721)', async () => {
+    const { harness, router } = await setup();
+
+    await harness.navigateByUrl('/github/a/mintplayer#account-repositories');
+    expect(router.url).toBe('/po/account/a1#account-repositories');
+
+    await harness.navigateByUrl('/gitlab/r/acme/widgets?flag=unit#repository-commits');
+    expect(router.url).toBe('/po/repository/r1?flag=unit#repository-commits');
+
+    await harness.navigateByUrl('/github/r/acme/widgets/c/abc123#files');
+    expect(router.url).toBe('/po/commit/c1#files');
   });
 
   it('forwards the forge-scoped vanity URLs through their guards into /po/...', async () => {

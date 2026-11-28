@@ -1,3 +1,6 @@
+import { inject } from '@angular/core';
+import { RedirectFunction, Router } from '@angular/router';
+
 /**
  * Where Home lives, in one place.
  *
@@ -16,3 +19,10 @@ export const HOME_ROUTE = {
 
 /** The Home page's absolute URL. */
 export const HOME_URL = `/po/${HOME_ROUTE.poAlias}/${HOME_ROUTE.objectId}`;
+
+/**
+ * The `/` and `/home` redirects to {@link HOME_URL}, keeping the #fragment (#721). A `redirectTo` string that is
+ * absolute drops it (`docs/section_fragment_links_PRD.md` S4): `/home#merge-queue` would land on Home's top.
+ */
+export const redirectToHome: RedirectFunction = ({ fragment }) =>
+  inject(Router).createUrlTree([HOME_URL], { fragment: fragment ?? undefined });

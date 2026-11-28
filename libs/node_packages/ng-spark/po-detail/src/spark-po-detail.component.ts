@@ -6,6 +6,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsGridComponent } from '@mintplayer/ng-bootstrap/grid';
+import { BsModalComponent } from '@mintplayer/ng-bootstrap/modal';
 import { BsPriorityNavComponent, BsPriorityNavItemTemplateDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, describeSparkError } from '@mintplayer/ng-spark/services';
@@ -52,6 +53,12 @@ export class SparkPoDetailComponent {
   private readonly navItemDirectives = viewChildren(SparkPriorityNavItemDirective);
   protected readonly navItems = sparkPriorityNavItems(this.navItemDirectives);
   private readonly clientMethods = inject(SparkClientMethodRegistry);
+
+  /**
+   * Whether the sub-query cards carry their section ids (#721, Dec4): on a page, not inside a `<bs-modal>`. The
+   * presenter decides the same for its tabs and group cards.
+   */
+  protected readonly sectionIds = !inject(BsModalComponent, { optional: true });
 
   /**
    * Add-on panels and action-bar buttons (#460, `SPARK_DETAIL_PANELS` / `SPARK_DETAIL_ACTIONS`).

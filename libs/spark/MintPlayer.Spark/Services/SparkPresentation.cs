@@ -78,6 +78,11 @@ internal static class SparkPresentation
         {
             SparkFileUrls.AddUrlProperty(typeInfo, Accessor);
         }
+        else if (typeInfo.Type == typeof(AttributeGroup) || typeInfo.Type == typeof(AttributeTab))
+        {
+            // The section id a #fragment link names (#721, Dec1): served, never written to a model file.
+            SparkSectionIds.AddAnchorProperty(typeInfo);
+        }
     }
 
     /// <summary>The check itself.</summary>
