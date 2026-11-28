@@ -67,7 +67,7 @@ services:
   # The endpoint is a cluster-admin one, so this is the one container that gets the operator certificate (the
   # apps never do). The server's name is checked against the private CA (--cacert).
   coverage-raven-license:
-    image: curlimages/curl:8.13.0
+    image: curlimages/curl:8.14.1
     depends_on:
       coverage-raven:
         condition: service_healthy
@@ -195,7 +195,7 @@ services:
   #
   # Network: coverage-files (internal) shared with coverage-app ONLY. No egress, no Traefik: the app proxies the bytes.
   coverage-garage:
-    image: docker.io/dxflrs/garage:v1.1.0
+    image: docker.io/dxflrs/garage:v1.2.0
     environment:
       # :- rather than :? on purpose: a missing secret stops Garage alone (it refuses to start), never the whole stack's
       # deploy, and the app keeps files in RavenDB until the bucket is configured.

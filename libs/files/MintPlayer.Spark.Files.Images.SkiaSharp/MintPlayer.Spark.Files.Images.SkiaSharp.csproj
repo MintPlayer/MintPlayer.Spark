@@ -26,10 +26,10 @@
 
 	<ItemGroup>
 		<!-- MIT. The 3.119 line is the one PRD SP5 measured on Windows and Linux. -->
-		<PackageReference Include="SkiaSharp" Version="3.119.2" />
+		<PackageReference Include="SkiaSharp" Version="3.119.4" />
 		<!-- libSkiaSharp.so without fontconfig: the plain package has no Linux native (DllNotFoundException), and the aspnet
 		     images have no fontconfig. We draw no text (SP5). -->
-		<PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2" />
+		<PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
 	</ItemGroup>
 
 	<ItemGroup>
