@@ -4,9 +4,9 @@ Issue #721 (enhancement). One pull request. This file holds the findings, the op
 and the milestones; the decisions and the log follow as they are made. Paths are under `libs/node_packages/ng-spark/`
 unless they start with `apps/`, `libs/spark/`, `libs/model/`, `libs/authorization/`, `tests/`, `docs/` or `node_modules/`.
 
-Status: **draft, 2026-11-28.** Nothing is decided yet. §2 holds the investigation: three read-only lookups, with every
-load-bearing claim re-read by hand. It corrects four points of the issue (F2, F6, F7, F5). §5 holds the owner's questions.
-**Spikes S1–S4 are done (§6.1):**
+Status: **decided, 2026-11-28; ready for M1.** §2 holds the investigation: three read-only lookups, with every
+load-bearing claim re-read by hand. It corrects four points of the issue (F2, F6, F7, F5). The owner answered Q1–Q7 and
+asked for Angular's fragment support (§5.1, Dec1–Dec8). **Spikes S1–S5 are done (§6.1):**
 - A2 is feasible.
 - An absolute `redirectTo` drops the fragment.
 - A target below a growing sub-query card moves by up to 800 px after the first scroll, and the browser's scroll
@@ -277,36 +277,60 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
 - **D1. Opt-in.** The presenter and the form get an input (working name `sectionIds`, default `false`). po-detail,
   po-edit and po-create set it. Modals, the nested AsDetail form, `compact` mode and an app's own embedding get no ids,
   and nothing has to detect a modal.
-- **D2. On by default,** switched off in a modal by injecting `BsModalComponent`. Nobody has confirmed that this works
-  (F9), and it misses modals that apps build themselves.
+- **D2. On by default,** switched off in a modal by injecting `BsModalComponent`. It misses modals that apps build
+  without `<bs-modal>`. **Chosen (Dec4).** S5 confirmed the detection works (§6.1).
 
-### Part E: the scroll
+### Part E: the scroll, through Angular's fragment support (Dec8)
 
-- **The helper.** A small ng-spark helper (working name `sparkRevealSection`), used by the three routed pages. It reads
-  `ActivatedRoute.fragment` as a signal. Once the page has loaded and a fragment is set, it:
-  1. finds the section by id **within the page's host element**, not the whole document;
-  2. opens the section's tab when it sits on one. The tab is derived from the model: a group's `tab`, or the default
-     tab; a tab is its own. The tabs get `[tabId]="tab.id"`, and the control's `activeTab` is set;
-  3. after the next render, scrolls the section to the top of `#spark-main`, **below the sticky action bar** (S2: without
-     an offset the bar covers 54 px of it). The offset is the bar's measured height plus a small gap, set as the
-     section's `scroll-margin-top` before `scrollIntoView({ block: 'start', behavior })`. No CSS variable holds that
-     height today. `behavior` is `'smooth'`, or `'auto'` under `prefers-reduced-motion: reduce`.
-  4. **keeps the section there while the page still settles** (S2). A sub-query card above the target loads its rows
-     after the first render. That moved the target by up to 800 px within a second. On top of that, the first scroll can
-     stop short because the page is not tall enough yet.
-     - The browser's scroll anchoring does not compensate, because the card that grows is the anchor itself.
-     - So the helper re-aligns the section whenever it drifts.
+> Rewritten after the owner's "use the angular fragments feature" (2026-11-28). The first version had a helper per
+> routed page that read `ActivatedRoute.fragment` and listened for `NavigationSkipped` itself.
+
+- **Angular triggers the scroll.** Every app adds `withInMemoryScrolling({ anchorScrolling: 'enabled' })` to its
+  `provideRouter`. The router's scroller then calls `ViewportScroller.scrollToAnchor(fragment)`:
+  - one frame after every `NavigationEnd` whose URL has a fragment;
+  - after an ignored same-URL navigation (`NavigationSkipped`, code 0), so a second click on the bell's link scrolls
+    again.
+
+  Source: `@angular/router` 22.2.2, `RouterScroller.createScrollEvents` and `consumeScrollEvents` in
+  `node_modules/@angular/router/fesm2022/_router_module-chunk.mjs`.
+  - `scrollPositionRestoration` stays `'disabled'`, so a navigation without a fragment behaves as it does today.
+  - Links inside the apps use `routerLink` with `[fragment]`, or `createUrlTree(…, { fragment })`. Nothing parses
+    `location.hash`.
+- **ng-spark supplies the `ViewportScroller`** (working name `SparkViewportScroller`). It is registered through
+  `provideSpark`, and only in the browser. Angular's own implementation scrolls the window, which never scrolls in
+  Spark's shell (F5). `ViewportScroller` is an abstract, injectable class, and it has `setOffset` and `ScrollOptions`
+  (`@angular/common` `types/common.d.ts`). Spark's `scrollToAnchor`:
+  1. **looks for the anchor inside `#spark-main`.** With no shell on the page, it falls back to Angular's window
+     behaviour.
+  2. **waits for the anchor when it is not there yet.** An object page renders its sections only after its data has
+     loaded (F4; S2 measured 0.7–1.5 s). The wait is bounded: a `MutationObserver` on `#spark-main` for up to 10 s,
+     cancelled by the next navigation. An unknown fragment times out silently.
+  3. **opens the anchor's tab.** It dispatches a bubbling `spark-reveal` DOM event from the section. The presenter and
+     the form listen on their host, find the tab wrapper (`data-spark-tab`) that holds the section, and set
+     `activeTab` (S1). The tabs get `[tabId]="tab.id"`.
+  4. **scrolls the section to the top of `#spark-main`, below the sticky action bar.** S2 found the bar covers 54 px
+     otherwise. `setOffset` defaults to the bar's measured height plus a small gap. The scroll is smooth, and instant
+     under `prefers-reduced-motion: reduce`.
+  5. **keeps the section there while the page still settles** (S2). A sub-query card above the target loads its rows
+     after the first render, and that moved the target by up to 800 px within a second. The first scroll can also stop
+     short because the page is not tall enough yet. The browser's scroll anchoring does not compensate, because the
+     card that grows is the anchor itself.
+     - So the scroller re-aligns the section whenever it drifts.
      - It stops after 1 s without drift, after 5 s at most, or at the user's first wheel, touch, pointer-down or key in
        `#spark-main`.
+  6. **outlines the section briefly** (Dec5): a class held for about 1.5 s. Under reduced motion the outline is static,
+     with no transition.
+- **Hydration.** The router skips the first `Scroll` event while the app hydrates (`RouterScroller.isHydrating`). Only
+  MintPlayer hydrates (F11). For it, ng-spark asks for the first anchor itself once the app is stable, if the URL has a
+  fragment.
+- **No helper per page.** Any page that carries ids, an app's own pages included, gets fragment scrolling. The object
+  pages only add the tab opening.
 - **Edge cases:**
   - An unknown fragment does nothing.
   - A group without visible attributes renders no card (F1), so its fragment does nothing either.
-  - On the server nothing runs (F11).
-  - A fragment-only navigation to another section reuses the page and `ActivatedRoute.fragment` emits, so the helper
-    re-runs (S4).
-  - The same fragment navigated twice is ignored by the router. It emits `NavigationSkipped` (code 0), and the helper
-    reveals the section again on it (S4). This covers a reader who has scrolled away and clicks the bell's link again.
-- **A brief highlight of the target: Q5.**
+  - On the server, Angular's `NullViewportScroller` stays in place and nothing runs.
+  - A fragment-only navigation fires the router's `Scroll` event (S4 b).
+  - The same fragment navigated twice fires it too, through `NavigationSkipped` (S4 c).
 
 ### Part F: the fragment through rebuilt URLs
 
@@ -366,6 +390,44 @@ Each question has a recommendation and its trap. They will be asked one at a tim
 - **Q7. Where does validation run?** Recommended: **all three,** as Part G.
   *Trap:* a duplicate in an external app now stops startup rather than rendering two equal ids.
 
+### 5.1 Decisions (owner, 2026-11-28)
+
+Asked one at a time, after spikes S1–S4. Each decision follows §4 unless it says otherwise.
+
+- **Dec1 (Q1): A2. The server computes the id.**
+  - Groups and tabs carry `anchor` on the wire only, through an HTTP-only contract modifier on ASP.NET's `JsonOptions`.
+    The precedent is `SparkFileUrls.AddUrlProperty` (S3). The model files never get it, and the synchronizer's
+    idempotency test guards that.
+  - An id-form sub-query entry is served in its alias form, from the catalogue's per-caller copy.
+  - The C# kebab function is the only one: the client renders what it receives.
+- **Dec2 (Q2): Part B as written.**
+  - The kebab split is acronym-aware.
+  - A name whose result is not `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` is a model problem, never stripped.
+  - Ids starting with `spark-` or `bs-` are refused.
+- **Dec3 (Q3): C1. The default tab and the card of ungrouped attributes get no id.**
+- **Dec4 (Q4): D2, against the recommendation (D1). Ids are on by default** in the presenter and the form.
+  - They are off when `inject(BsModalComponent, { optional: true })` finds a modal. S5 shows this works under `@if` and
+    through a component nested inside the modal.
+  - That covers ng-spark's three form modals, the nested AsDetail form (which opens in the row modal), and any app
+    content inside a `<bs-modal>`.
+  - Accepted trap: a modal built without `<bs-modal>` renders ids, and these can then duplicate the page's.
+  - `compact` mode has no cards anyway.
+- **Dec5 (Q5): a brief outline, against the recommendation (no highlight).**
+  - The target is outlined for about 1.5 s, with no transition under `prefers-reduced-motion: reduce`.
+  - The style lives in ng-spark's own stylesheets, as a shared partial next to `styles/_actionbar.scss`, and is
+    `@use`d by the components that render sections. It uses Bootstrap's CSS variables, not utility classes.
+- **Dec6 (Q6): no.** Switching tabs leaves the URL alone, as in the non-goals.
+- **Dec7 (Q7): all three.** The validator runs in `--spark-verify-model`, at startup and in the synchronizer (Part G).
+- **Dec8 (owner, during the questions): "Also: use the angular fragments feature".** Part E is rebuilt on Angular's own
+  fragment support:
+  - the router's anchor scrolling (`withInMemoryScrolling({ anchorScrolling: 'enabled' })` in every app);
+  - `routerLink [fragment]` and `createUrlTree(…, { fragment })` for links;
+  - an ng-spark `ViewportScroller` that does the scrolling in `#spark-main`.
+
+  The per-page helper and its own `NavigationSkipped` listener are gone: the router covers both. This is my reading of
+  a one-line instruction. If the owner meant something narrower, such as only `routerLink [fragment]` for links, Part E
+  shrinks back to a page-level trigger that calls the same `ViewportScroller`.
+
 ## 6. Spikes
 
 | # | Question | Where | Done when |
@@ -374,6 +436,7 @@ Each question has a recommendation and its trap. They will be asked one at a tim
 | S2 | On a real page, where does the target land and when does it stop moving? On coverage.mintplayer.com's account page for MintPlayer (eight group cards, then three query cards): the `account-repositories` card's offset inside `#spark-main` at the first render of the cards, after the labels load, and after the query cards have loaded their rows. Does `scrollIntoView({ block: 'start' })` leave it under the sticky action bar? | `playwright_node`, read-only: navigation, an init script that records the offsets, no clicks that write | The offsets recorded. Part E's trigger chosen (one scroll, or a bounded re-scroll), and whether `scroll-margin-top` is needed. **Done 2026-11-28: a bounded re-scroll, and an offset is needed (§6.1).** |
 | S3 | How are entity types served to the client (endpoint, serializer, the DTO or `EntityTypeDefinition` itself), and how does the synchronizer write the file? Can a group or tab carry a computed `anchor` on the wire but not in the file? Can a sub-query entry be served in its alias form while the file holds an id? | `libs/spark`, read-only | Answered with file:line. Decides Q1 between A1 and A2. **Done 2026-11-28: A2 is feasible (§6.1).** |
 | S4 | Router behaviour. (a) Do CodeCoverage's static `redirectTo` routes keep the fragment? (b) Does a fragment-only navigation on the same object page reuse the component, with `ActivatedRoute.fragment` emitting? (c) Is the same fragment navigated twice ignored? | A throwaway vitest with `RouterTestingHarness`. Case (a) becomes a committed spec if the fragment survives | Three answers recorded. **Done 2026-11-28: an absolute redirect drops the fragment (§6.1).** |
+| S5 | Added after Dec4 chose D2. Does `inject(BsModalComponent, { optional: true })` in a component inside `<bs-modal>` find the modal, even though the modal moves its DOM to the end of `<body>`? Does it work under `@if`, and through a component nested inside the modal? | A throwaway vitest in ng-spark, deleted after the run | The three cases recorded. **Done 2026-11-28: yes in all three cases, and `null` outside (§6.1).** |
 
 ### 6.1 Results (2026-11-28)
 
@@ -446,32 +509,57 @@ Method: `playwright_node` (Chromium), signed in, `https://coverage.mintplayer.co
   `NavigationSkipped` with code 0, which the helper can listen for.
 - **(d) Dropping the fragment** emitted `null`.
 
+**S5. Modal detection works.** Throwaway spec: a probe component with
+`readonly inModal = !!inject(BsModalComponent, { optional: true })`, placed in three spots:
+- outside the modal: `false`;
+- directly inside `<bs-modal>` under `@if (open())`: `true`;
+- inside another component that sits inside the modal: `true`.
+
+The element injector follows the template, not the DOM, so the modal's move to the end of `<body>` does not matter.
+ng-spark's three form modals all put `<spark-po-form>` inside `<bs-modal>`:
+- `po-form/src/spark-po-form.component.html:480-498`;
+- `po-form/src/spark-po-new-modal.component.ts:52-81`;
+- `retry-action-modal/src/spark-retry-action-modal.component.ts:33-72`.
+
 ## 7. Milestones (one pull request)
 
 TDD throughout: each behaviour gets a failing test first. Only the touched test classes run along the way, and the run
 over everything happens once, at the end.
 
-- **M0.** S1–S4 run (done 2026-11-28, §6.1), and Q1–Q7 answered (§5.1 once written).
+- **M0.** Done 2026-11-28: S1–S5 run (§6.1), and Q1–Q7 answered (§5.1).
 - **M1. Server.**
-  - The kebab function and `SparkSectionIds.Validate`, wired into verify, startup and the synchronizer (Part G).
-  - Under A2, also the served `anchor` and the alias-form sub-query entries.
-  - Tests: the shared vectors; a collision between a group and a tab, a group and a sub-query, and two groups; an odd
-    name; a reserved prefix; an id-form sub-query; the synchronizer's throw; startup's throw.
-  - No new endpoint, so the route snapshot does not move. Under A2, any golden of a served type moves in the same commit.
+  - The kebab function and `SparkSectionIds.Validate`, wired into verify, startup and the synchronizer (Part G, Dec2,
+    Dec7).
+  - The served `anchor` on groups and tabs, through the HTTP-only contract modifier. The alias-form sub-query entries in
+    the catalogue's copy (Dec1).
+  - Tests:
+    - the kebab vectors;
+    - a collision between a group and a tab, between a group and a sub-query, and between two groups;
+    - an odd name, and a reserved prefix;
+    - an id-form sub-query;
+    - the synchronizer's throw, and startup's throw;
+    - `anchor` served by `/spark/types` but absent from a synchronized model file.
+  - No new endpoint, so the route snapshot does not move. No golden covers the served types (S3).
 - **M2. ng-spark ids.**
-  - The presenter and form templates (Part C); the `sectionIds` input on both; the routed pages opting in (D1); the tabs
-    getting `[tabId]`.
-  - Vitest: the ids are present on the three pages, absent in the modals and in `compact` mode, and the default tab has
-    none.
-- **M3. ng-spark scroll.**
-  - `sparkRevealSection` in the three routed pages. It covers:
-    - opening the tab;
+  - The presenter and form templates (Part C) render `anchor`. Ids are on by default and off inside `<bs-modal>` (Dec4).
+  - The tabs get `[tabId]`, and each pane's content gets a wrapper carrying the id and `data-spark-tab`.
+  - The sub-query cards get their alias.
+  - Vitest: the ids are present on the three pages; absent in the three modals and in `compact` mode; the default tab and
+    the ungrouped card have none.
+- **M3. ng-spark scroll** (Part E, Dec8).
+  - `SparkViewportScroller` in `provideSpark`, browser only. It covers:
+    - finding the anchor inside `#spark-main`, with the fallback when there is no shell;
+    - the bounded wait for the anchor;
+    - `spark-reveal`, which makes the presenter or form set `activeTab`;
     - the action bar's offset;
     - re-aligning until the page settles, and stopping at the user's first input;
     - reduced motion;
-    - fragment changes, and `NavigationSkipped`;
-    - an unknown fragment.
-  - Vitest, with `scrollIntoView` stubbed (S1).
+    - the outline (Dec5);
+    - the first anchor after hydration.
+  - `withInMemoryScrolling({ anchorScrolling: 'enabled' })` in every app's `provideRouter`: CodeCoverage, DemoApp,
+    Fleet, HR, MintPlayer, QnA, SeoTester, SparkId and SqlDemo.
+  - Vitest, with the scroll APIs stubbed (S1). Router-driven cases go through `RouterTestingHarness`: a fragment on load,
+    a fragment-only change, and the same fragment again.
 - **M4. The fragment through rebuilt URLs.** The three vanity guards and CodeCoverage's two absolute `HOME_URL`
   redirects, each with a spec.
 - **M5. CodeCoverage's bell.** `#account-repositories`, with `RulesetNoticeBellTests`.
@@ -506,3 +594,11 @@ Versions come from tags. ng-spark and the NuGet packages get a minor from the en
     - Q1 now recommends A2 through an HTTP-only contract modifier.
     - Part E gains the action bar's offset, the bounded re-alignment and `NavigationSkipped`.
     - Part F gains CodeCoverage's two absolute `HOME_URL` redirects.
+- **2026-11-28. Decisions.**
+  - The owner answered Q1–Q7 one at a time (§5.1). Two answers went against the recommendation: Dec4, ids on by default
+    with modal detection; Dec5, a brief outline.
+  - During the questions the owner added "use the angular fragments feature", which became Dec8. Part E now rests on
+    the router's anchor scrolling and an ng-spark `ViewportScroller`. Angular 22.2.2's `RouterScroller` and the
+    `ViewportScroller` API were read in `node_modules` to confirm it.
+  - S5 (a throwaway vitest, deleted) confirmed Dec4's modal detection.
+  - Milestones M1–M3 were updated to match.
