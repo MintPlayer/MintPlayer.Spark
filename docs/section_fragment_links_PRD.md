@@ -5,8 +5,15 @@ and the milestones; the decisions and the log follow as they are made. Paths are
 unless they start with `apps/`, `libs/spark/`, `libs/model/`, `libs/authorization/`, `tests/`, `docs/` or `node_modules/`.
 
 Status: **draft, 2026-11-28.** Nothing is decided yet. §2 holds the investigation: three read-only lookups, with every
-load-bearing claim re-read by hand. It corrects four points of the issue (F2, F6, F7, F5). §5 holds the owner's questions
-and §6 the spikes; none has run yet.
+load-bearing claim re-read by hand. It corrects four points of the issue (F2, F6, F7, F5). §5 holds the owner's questions.
+**Spikes S1–S4 are done (§6.1):**
+- A2 is feasible.
+- An absolute `redirectTo` drops the fragment.
+- A target below a growing sub-query card moves by up to 800 px after the first scroll, and the browser's scroll
+  anchoring does not hold it.
+- The sticky action bar covers a section scrolled to the top.
+
+Parts E and F and Q1 are updated to match.
 
 ## 1. Why
 
@@ -64,8 +71,7 @@ The control is `@mintplayer/ng-bootstrap`'s (`node_modules/@mintplayer/ng-bootst
   therefore exists in the DOM before its tab is shown, so it can be found first and its tab opened afterwards.
 - **The id needs an inner wrapper.** The `bs-tab-page` host is `hidden`, and its content is moved into the pane
   (`fesm:45, 51-53`). An id on the host would sit on an empty, hidden element.
-- **The control makes ids of its own,** with the prefix `bs-tab-control` (`fesm:83`). Their exact format lives in
-  `@mintplayer/ui-core`, which nobody has read yet (S1).
+- **The control makes ids of its own,** with the prefix `bs-tab-control` (`fesm:83`). Their format is in §6.1, S1.
 
 ### F4. When the sections exist, and when they stop moving
 
@@ -182,10 +188,10 @@ host (`apps/CodeCoverage/CodeCoverage/ClientApp/src/app/shell/shell.component.sc
     then call `navigateByUrl`. The calls are at `notifications/src/spark-notifications.service.ts:317-328` and
     `pwa/src/spark-notification-clicks.ts:49-55`.
   - `SparkLinkUrl` only validates a URL, and allows `#` (`libs/spark/.../SparkLinkUrl.cs:29-51`).
-- **Not confirmed:**
-  - CodeCoverage's static `redirectTo` routes (`app.routes.ts:19, 28, 57`). Angular normally keeps the fragment there,
-    but nothing tests it (S4).
-  - The last hop of an external login.
+- **Static `redirectTo` routes:** an absolute target drops the fragment, a relative one keeps it (§6.1, S4).
+  - CodeCoverage's two `HOME_URL` redirects (`app.routes.ts:19, 28`) are the only absolute ones in the apps.
+  - The other nine (`'home'`, `'account/passkeys'`) are relative.
+- **Not confirmed:** the last hop of an external login.
 
 ### F11. Router, SSR and tests
 
@@ -236,7 +242,10 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
 - **A2. Once, on the server.** The type as served carries the id: an `anchor` on each group and tab, and each sub-query
   entry in its alias form even when the file holds an id (F6). The client renders what it gets, and the validator uses
   the same C# function. This depends on the served payload being able to differ from the model file, so that the
-  synchronizer never writes `anchor` back (S3).
+  synchronizer never writes `anchor` back. **S3 shows it can (§6.1):**
+  - a contract modifier on the HTTP `JsonOptions` adds the property, as `SparkFileUrls.AddUrlProperty` already does for
+    `url`;
+  - the catalogue's per-caller copy swaps an id-form sub-query entry for its alias.
 - **A3. An explicit `anchor` in the model JSON,** defaulting to `kebab(name)`, which an author may override. Nothing
   needs an override today (F7). This adds a field to every hand-typed model.
 
@@ -278,25 +287,33 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
   1. finds the section by id **within the page's host element**, not the whole document;
   2. opens the section's tab when it sits on one. The tab is derived from the model: a group's `tab`, or the default
      tab; a tab is its own. The tabs get `[tabId]="tab.id"`, and the control's `activeTab` is set;
-  3. after the next render, calls `scrollIntoView({ block: 'start', behavior })`. `behavior` is `'smooth'`, or `'auto'`
-     under `prefers-reduced-motion: reduce`.
+  3. after the next render, scrolls the section to the top of `#spark-main`, **below the sticky action bar** (S2: without
+     an offset the bar covers 54 px of it). The offset is the bar's measured height plus a small gap, set as the
+     section's `scroll-margin-top` before `scrollIntoView({ block: 'start', behavior })`. No CSS variable holds that
+     height today. `behavior` is `'smooth'`, or `'auto'` under `prefers-reduced-motion: reduce`.
+  4. **keeps the section there while the page still settles** (S2). A sub-query card above the target loads its rows
+     after the first render. That moved the target by up to 800 px within a second. On top of that, the first scroll can
+     stop short because the page is not tall enough yet.
+     - The browser's scroll anchoring does not compensate, because the card that grows is the anchor itself.
+     - So the helper re-aligns the section whenever it drifts.
+     - It stops after 1 s without drift, after 5 s at most, or at the user's first wheel, touch, pointer-down or key in
+       `#spark-main`.
 - **Edge cases:**
   - An unknown fragment does nothing.
   - A group without visible attributes renders no card (F1), so its fragment does nothing either.
   - On the server nothing runs (F11).
-  - A fragment-only navigation to another section re-runs the helper.
-  - The same fragment clicked twice is a no-op for the router (S4). That is accepted.
-- **Late layout shifts (F4) and the sticky bar (F5).** S2 decides between two approaches:
-  - one scroll after the first render;
-  - a bounded re-scroll while the content above the target still grows, stopped by the user's first wheel, touch or key.
-
-  S2 also decides whether a `scroll-margin-top` is needed so that the sticky action bar does not cover the section.
+  - A fragment-only navigation to another section reuses the page and `ActivatedRoute.fragment` emits, so the helper
+    re-runs (S4).
+  - The same fragment navigated twice is ignored by the router. It emits `NavigationSkipped` (code 0), and the helper
+    reveals the section again on it (S4). This covers a reader who has scrolled away and clicks the bell's link again.
 - **A brief highlight of the target: Q5.**
 
 ### Part F: the fragment through rebuilt URLs
 
 - **The three vanity guards** pass `fragment: route.fragment ?? undefined`, each with a spec case.
-- **CodeCoverage's static `redirectTo` routes** get one spec case each, once S4 says how they behave.
+- **CodeCoverage's two absolute `HOME_URL` redirects** become redirect functions that keep the fragment, each with a spec
+  case. S4 shows that an absolute `redirectTo` string drops it, and that a function returning
+  `createUrlTree([...], { fragment })` keeps it. The relative redirects in the apps already keep it.
 - **R2-L4 stays as it is** (F10).
 
 ### Part G: validation (Q7)
@@ -327,10 +344,12 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
 
 Each question has a recommendation and its trap. They will be asked one at a time.
 
-- **Q1. Where is the id computed?** Recommended: **A2** if S3 shows the served type can carry `anchor` without the
-  synchronizer writing it back; **A1** otherwise. A3 adds a field that nothing needs.
+- **Q1. Where is the id computed?** Recommended: **A2**, through an HTTP-only contract modifier. S3 found the
+  precedent, and the synchronizer's idempotency test would catch an `anchor` that leaks into a file. A1 would keep two
+  kebab functions in step. A3 adds a field that nothing needs.
   *Trap:* A2 changes the wire contract of every type, and a custom client of the protocol would see the new property.
-  That is allowed while Spark is in preview.
+  That is allowed while Spark is in preview. The MCP tools also return catalogue output, through a serializer that
+  nobody has checked. They would show `anchor`, or not, depending on which options they use.
 - **Q2. The kebab rule, refusing odd names, and the reserved prefixes:** recommended as Part B.
   *Trap:* an app whose group names contain spaces or accents stops starting until they are renamed. None exists in this
   repo (F7). Outside apps are unknown.
@@ -351,17 +370,88 @@ Each question has a recommendation and its trap. They will be asked one at a tim
 
 | # | Question | Where | Done when |
 |---|---|---|---|
-| S1 | Does an element inside `bs-tab-page` content keep its id once the control moves it into the pane, and appear exactly once in the DOM? Does setting `activeTab` to a page's `tabId` show that page? What format do the control's own ids have, and can a kebab id clash with them? Does jsdom lack `scrollIntoView`, and how do the existing specs stub DOM APIs? | `node_modules/@mintplayer/ng-bootstrap` and `@mintplayer/ui-core`, read-only, plus a throwaway vitest spec in ng-spark that is not committed | Each answered with file:line, and the throwaway spec's output recorded |
-| S2 | On a real page, where does the target land and when does it stop moving? On coverage.mintplayer.com's account page for MintPlayer (eight group cards, then three query cards): the `account-repositories` card's offset inside `#spark-main` at the first render of the cards, after the labels load, and after the query cards have loaded their rows. Does `scrollIntoView({ block: 'start' })` leave it under the sticky action bar? | `playwright_node`, read-only: navigation, an init script that records the offsets, no clicks that write | The offsets recorded. Part E's trigger chosen (one scroll, or a bounded re-scroll), and whether `scroll-margin-top` is needed |
-| S3 | How are entity types served to the client (endpoint, serializer, the DTO or `EntityTypeDefinition` itself), and how does the synchronizer write the file? Can a group or tab carry a computed `anchor` on the wire but not in the file? Can a sub-query entry be served in its alias form while the file holds an id? | `libs/spark`, read-only | Answered with file:line. Decides Q1 between A1 and A2 |
-| S4 | Router behaviour. (a) Do CodeCoverage's static `redirectTo` routes keep the fragment? (b) Does a fragment-only navigation on the same object page reuse the component, with `ActivatedRoute.fragment` emitting? (c) Is the same fragment navigated twice ignored? | A throwaway vitest with `RouterTestingHarness`. Case (a) becomes a committed spec if the fragment survives | Three answers recorded |
+| S1 | Does an element inside `bs-tab-page` content keep its id once the control moves it into the pane, and appear exactly once in the DOM? Does setting `activeTab` to a page's `tabId` show that page? What format do the control's own ids have, and can a kebab id clash with them? Does jsdom lack `scrollIntoView`, and how do the existing specs stub DOM APIs? | `node_modules/@mintplayer/ng-bootstrap` and `@mintplayer/ui-core`, read-only, plus a throwaway vitest spec in ng-spark that is not committed | Each answered with file:line, and the throwaway spec's output recorded. **Done 2026-11-28 (§6.1).** |
+| S2 | On a real page, where does the target land and when does it stop moving? On coverage.mintplayer.com's account page for MintPlayer (eight group cards, then three query cards): the `account-repositories` card's offset inside `#spark-main` at the first render of the cards, after the labels load, and after the query cards have loaded their rows. Does `scrollIntoView({ block: 'start' })` leave it under the sticky action bar? | `playwright_node`, read-only: navigation, an init script that records the offsets, no clicks that write | The offsets recorded. Part E's trigger chosen (one scroll, or a bounded re-scroll), and whether `scroll-margin-top` is needed. **Done 2026-11-28: a bounded re-scroll, and an offset is needed (§6.1).** |
+| S3 | How are entity types served to the client (endpoint, serializer, the DTO or `EntityTypeDefinition` itself), and how does the synchronizer write the file? Can a group or tab carry a computed `anchor` on the wire but not in the file? Can a sub-query entry be served in its alias form while the file holds an id? | `libs/spark`, read-only | Answered with file:line. Decides Q1 between A1 and A2. **Done 2026-11-28: A2 is feasible (§6.1).** |
+| S4 | Router behaviour. (a) Do CodeCoverage's static `redirectTo` routes keep the fragment? (b) Does a fragment-only navigation on the same object page reuse the component, with `ActivatedRoute.fragment` emitting? (c) Is the same fragment navigated twice ignored? | A throwaway vitest with `RouterTestingHarness`. Case (a) becomes a committed spec if the fragment survives | Three answers recorded. **Done 2026-11-28: an absolute redirect drops the fragment (§6.1).** |
+
+### 6.1 Results (2026-11-28)
+
+**S1. The tab control is safe for ids, and `activeTab` takes a page's `tabId`.** Throwaway spec: two `bs-tab-page`s with
+`tabId`s `__default__` and `g-guid-2`, each holding a `<div id="sec-…">`.
+- **The id renders exactly once,** inside the pane (`bs-tab-control-1-p1`) and not inside the `bs-tab-page` host. A page
+  captures its content in `<ng-template #lent><ng-content/></ng-template>` (`fesm2022/mintplayer-ng-bootstrap-tab-control.mjs:45`),
+  and the control stamps it into the pane with `ngTemplateOutlet` (`:90`). An id on a wrapper inside the page's content
+  therefore works.
+- **Selection.** Setting `activeTab` to `'g-guid-2'` flipped the radios from `true,false` to `false,true`.
+  `node_modules/@mintplayer/ui-core/tab-control/index.mjs:101-113` keys each page by its `tabId`, or by its position when
+  the `tabId` is empty, and selects the page whose key equals `activeTab`.
+- **The control's own ids** are:
+  - `{host}-r{i}` for a radio, `{host}-t{i}` for a tab and `{host}-p{i}` for a pane, plus the radio group's name
+    `{host}-group` (`index.mjs:7-9, 43`);
+  - `{host}` is the host's own `id` attribute, else `bs-tab-control-{n}` (`ui-core/component/index.mjs:117`), and
+    `bs-tab-control-ssr` on the server (`:107`).
+
+  All of them start with `bs-`, which Part B reserves.
+- **jsdom has no `Element.prototype.scrollIntoView`** (it is `undefined`), so the specs stub it.
+
+**S2. On the live account page, a target can move after it has been scrolled to, and the action bar covers it.**
+Method: `playwright_node` (Chromium), signed in, `https://coverage.mintplayer.com/github/a/MintPlayer`, 2026-11-28 around
+12:40. Read-only: an init script sampled positions every 25 ms. The only other actions were navigations and
+`scrollIntoView` calls.
+- **The cards appear 0.7–1.5 s after the navigation starts.** The redirect and the canonical rewrite end at
+  `/po/account/…/mintplayer`.
+- **`account-repositories`, the first sub-query card,** sat at 2528 px from its first render on and never moved. Neither
+  the labels loading nor anything else above it shifted it.
+- **The cards below it moved,** because `account-repositories` loads its rows after the first render:
+  - `account-projects`: 2693 → 2841 → 3274 px;
+  - `account-upload-tokens`: 2857 → 3006 → 3169 → 3656 px;
+  - all within about 0.8 s, with gaps of up to 0.47 s between shifts.
+- **One `scrollIntoView` on `account-upload-tokens` at its first render** stopped at `scrollTop` 2434, the maximum while
+  the page was still short. That left the card 423 px below the top. It was then pushed to 1222 px while `scrollTop`
+  stayed at 2434, although `overflow-anchor` was `auto`: the growing card was the anchor. So one scroll is not enough,
+  and Part E re-aligns.
+- **After `scrollIntoView({ block: 'start' })`,** the card's top was main's top (55 px), and the sticky
+  `div.spark-actionbar` spanned 55–109 px: 54 px of the card were hidden. No `--spark-actionbar-height` variable exists.
+  So Part E offsets by the bar's measured height.
+- **Seen on the side:** each load logs the sparklines 500 (#723, already filed) and a 404 from
+  `spark/notifications/push/key`.
+
+**S3. A2 is feasible.**
+- **Serving.** `GET /spark/types` and `GET /spark/types/{id}` return `Results.Json(EntityTypeDefinition)` directly, with
+  ASP.NET's `JsonOptions` (`libs/spark/.../Endpoints/EntityTypes/List.cs:11, 21`, `Get.cs:12, 33-36`).
+  `SparkPresentation.Install` adds one contract modifier to those options (`libs/spark/.../SparkMiddleware.cs:104-105`;
+  `libs/spark/MintPlayer.Spark/Services/SparkPresentation.cs:55-56`).
+- **Writing.** The synchronizer writes the same types with its own static options: camelCase, `WhenWritingNull`, no
+  modifier (`ModelSynchronizer.cs:52-58, 809`).
+- **So a plain `public string Anchor => …` would leak into the files.** An HTTP-only contract property would not. The
+  precedent is `SparkFileUrls.AddUrlProperty`, a `url` that is served but never written (`libs/spark/MintPlayer.Spark/Services/SparkFileUrls.cs:123-133`,
+  hooked at `SparkPresentation.cs:77-79`; re-read by hand).
+- **The guard.** No golden covers the served types. `SynchronizeIdempotencyTests.cs:55` compares the model files' text,
+  so it would catch a leak.
+- **Sub-queries are served as written** (`SubQueryPruner.cs:43-47`; the converter writes `Query` verbatim,
+  `SparkSubQuery.cs:102-119`). The catalogue's per-caller `kept` copy (`SubQueryPruner.cs:41-54`) is where an id-form
+  entry can take its resolved alias.
+- **Not checked:** the serializer of the MCP tools, which also return catalogue output
+  (`Mcp/Tools/SparkGenericTools.cs:47, 84`).
+
+**S4. The router.** Throwaway spec with `RouterTestingHarness`:
+- **(a) Redirects.**
+  - An **absolute** `redirectTo: '/po/x/1'` turned `/from#merge-queue` into `/po/x/1`: **the fragment is dropped.**
+  - A **relative** `redirectTo: 'po/x/2'` kept it: `/po/x/2#merge-queue`.
+  - A redirect **function** returning `createUrlTree([...], { fragment })` kept it too.
+- **(b) A fragment-only navigation** created no new component, and `ActivatedRoute.fragment` emitted `[null,
+  "dependency-updates"]`.
+- **(c) The same URL and fragment again** resolved `false`, with no new emission. The router emitted
+  `NavigationSkipped` with code 0, which the helper can listen for.
+- **(d) Dropping the fragment** emitted `null`.
 
 ## 7. Milestones (one pull request)
 
 TDD throughout: each behaviour gets a failing test first. Only the touched test classes run along the way, and the run
 over everything happens once, at the end.
 
-- **M0.** S1–S4 run, and Q1–Q7 answered (§5.1 once written).
+- **M0.** S1–S4 run (done 2026-11-28, §6.1), and Q1–Q7 answered (§5.1 once written).
 - **M1. Server.**
   - The kebab function and `SparkSectionIds.Validate`, wired into verify, startup and the synchronizer (Part G).
   - Under A2, also the served `anchor` and the alias-form sub-query entries.
@@ -374,10 +464,16 @@ over everything happens once, at the end.
   - Vitest: the ids are present on the three pages, absent in the modals and in `compact` mode, and the default tab has
     none.
 - **M3. ng-spark scroll.**
-  - `sparkRevealSection` in the three routed pages: opening the tab, reduced motion, fragment changes, an unknown
-    fragment.
-  - Vitest, with `scrollIntoView` stubbed.
-- **M4. The fragment through rebuilt URLs.** The three vanity guards, plus S4's `redirectTo` cases, each as a spec.
+  - `sparkRevealSection` in the three routed pages. It covers:
+    - opening the tab;
+    - the action bar's offset;
+    - re-aligning until the page settles, and stopping at the user's first input;
+    - reduced motion;
+    - fragment changes, and `NavigationSkipped`;
+    - an unknown fragment.
+  - Vitest, with `scrollIntoView` stubbed (S1).
+- **M4. The fragment through rebuilt URLs.** The three vanity guards and CodeCoverage's two absolute `HOME_URL`
+  redirects, each with a spec.
 - **M5. CodeCoverage's bell.** `#account-repositories`, with `RulesetNoticeBellTests`.
 - **M6. E2E.**
   - HR Person `#career`: the Employment tab is shown and the Career card is in the viewport.
@@ -402,3 +498,11 @@ Versions come from tags. ng-spark and the NuGet packages get a minor from the en
     - the sub-query entry type;
     - the R2-L4 interceptor.
   - Branch `feat/issue721-section-fragment-links` was cut from master `c7620f9d1`.
+- **2026-11-28. Spikes S1–S4** (owner: "Go ahead"). Results in §6.1.
+  - S1 and S4 ran as one throwaway vitest spec in ng-spark. It was deleted after the run and never committed.
+  - S3 was a read-only lookup. Its served-but-not-written precedent was re-read by hand.
+  - S2 ran read-only on production through `playwright_node`.
+  - Consequences:
+    - Q1 now recommends A2 through an HTTP-only contract modifier.
+    - Part E gains the action bar's offset, the bounded re-alignment and `NavigationSkipped`.
+    - Part F gains CodeCoverage's two absolute `HOME_URL` redirects.
