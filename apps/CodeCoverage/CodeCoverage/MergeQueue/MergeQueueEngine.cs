@@ -1105,6 +1105,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             entry.BaseSha = baseSha;
             entry.FinalSha = entry.ExpectedHeadSha;
             entry.DirectMerge = true;
+            // #714 D3 (S2 on the sandbox, 2026-11-28): no prepare runs here, so the .github/** paths the head changes come
+            // from this comparison, renames on both sides as the prepare's --no-renames diff gives them. The stuck wait's
+            // workflow hint reads them; a truncated comparison can only leave the hint out.
+            entry.WorkflowPaths = [.. comparison.Files
+                .SelectMany(file => new[] { file.Path, file.PreviousPath })
+                .OfType<string>()
+                .Where(path => path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.Ordinal)];
             await EnterAwaitingChecksAsync(context, entry, "the head already contains the latest base", ct);
             return;
         }

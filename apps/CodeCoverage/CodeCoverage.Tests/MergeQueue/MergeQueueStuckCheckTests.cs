@@ -105,6 +105,7 @@ public class MergeQueueStuckCheckTests : CoverageRavenTest
             .Contain("haven't reported").And.NotContain("doesn't exist", "the queue never reads the workflow files (Dec8)")
             .And.Contain("- `test`: required by ruleset 'Reviews and checks' (2)")
             .And.Contain("Set up rulesets")
+            .And.NotContain("This pull request changes workflow files", "D3's hint is for a pull request that changes them")
             .And.Contain("2026-11-27 10:00 UTC", "the 60-minute timeout from the start of the wait");
 
         var notice = (await NoticeAsync(h, ERulesetNoticeKind.MissingCheck))!;
@@ -137,6 +138,23 @@ public class MergeQueueStuckCheckTests : CoverageRavenTest
 
         await PollAsync(h, time);
 
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Contain("This pull request changes workflow files", "D3's hint");
+    }
+
+    [Fact]
+    public async Task A_rename_on_a_pull_request_already_on_its_base_gets_the_workflow_hint_too()
+    {
+        // S2 on the sandbox (2026-11-28): a rename pull request is usually up to date with its base, so the queue merges its
+        // head as it is (O20 case 1) and never runs the prepare, which is what reported the workflow paths.
+        var (h, time) = await HarnessAsync();
+        h.Queue.Rules = RequiringNames("test");
+        h.Forge.Comparison = new CommitComparison(BaseSha, [new DiffFile(".github/workflows/ci.yml", "modified", null, [])], false);
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        await PollAsync(h, time);
+
+        (await h.EntryAsync()).DirectMerge.Should().BeTrue();
         h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Contain("This pull request changes workflow files", "D3's hint");
     }
 
