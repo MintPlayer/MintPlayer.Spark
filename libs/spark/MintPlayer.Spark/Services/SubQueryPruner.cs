@@ -4,7 +4,8 @@ using MintPlayer.Spark.Abstractions.Authorization;
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Removes the sub-queries a caller may not run from an entity type before it is serialized.
+/// Removes the sub-queries a caller may not run from an entity type before it is serialized, and serves an entry that names
+/// its query by id in alias form, the card's section id (#721).
 /// </summary>
 /// <remarks>
 /// A UX fix, not a security one, and worth being precise about which: <c>getQuery</c> already
@@ -20,7 +21,7 @@ namespace MintPlayer.Spark.Services;
 /// from the model file permanently.
 /// </para>
 /// <para>
-/// Hence: copy only when something is pruned, and return the very same reference otherwise. The
+/// Hence: copy only when something is pruned or rewritten, and return the very same reference otherwise. The
 /// copy is shallow — it shares <c>Attributes</c>, <c>Tabs</c> and <c>Groups</c> with the singleton
 /// — which is fine only for as long as nothing prunes those in place either. If you add a second
 /// pruner, extend this helper rather than writing another one.
@@ -39,14 +40,30 @@ internal static class SubQueryPruner
             return entityType;
 
         var kept = new List<SparkSubQuery>(entityType.Queries.Length);
+        var changed = false;
 
         foreach (var entry in entityType.Queries)
         {
-            if (await MayRunAsync(entry.Query, queryLoader, permissionService, logger, cancellationToken))
-                kept.Add(entry);
+            var query = queryLoader.ResolveQuery(entry.Query);
+            if (!await MayRunAsync(entry.Query, query, permissionService, logger, cancellationToken))
+            {
+                changed = true;
+                continue;
+            }
+
+            // An entry that names its query by id is served in alias form (#721, Dec1): the alias is the card's section
+            // id, and the client renders the entry as it arrives. A new entry, never the loader's shared one.
+            if (query is not null && SparkSectionIds.AliasOf(query) is var alias && !string.Equals(entry.Query, alias, StringComparison.Ordinal))
+            {
+                kept.Add(new SparkSubQuery { Query = alias, SelectionMode = entry.SelectionMode, ParentReference = entry.ParentReference });
+                changed = true;
+                continue;
+            }
+
+            kept.Add(entry);
         }
 
-        if (kept.Count == entityType.Queries.Length)
+        if (!changed)
             return entityType;
 
         var copy = entityType.ShallowCopy();
@@ -56,13 +73,11 @@ internal static class SubQueryPruner
 
     private static async Task<bool> MayRunAsync(
         string alias,
-        IQueryLoader queryLoader,
+        SparkQuery? query,
         IPermissionService permissionService,
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        var query = queryLoader.ResolveQuery(alias);
-
         if (query is null)
         {
             // KEPT, and warned about. An alias that resolves to nothing is an authoring mistake —

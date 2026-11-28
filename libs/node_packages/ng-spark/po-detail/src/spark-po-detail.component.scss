@@ -1,4 +1,10 @@
 @use '../../styles/actionbar';
+@use '../../styles/section-reveal';
+
+// A sub-query card is a #fragment link's target (#721): a block, so its box (scrolled to and outlined) is the card's.
+spark-query-card.spark-section {
+  display: block;
+}
 
 // Bootstrap's `.container` sets the content width here — its own gutter, and a max-width that
 // changes per breakpoint. So the action bar aligns to the container rather than bleeding to the

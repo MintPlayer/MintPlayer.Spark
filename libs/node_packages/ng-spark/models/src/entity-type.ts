@@ -118,6 +118,11 @@ export interface AttributeTab {
   order: number;
   /** Number of columns for the grid layout within this tab */
   columnCount?: number;
+  /**
+   * The tab's section id: its name in kebab case, computed by the server and never in a model file (#721, Dec1). A URL's
+   * `#fragment` names it. Absent on the synthetic default tab, which has no id (Dec3).
+   */
+  anchor?: string;
 }
 
 export interface AttributeGroup {
@@ -127,6 +132,8 @@ export interface AttributeGroup {
   /** References an AttributeTab.id to assign this group to a tab */
   tab?: string;
   order: number;
+  /** The group card's section id: its name in kebab case, computed by the server (#721, Dec1). */
+  anchor?: string;
 }
 
 /**

@@ -1151,6 +1151,8 @@ public static class SparkDevelopmentExtensions
         var problems = new List<string>(Services.SparkSubQueries.ValidateParentReferences(allTypes, allQueries));
         // Reference add-new PRD D13, D17: the same Reference checks startup makes.
         problems.AddRange(Services.SparkReferences.Validate(allTypes, allQueries));
+        // #721, Dec7: the same section-id check startup and the synchronizer make.
+        problems.AddRange(Services.SparkSectionIds.Validate(allTypes, allQueries));
         foreach (var (alias, parentType) in subQueryAliases)
         {
             if (!sourcesByAlias.TryGetValue(alias, out var entry))

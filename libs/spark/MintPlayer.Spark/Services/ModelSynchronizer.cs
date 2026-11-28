@@ -70,6 +70,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         libraryColumnOrders = ColumnOrderMaintenance.LibraryColumnOrders(Libraries ?? SparkLayerCatalog.Libraries);
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles();
 
+        // Groups and tabs are copied, never made, here (Preserve manually-defined tabs and groups, below), so the files as
+        // read are the ones to check: two sections of one type with the same section id, or a name that gives none, stop the
+        // run before anything is written (#721, Dec7).
+        var sectionProblems = SparkSectionIds.Validate(existingEntityTypes.Values, existingQueries);
+        if (sectionProblems.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Invalid section ids (#721) in {SparkAppData.Relative("Model")}: " + string.Join(" ", sectionProblems)
+                + " Synchronization stopped before writing anything.");
+        }
+
         // Find all query-root (IQueryable<T>) properties on the SparkContext
         var queryableProperties = contextType.GetCachedProperties()
             .Where(p => SparkContextQueryables.IsQueryRoot(p.PropertyType))

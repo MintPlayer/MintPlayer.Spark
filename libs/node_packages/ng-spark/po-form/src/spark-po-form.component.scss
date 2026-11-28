@@ -1,0 +1,8 @@
+@use '../../styles/section-reveal';
+
+// The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
+// height). Hide its contents but keep it occupying space, so the drop gap is blank and
+// the surrounding rows don't shift. ::ng-deep because the cloned node is styled by CDK.
+:host ::ng-deep .cdk-drag-placeholder {
+  visibility: hidden;
+}
