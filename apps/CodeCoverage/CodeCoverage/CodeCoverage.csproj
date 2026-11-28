@@ -23,7 +23,7 @@
 		<!-- The dependency-update contract (docs/code-coverage/dependency-updates-PRD.md §13.11.2): every document a runner
 		     returns is validated against its schema before it is deserialized, and every plan the bot writes before it is
 		     committed. The version MintPlayer.Spark.Tests already uses. -->
-		<PackageReference Include="JsonSchema.Net" Version="9.6.0" />
+		<PackageReference Include="JsonSchema.Net" Version="9.7.0" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -66,7 +66,7 @@
 		<!-- #490 D7: spark.AddOpenIdConnect, the relying-party preset (another Spark IdP, or any OIDC provider). -->
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="11.0.0" />
 		<!-- #460 D16 / SP-D: server-rendered SVG QR code for authenticator enrollment. MIT, no dependencies. -->
-		<PackageReference Include="QRCoder" Version="1.8.1" />
+		<PackageReference Include="QRCoder" Version="1.9.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
