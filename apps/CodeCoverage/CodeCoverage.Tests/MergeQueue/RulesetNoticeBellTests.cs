@@ -109,7 +109,7 @@ public class RulesetNoticeBellTests : CoverageRavenTest
             EForgeClassicProtection.None);
 
     [Fact]
-    public async Task A_manager_hears_about_each_open_notice_once_with_a_link_to_the_account_page()
+    public async Task A_manager_hears_about_each_open_notice_once_with_a_link_to_the_account_pages_repositories()
     {
         using var store = await StoreAsync();
         await RaiseAsync(store, Managed, (n, r) => n.RaiseMissingCheckAsync(r, "master", ["test"], ["build"], 7));
@@ -119,7 +119,8 @@ public class RulesetNoticeBellTests : CoverageRavenTest
         (await DeliverAsync(store)).Should().Be(3);
 
         sent.Should().HaveCount(3);
-        sent.Should().OnlyContain(n => n.UserIds.Single() == Viewer && n.Url == "/github/a/acme" && n.Category == RulesetNoticeBell.Category);
+        // #721: the fragment is the Repositories card's section id, the account-repositories query's alias.
+        sent.Should().OnlyContain(n => n.UserIds.Single() == Viewer && n.Url == "/github/a/acme#account-repositories" && n.Category == RulesetNoticeBell.Category);
         sent.Select(n => n.Title).Should().BeEquivalentTo([
             "rulesets.bell.missingCheck.title|acme/widget",
             "rulesets.bell.pinMismatch.title|acme/widget",

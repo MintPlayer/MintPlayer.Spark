@@ -1,5 +1,5 @@
 import { ApplicationConfig, inject, provideAppInitializer, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withInMemoryScrolling } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSpark } from '@mintplayer/ng-spark';
@@ -10,6 +10,7 @@ import { withDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/da
 import { withBoards } from '@mintplayer/ng-spark/boards';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { withFileAttributes } from '@mintplayer/ng-spark/files';
+import { withFragmentScrolling } from '@mintplayer/ng-spark/fragment-scrolling';
 import { withNotifications } from '@mintplayer/ng-spark/notifications';
 import { withLanguageUrls, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 
@@ -21,7 +22,9 @@ import { RulesetNoticesService } from './services/ruleset-notices.service';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes),
+    // #721: a link's #fragment scrolls to the section it names (the bell's #account-repositories); withFragmentScrolling()
+    // below supplies the scroller (docs/guide-object-urls.md).
+    provideRouter(routes, withInMemoryScrolling({ anchorScrolling: 'enabled' })),
     provideHttpClient(...withSparkLanguage(), ...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
     provideSpark(
@@ -46,6 +49,8 @@ export const appConfig: ApplicationConfig = {
       withNotifications(),
       // #700 M11: the Image renderers (the account avatar, CustomAvatar's upload).
       withFileAttributes(),
+      // #721: section ids on object pages are #fragment link targets.
+      withFragmentScrolling(),
     ),
     // #714 Dec5, Dec11: the merge-queue ruleset notices reach the bell whenever the app becomes signed in.
     provideAppInitializer(() => inject(RulesetNoticesService).start()),

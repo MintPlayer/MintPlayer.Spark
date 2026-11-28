@@ -4,7 +4,10 @@ Issue #721 (enhancement). One pull request. This file holds the findings, the op
 and the milestones; the decisions and the log follow as they are made. Paths are under `libs/node_packages/ng-spark/`
 unless they start with `apps/`, `libs/spark/`, `libs/model/`, `libs/authorization/`, `tests/`, `docs/` or `node_modules/`.
 
-Status: **decided, 2026-11-28; ready for M1.** §2 holds the investigation: three read-only lookups, with every
+Status: **implemented, 2026-11-28: M1–M7 done, in one pull request (§8, "Implementation").** The E2E class (M6) is left
+to the pull request's E2E job.
+
+Decided 2026-11-28. §2 holds the investigation: three read-only lookups, with every
 load-bearing claim re-read by hand. It corrects four points of the issue (F2, F6, F7, F5). The owner answered Q1–Q7 and
 asked for Angular's fragment support (§5.1, Dec1–Dec8). **Spikes S1–S5 are done (§6.1):**
 - A2 is feasible.
@@ -644,3 +647,48 @@ Versions come from tags. ng-spark and the NuGet packages get a minor from the en
     (Dec10), and a dev-mode warning for a half setup (Dec11).
   - Read for Dec11: `@angular/router` 22.2.2 keeps the scroller token unexported. For Dec10: `HRTestHost` exists, and
     HR is in `E2E_APPS` (`tools/test-local.mjs:36`).
+- **2026-11-28. Implementation, M1–M7** (owner: "Implement all milestones, create the pull-request"). Only the touched
+  test classes ran; each count below is that class's run, all green.
+  - **M1, M2** (commit `61b6fd845`):
+    - `SparkSectionIdsTests`: 38 tests. They cover the kebab vectors, the three kinds of collision, odd names and reserved
+      prefixes, the id-form sub-query, the throws of the synchronizer and startup, and `anchor` served but not written.
+    - ng-spark vitest:
+      - `spark-po-presenter.sections.spec.ts`, 7 tests: ids present, each once, none on the default tab or the
+        ungrouped card, none in a modal or in `compact` mode, and `spark-reveal` opening a tab;
+      - `spark-po-form.sections.spec.ts`, 3 tests;
+      - a new case in `spark-po-detail.component.spec.ts` for the sub-query cards' aliases.
+    - Dec4's modal case is one `inject(BsModalComponent)` check per component, tested in the presenter and the form. The
+      form also renders no ids when nested (`outerForm`).
+  - **M3:**
+    - `@mintplayer/ng-spark/fragment-scrolling` holds `withFragmentScrolling()`, `SparkViewportScroller` and
+      `SparkFragmentScrolling`.
+    - `spark-viewport-scroller.spec.ts`, 10 tests, with the geometry stubbed (jsdom has no layout, `matchMedia` or element
+      `scrollTo`).
+    - `with-fragment-scrolling.spec.ts`, 7 tests, through `RouterTestingHarness`. They cover a fragment navigation, a
+      fragment-only change, the same fragment again (`NavigationSkipped`), the first anchor when the router did not ask,
+      and the dev warning with and without the router line.
+    - A finding for the router-driven specs: `RouterScroller.init()` runs only in the router's `APP_BOOTSTRAP_LISTENER`,
+      which TestBed never runs. The specs that enable `anchorScrolling` run those listeners themselves.
+    - CodeCoverage and HR opt in (Dec10).
+    - The library build (`nx run @mintplayer/ng-spark:build`, ng-packagr with `strictTemplates`) is green. Its one warning
+      is the existing NG8102 in `shell/src/spark-language-selector.component.html`.
+    - `tsc --noEmit` on both apps' `tsconfig.app.json` reports no error other than TS6059, the path mapping into the
+      library's sources.
+  - **M4:**
+    - The three vanity guards pass `fragment: route.fragment`.
+    - The two absolute `HOME_URL` redirects became the redirect function `redirectToHome`, because an absolute string
+      `redirectTo` drops the fragment (S4).
+    - `app.routes.spec.ts` and `vanity-redirects.spec.ts`: 23 tests.
+  - **M5:**
+    - `RulesetNoticeBell.AccountUrl` ends in `#account-repositories`.
+    - `RulesetNoticeBellTests`: 5 tests.
+  - **M6:**
+    - `tests/MintPlayer.Spark.E2E.Tests/FragmentLinks/HRSectionFragmentTests.cs` covers Person `#career` and Company
+      `#company-people` in a 400 px high viewport.
+    - It compiles. It was not run locally, where it builds the HR bundle first; the pull request's E2E job runs it. A new
+      class lands in the last shard.
+  - **M7:**
+    - `guide-attribute-grouping.md` gains "Section ids and `#fragment` links", plus corrected paths and template.
+    - `guide-object-urls.md` gains "Section links: `#fragment`".
+    - `code-coverage/merge-queue.md` documents the bell's link.
+  - No new endpoint, so no route snapshot or CSRF surface moves. No translations change, so no golden does.

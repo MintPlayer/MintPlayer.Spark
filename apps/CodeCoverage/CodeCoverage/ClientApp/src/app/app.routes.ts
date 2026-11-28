@@ -5,7 +5,7 @@ import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
 import { withSparkApps } from '@mintplayer/ng-spark/apps';
 import { ShellComponent } from './shell/shell.component';
 import { accountRedirectGuard, commitRedirectGuard, repositoryRedirectGuard } from './spark/vanity-redirects';
-import { HOME_URL } from './spark/home-route';
+import { redirectToHome } from './spark/home-route';
 
 export const routes: Routes = [
   // Home is a virtual persistent object now, so its real URL is the program unit's
@@ -16,7 +16,8 @@ export const routes: Routes = [
   // it never runs — the parent consumes the empty URL and '/' renders an empty
   // outlet, silently and with no error. Matched before the shell because pathMatch
   // 'full' only takes the bare '/' and leaves every other URL to it.
-  { path: '', redirectTo: HOME_URL, pathMatch: 'full' },
+  // A function, not the HOME_URL string: an absolute redirectTo string drops the #fragment (#721).
+  { path: '', redirectTo: redirectToHome, pathMatch: 'full' },
   {
     path: '',
     component: ShellComponent,
@@ -25,7 +26,7 @@ export const routes: Routes = [
       // failure redirect (server-side, in Program.cs), the post-sign-in return URL,
       // and whatever anyone has bookmarked. A non-empty path, so unlike the one
       // above it works fine as a child.
-      { path: 'home', redirectTo: HOME_URL, pathMatch: 'full' },
+      { path: 'home', redirectTo: redirectToHome, pathMatch: 'full' },
       // Opt-in since ng-spark-auth 22.2: passing no features mounts NO pages at
       // all. GitHub is the only provider — the server's LocalCredentials are
       // Disabled — so withLocalLogin()/withRegistration() would mount pages

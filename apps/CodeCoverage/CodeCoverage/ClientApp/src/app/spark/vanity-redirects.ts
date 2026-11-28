@@ -13,6 +13,9 @@ import { HOME_URL } from './home-route';
  * The direction matters: the vanity URL is the one people hold, so it forwards
  * INTO /po/{type}/{id} rather than the other way round. A document id is not a
  * name, and nobody should have to paste one.
+ *
+ * The query string and the #fragment go along (#721): /github/a/acme#account-repositories
+ * lands on the account page's Repositories card.
  */
 export const accountRedirectGuard: CanActivateFn = async (route) => {
   const browse = inject(BrowseService);
@@ -21,7 +24,7 @@ export const accountRedirectGuard: CanActivateFn = async (route) => {
   const login = route.paramMap.get('login') ?? '';
   try {
     const account = await browse.getAccount(provider, login);
-    return router.createUrlTree(['/po', 'account', account.id], { queryParams: route.queryParams });
+    return router.createUrlTree(['/po', 'account', account.id], { queryParams: route.queryParams, fragment: route.fragment ?? undefined });
   } catch {
     return router.createUrlTree([HOME_URL]);
   }
@@ -35,8 +38,8 @@ export const repositoryRedirectGuard: CanActivateFn = async (route) => {
   const name = route.paramMap.get('repo') ?? '';
   try {
     const repo = await browse.getRepo(provider, owner, name);
-    // Keep query params (e.g. ?flag=) alive through the redirect.
-    return router.createUrlTree(['/po', 'repository', repo.id], { queryParams: route.queryParams });
+    // Keep query params (e.g. ?flag=) and the #fragment alive through the redirect.
+    return router.createUrlTree(['/po', 'repository', repo.id], { queryParams: route.queryParams, fragment: route.fragment ?? undefined });
   } catch {
     return router.createUrlTree([HOME_URL]);
   }
@@ -51,7 +54,7 @@ export const commitRedirectGuard: CanActivateFn = async (route) => {
   const sha = route.paramMap.get('sha') ?? '';
   try {
     const commit = await browse.getCommit(provider, owner, name, sha);
-    return router.createUrlTree(['/po', 'commit', commit.id], { queryParams: route.queryParams });
+    return router.createUrlTree(['/po', 'commit', commit.id], { queryParams: route.queryParams, fragment: route.fragment ?? undefined });
   } catch {
     return router.createUrlTree([HOME_URL]);
   }
