@@ -428,7 +428,7 @@ repository invites the switch to a summary job.**
 | # | Question | Where | Done when |
 |---|---|---|---|
 | S1 | How do a promotion and a backport reach `release/*-*.x`, and which list holds them? Confirm F4: does the first line pull request that carries #697's `test.yml` wait for `tests / Library suites` for good? Does a promotion go through the queue's gate at all, or does the exempt App push it directly, so that only later backports stall? | This repo, read-only (`MergeQueueEngine.cs:542-547` and the promote path), plus GETs on the lines' latest pull requests | A trace with file:line, and an answer to "must ruleset 3 change before the next `/release`?". **Done 2026-11-27: no (§6.1).** |
-| S2 | End-to-end repro on a sandbox. A ruleset requires `ci / job-a`; pull request 1 renames that job to `job-b`; pull request 2 is queued behind it. Before the fix, both stall (F2, F3). After C2–C4 (dev App), fixing the ruleset frees pull request 1 within one poll, and pull request 2 drops `job-a` with a note. Under A1 (only the aggregate required), pull request 1 merges without any ruleset change | `PieterjanDeClippel/SparkTest` with the dev App. This writes to GitHub, so it needs the owner's approval first | The four outcomes recorded, with check-run titles and timestamps |
+| S2 | End-to-end repro on a sandbox. A ruleset requires `ci / job-a`; pull request 1 renames that job to `job-b`; pull request 2 is queued behind it. Before the fix, both stall (F2, F3). After C2–C4 (dev App), fixing the ruleset frees pull request 1 within one poll, and pull request 2 drops `job-a` with a note. Under A1 (only the aggregate required), pull request 1 merges without any ruleset change | `PieterjanDeClippel/SparkTest` with the dev App. This writes to GitHub, so it needs the owner's approval first | The four outcomes recorded, with check-run titles and timestamps. **Done 2026-11-28 with the production App after #715's deploy (§9): three outcomes as designed; A1's was not run; one gap (D3's hint) fixed.** |
 | S3 | The rule for C4: which signals prove that an expected name is gone for good? Candidates: `BaseChangedWorkflows`; the name's App (`KnownChecks` keeps `AppSlug` for each name); every suite of that App completed on `FinalSha`; `RunsFollow`. What happens with a workflow started by `workflow_run`, and with a commit status? | This repo, read-only, then `CheckGate` table tests | The rule written down, with a test for each case, including the two "keep waiting" cases. **Rule done 2026-11-27 (§6.1); the tests belong to M2.** |
 | S4 | Can a workflow's default `GITHUB_TOKEN` (`contents: read`) read `GET /repos/{o}/{r}/rules/branches/{b}` on a public repository? | A throwaway workflow run on SparkTest | Answered, with the response. **Dropped: Q5 chose D1, not D2 (Dec12).** |
 | S5 | Does today's aggregate already cover everything ruleset 2 requires, on a real head? Compare the check runs of a recent master pull request's head with the aggregate's `needs` and the coverage statuses | This repo, plus GET `commits/<sha>/check-runs` | An empty "required but not covered" list, so A1 loses nothing. **Done 2026-11-27: empty (§6.1).** |
@@ -696,3 +696,60 @@ From comment 2, with F3 and F4 added.
   one request through generated aliases (`c0…cN`, `r0…rN`, `pr<N>`). Octokit.GraphQL's typed API has no aliases, so a
   typed version is one request per item. `GitHubPullRequestFacts` also lives in `CodeCoverage.Versioning`, which does
   not reference Octokit.GraphQL.
+- **2026-11-28, #715 merged and deployed; "Set up rulesets" run on Spark.** Run by hand through the browser. Both rulesets
+  now require coverage/patch and coverage/project, pinned to 4574022 (CodeCoverage), plus `pull-request`. Following
+  Dec4, `pull-request` stays unpinned until a pull request reports it and its `ForgeCheck.AppId` is known. Running the
+  setup once more after that pins it.
+- **2026-11-28, S2 on the sandbox (owner's approval).** It used the production App, which #715's deploy had just updated,
+  instead of the dev App. SparkTest's rulesets required its one job, `build`.
+  - **The two pull requests.** #14 renamed that job to `compile` in `.github/workflows/ci.yml`. #15 changed a doc and
+    was queued behind #14. Both got `/queue` at 10:57Z.
+
+  Timestamps are UTC, from GitHub's check runs and comments, or from a watcher that sampled them every 15 s.
+  - **The rename pull request got stuck and said why (C3, Dec8, Dec5), as designed.**
+    - 10:58:06: #14's `Merge queue` check run read "Waiting for checks that never reported", naming
+      `` `build`: required by ruleset 'merge-queue: reviews and checks' (26700978) `` and saying the managers are
+      notified.
+    - 11:01:59: one comment, with the missing name and its ruleset, "Set up rulesets", the two-minute pickup and the
+      removal time (11:57, `checks.timeout`).
+    - Opening the app at about 11:03 delivered the bell "PieterjanDeClippel/SparkTest: a required check never reports",
+      naming #14 and `build`. Its link opened the account page, as built (the Dec5 deviation; #721 tracks the link).
+    - The same delivery brought Dec11's offer for `MintPlayer/MintPlayer.AspNetCore.SpaServices`. Its rules require
+      one check per job (`node 20`, `node 24`), and it reports a `pull-request` job.
+  - **The form was prefilled as Dec6 says.** The summary-job field was empty and highlighted, and the names reported on
+    the head were listed. Plan showed both rulesets as "added: compile; dropped: build".
+  - **Applied at 11:05:42.** GitHub then showed `compile` pinned to 15368 (GitHub Actions, Dec4) and `Line policy`
+    pinned to 4574022.
+  - **The fix freed #14 within one poll (C2).** The check run read "Merging" at 11:07:08 (sampled), and #14 merged at
+    11:07:06 as `b6d7633c8`. That was 84 s after the apply, with no event from GitHub about the ruleset edit.
+  - **#15 dropped the stale name (C4, Dec9).**
+    - 11:07:33: rebased onto the rename as `413fc1557`, "Waiting for checks".
+    - 11:08:02: "Waiting for checks that never reported", with `` `build`: reported on the queued head ``. No ruleset
+      required it any more.
+    - #15 merged at 11:12:02 as `fc1e97877`. The final check run says "**No longer waited for** (reported on the queued
+      head, gone since the base changed its workflows): `build`".
+    - #15 got no comment. The drop comes before the comment in the same poll (`StuckAsync`), and the drop freed it.
+  - **The wait takes 2–4 minutes, not exactly two.** #14 commented 3m53s after its first stuck look, and #15 dropped
+    `build` 4m after its first. `held` needs `Now - StuckSinceUtc >= ChecksPollInterval`. When the look after the first
+    one comes even slightly sooner than that, it is not held yet. That look may be a delivery, or a poll that comes round
+    a moment early, and which one it was was not traced. The poll after that one then acts. This matches Dec8's "after
+    two stuck polls" read as two polls after the first look. No change.
+  - **A1's outcome was not run.** SparkTest's workflow has a single job, so "only the summary job required" is the same
+    repository as the one tested. S5 already showed that Spark's summary job covers ruleset 2.
+  - **Gap found and fixed: D3's hint was missing from #14's comment.**
+    - The cause: a rename pull request is usually up to date with its base, so the queue merges its head as it is
+      (O20 case 1, `DirectMerge`). No prepare runs, and the prepare was the only place that set
+      `MergeQueueEntry.WorkflowPaths`, which `StuckAdvice` reads.
+    - The fix: the direct merge now takes the `.github/**` paths from the comparison of the base with the head that it
+      already makes. Both sides of a rename count, as with the prepare's `--no-renames` diff.
+    - Evidence: `MergeQueueStuckCheckTests.A_rename_on_a_pull_request_already_on_its_base_gets_the_workflow_hint_too`,
+      red before the fix and green after. The existing test of a pull request without workflow changes now asserts that
+      the hint is absent.
+  - **Left as found, for the owner:**
+    - The summary-job picker offers every name in `Repository_PullRequestChecks`: the App's own checks
+      ("Backport targets", "PR size") and the renamed-away `build` as well.
+      - That query also feeds the two required-check fields, where those names are valid picks.
+      - A narrower list for the summary job only would need its own query.
+      - Dec6's prefill already leaves the field empty and highlighted, and lists the reported names.
+    - `api/browse/accounts/github/MintPlayer/sparklines` answered 500 on the account page. It was not investigated, and
+      it is unrelated to #714.
