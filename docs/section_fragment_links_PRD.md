@@ -285,8 +285,11 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
 > Rewritten after the owner's "use the angular fragments feature" (2026-11-28). The first version had a helper per
 > routed page that read `ActivatedRoute.fragment` and listened for `NavigationSkipped` itself.
 
-- **Angular triggers the scroll.** Every app adds `withInMemoryScrolling({ anchorScrolling: 'enabled' })` to its
-  `provideRouter`. The router's scroller then calls `ViewportScroller.scrollToAnchor(fragment)`:
+- **Opt-in per app** (Dec9, Dec10). An app adds two lines: `provideSpark(withFragmentScrolling())` and
+  `withInMemoryScrolling({ anchorScrolling: 'enabled' })` in `provideRouter`. CodeCoverage and HR do so in this PR. A
+  half setup gets a dev-mode warning (Dec11).
+- **Angular triggers the scroll.** With anchor scrolling on, the router's scroller calls
+  `ViewportScroller.scrollToAnchor(fragment)`:
   - one frame after every `NavigationEnd` whose URL has a fragment;
   - after an ignored same-URL navigation (`NavigationSkipped`, code 0), so a second click on the bell's link scrolls
     again.
@@ -296,8 +299,8 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
   - `scrollPositionRestoration` stays `'disabled'`, so a navigation without a fragment behaves as it does today.
   - Links inside the apps use `routerLink` with `[fragment]`, or `createUrlTree(…, { fragment })`. Nothing parses
     `location.hash`.
-- **ng-spark supplies the `ViewportScroller`** (working name `SparkViewportScroller`). It is registered through
-  `provideSpark`, and only in the browser. Angular's own implementation scrolls the window, which never scrolls in
+- **ng-spark supplies the `ViewportScroller`** (working name `SparkViewportScroller`). `withFragmentScrolling()`
+  registers it, only in the browser. Angular's own implementation scrolls the window, which never scrolls in
   Spark's shell (F5). `ViewportScroller` is an abstract, injectable class, and it has `setOffset` and `ScrollOptions`
   (`@angular/common` `types/common.d.ts`). Spark's `scrollToAnchor`:
   1. **looks for the anchor inside `#spark-main`.** With no shell on the page, it falls back to Angular's window
@@ -323,8 +326,8 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
 - **Hydration.** The router skips the first `Scroll` event while the app hydrates (`RouterScroller.isHydrating`). Only
   MintPlayer hydrates (F11). For it, ng-spark asks for the first anchor itself once the app is stable, if the URL has a
   fragment.
-- **No helper per page.** Any page that carries ids, an app's own pages included, gets fragment scrolling. The object
-  pages only add the tab opening.
+- **No helper per page.** In an app that opts in, any page that carries ids, the app's own pages included, gets
+  fragment scrolling. The object pages only add the tab opening.
 - **Edge cases:**
   - An unknown fragment does nothing.
   - A group without visible attributes renders no card (F1), so its fragment does nothing either.
@@ -361,7 +364,7 @@ notification's `Url` (`:87`) and carries no fragment yet. Once F10's redirect is
 - **The bell:** `AccountUrl(repository) + "#account-repositories"`, with `RulesetNoticeBellTests` updated.
 - **The docs:**
   - `docs/guide-attribute-grouping.md`: the ids, the default tab, the validator.
-  - `docs/guide-object-urls.md`: the fragment, and where it survives.
+  - `docs/guide-object-urls.md`: the fragment, where it survives, and the two opt-in lines together (Dec11).
   - `docs/code-coverage/merge-queue.md`: the bell's link.
 
 ## 5. Questions for the owner
@@ -420,13 +423,41 @@ Asked one at a time, after spikes S1–S4. Each decision follows §4 unless it s
 - **Dec7 (Q7): all three.** The validator runs in `--spark-verify-model`, at startup and in the synchronizer (Part G).
 - **Dec8 (owner, during the questions): "Also: use the angular fragments feature".** Part E is rebuilt on Angular's own
   fragment support:
-  - the router's anchor scrolling (`withInMemoryScrolling({ anchorScrolling: 'enabled' })` in every app);
+  - the router's anchor scrolling (`withInMemoryScrolling({ anchorScrolling: 'enabled' })`, per app since Dec9);
   - `routerLink [fragment]` and `createUrlTree(…, { fragment })` for links;
   - an ng-spark `ViewportScroller` that does the scrolling in `#spark-main`.
 
-  The per-page helper and its own `NavigationSkipped` listener are gone: the router covers both. This is my reading of
-  a one-line instruction. If the owner meant something narrower, such as only `routerLink [fragment]` for links, Part E
-  shrinks back to a page-level trigger that calls the same `ViewportScroller`.
+  The per-page helper and its own `NavigationSkipped` listener are gone: the router covers both. This was my reading of
+  a one-line instruction. The owner accepted it ("Good.") when shown the decisions. Dec9 makes it opt-in per app.
+
+Dec9–Dec11 came from a second round on 2026-11-28, because Dec8 opened questions the first round predates.
+
+- **Dec9: the scroller is opt-in, against the recommendation (always on).** An app turns it on with
+  `provideSpark(withFragmentScrolling())` (working name). It follows `provideSpark`'s feature pattern
+  (`provide-spark.ts:22-46`) and lives in its own entry point, so an app that doesn't opt in never bundles it.
+  - An app that doesn't opt in keeps Angular's `ViewportScroller`. Its fragment links open the page, the ids still
+    render (Dec4), and nothing scrolls.
+  - The presenter's and form's `spark-reveal` listener stays in the core components. Nothing fires it without the
+    feature.
+  - My call, which the owner can overrule: Angular's abstract class needs every method. So when the feature is on,
+    `scrollToPosition`, `getScrollPosition` and `setOffset` also act on `#spark-main` when the shell is present, and on
+    the window otherwise. Anything that calls `ViewportScroller` then moves the element that actually scrolls.
+- **Dec10: CodeCoverage and HR opt in**, the recommendation. CodeCoverage needs it for the bell (M5), and HR hosts the
+  E2E (M6, `HRTestHost`). The other apps opt in when something links to their sections.
+  - The trap the owner accepted: MintPlayer, the only app that hydrates, does not opt in. The first-anchor-after-hydration
+    path is covered by vitest only.
+- **Dec11: docs, plus a dev-mode warning for a half setup**, the recommendation.
+  - Angular does not export the router's scroller token. It is defined at `_router_module-chunk.mjs:1131`, missing from
+    the export list at :1968, and read only by the internal `NavigationStateManager` (:1266). So ng-spark can neither add
+    `withInMemoryScrolling` itself nor detect its absence at startup.
+  - The guide shows both lines together.
+  - In dev builds, `withFragmentScrolling` logs a console warning naming the missing router line when a navigation with
+    a fragment ends and the router never calls `scrollToAnchor`. The first navigation during hydration is excluded.
+    `ngDevMode` strips the check from production builds.
+  - The trap: the check relies on the router's timing (one frame after `NavigationEnd` in 22.2.2). A later Angular that
+    changes it may give a false warning in dev builds.
+  - The other half, the router line without the feature, cannot be seen from ng-spark: the feature isn't loaded. The
+    docs cover it.
 
 ## 6. Spikes
 
@@ -546,8 +577,8 @@ over everything happens once, at the end.
   - The sub-query cards get their alias.
   - Vitest: the ids are present on the three pages; absent in the three modals and in `compact` mode; the default tab and
     the ungrouped card have none.
-- **M3. ng-spark scroll** (Part E, Dec8).
-  - `SparkViewportScroller` in `provideSpark`, browser only. It covers:
+- **M3. ng-spark scroll** (Part E, Dec8–Dec11).
+  - `withFragmentScrolling()` in its own entry point, registering `SparkViewportScroller`, browser only. It covers:
     - finding the anchor inside `#spark-main`, with the fallback when there is no shell;
     - the bounded wait for the anchor;
     - `spark-reveal`, which makes the presenter or form set `activeTab`;
@@ -555,11 +586,16 @@ over everything happens once, at the end.
     - re-aligning until the page settles, and stopping at the user's first input;
     - reduced motion;
     - the outline (Dec5);
-    - the first anchor after hydration.
-  - `withInMemoryScrolling({ anchorScrolling: 'enabled' })` in every app's `provideRouter`: CodeCoverage, DemoApp,
-    Fleet, HR, MintPlayer, QnA, SeoTester, SparkId and SqlDemo.
-  - Vitest, with the scroll APIs stubbed (S1). Router-driven cases go through `RouterTestingHarness`: a fragment on load,
-    a fragment-only change, and the same fragment again.
+    - the first anchor after hydration;
+    - `scrollToPosition` and `getScrollPosition` on `#spark-main` (Dec9);
+    - the dev-mode warning when the router line is missing (Dec11).
+  - CodeCoverage and HR opt in (Dec10): `withFragmentScrolling()` in `provideSpark` and
+    `withInMemoryScrolling({ anchorScrolling: 'enabled' })` in `provideRouter`.
+  - Vitest, with the scroll APIs stubbed (S1). Router-driven cases go through `RouterTestingHarness`:
+    - a fragment on load;
+    - a fragment-only change;
+    - the same fragment again;
+    - the warning, with and without the router line.
 - **M4. The fragment through rebuilt URLs.** The three vanity guards and CodeCoverage's two absolute `HOME_URL`
   redirects, each with a spec.
 - **M5. CodeCoverage's bell.** `#account-repositories`, with `RulesetNoticeBellTests`.
@@ -602,3 +638,9 @@ Versions come from tags. ng-spark and the NuGet packages get a minor from the en
     `ViewportScroller` API were read in `node_modules` to confirm it.
   - S5 (a throwaway vitest, deleted) confirmed Dec4's modal detection.
   - Milestones M1–M3 were updated to match.
+- **2026-11-28. Second round, Dec9–Dec11** (owner: "Are there any open decisions that still need a grilling round?").
+  - Dec8 had opened questions the first round predates.
+  - The owner chose an opt-in scroller (Dec9, against the recommendation), CodeCoverage and HR as the apps that opt in
+    (Dec10), and a dev-mode warning for a half setup (Dec11).
+  - Read for Dec11: `@angular/router` 22.2.2 keeps the scroller token unexported. For Dec10: `HRTestHost` exists, and
+    HR is in `E2E_APPS` (`tools/test-local.mjs:36`).
