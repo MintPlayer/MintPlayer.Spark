@@ -190,6 +190,12 @@ public static class MergeQueueRulesetPlanner
 
         if (choices.RequiredApprovals is < 0 or > 10)
             blockers.Add($"The approval count must be between 0 and 10, not {choices.RequiredApprovals}.");
+        // #714, S2 on the sandbox (2026-11-28): the picker offers the App's own checks too. One of them as the summary job
+        // would leave no CI job required, and the next setup would see no summary job at all (SummaryJobOf).
+        if (choices.SummaryJob?.Trim() is { Length: > 0 } job
+            && (AppCheckNames.Contains(job, StringComparer.Ordinal)
+                || (choices.CheckApps?.TryGetValue(job, out var jobApp) == true && jobApp == state.AppId)))
+            blockers.Add($"\"{job}\" is reported by the App itself, not by a CI job, so it cannot be the summary job. Pick the workflow job that waits for the others.");
         var checks = Checks(SummaryJobShape(choices.RequiredChecks, choices.SummaryJob), blockers);
         var existing3 = Single(state, LineChecksName, blockers);
         var lineChecks = lines.Count == 0 ? []

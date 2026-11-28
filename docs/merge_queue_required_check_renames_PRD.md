@@ -428,7 +428,7 @@ repository invites the switch to a summary job.**
 | # | Question | Where | Done when |
 |---|---|---|---|
 | S1 | How do a promotion and a backport reach `release/*-*.x`, and which list holds them? Confirm F4: does the first line pull request that carries #697's `test.yml` wait for `tests / Library suites` for good? Does a promotion go through the queue's gate at all, or does the exempt App push it directly, so that only later backports stall? | This repo, read-only (`MergeQueueEngine.cs:542-547` and the promote path), plus GETs on the lines' latest pull requests | A trace with file:line, and an answer to "must ruleset 3 change before the next `/release`?". **Done 2026-11-27: no (§6.1).** |
-| S2 | End-to-end repro on a sandbox. A ruleset requires `ci / job-a`; pull request 1 renames that job to `job-b`; pull request 2 is queued behind it. Before the fix, both stall (F2, F3). After C2–C4 (dev App), fixing the ruleset frees pull request 1 within one poll, and pull request 2 drops `job-a` with a note. Under A1 (only the aggregate required), pull request 1 merges without any ruleset change | `PieterjanDeClippel/SparkTest` with the dev App. This writes to GitHub, so it needs the owner's approval first | The four outcomes recorded, with check-run titles and timestamps. **Done 2026-11-28 with the production App after #715's deploy (§9): three outcomes as designed; A1's was not run; one gap (D3's hint) fixed.** |
+| S2 | End-to-end repro on a sandbox. A ruleset requires `ci / job-a`; pull request 1 renames that job to `job-b`; pull request 2 is queued behind it. Before the fix, both stall (F2, F3). After C2–C4 (dev App), fixing the ruleset frees pull request 1 within one poll, and pull request 2 drops `job-a` with a note. Under A1 (only the aggregate required), pull request 1 merges without any ruleset change | `PieterjanDeClippel/SparkTest` with the dev App. This writes to GitHub, so it needs the owner's approval first | The four outcomes recorded, with check-run titles and timestamps. **Done 2026-11-28 with the production App after #715's deploy (§9): three outcomes as designed; A1's was not run; D3's hint on a direct merge fixed; an App check as the summary job is now refused.** |
 | S3 | The rule for C4: which signals prove that an expected name is gone for good? Candidates: `BaseChangedWorkflows`; the name's App (`KnownChecks` keeps `AppSlug` for each name); every suite of that App completed on `FinalSha`; `RunsFollow`. What happens with a workflow started by `workflow_run`, and with a commit status? | This repo, read-only, then `CheckGate` table tests | The rule written down, with a test for each case, including the two "keep waiting" cases. **Rule done 2026-11-27 (§6.1); the tests belong to M2.** |
 | S4 | Can a workflow's default `GITHUB_TOKEN` (`contents: read`) read `GET /repos/{o}/{r}/rules/branches/{b}` on a public repository? | A throwaway workflow run on SparkTest | Answered, with the response. **Dropped: Q5 chose D1, not D2 (Dec12).** |
 | S5 | Does today's aggregate already cover everything ruleset 2 requires, on a real head? Compare the check runs of a recent master pull request's head with the aggregate's `needs` and the coverage statuses | This repo, plus GET `commits/<sha>/check-runs` | An empty "required but not covered" list, so A1 loses nothing. **Done 2026-11-27: empty (§6.1).** |
@@ -745,11 +745,24 @@ From comment 2, with F3 and F4 added.
     - Evidence: `MergeQueueStuckCheckTests.A_rename_on_a_pull_request_already_on_its_base_gets_the_workflow_hint_too`,
       red before the fix and green after. The existing test of a pull request without workflow changes now asserts that
       the hint is absent.
-  - **Left as found, for the owner:**
-    - The summary-job picker offers every name in `Repository_PullRequestChecks`: the App's own checks
-      ("Backport targets", "PR size") and the renamed-away `build` as well.
-      - That query also feeds the two required-check fields, where those names are valid picks.
-      - A narrower list for the summary job only would need its own query.
-      - Dec6's prefill already leaves the field empty and highlighted, and lists the reported names.
-    - `api/browse/accounts/github/MintPlayer/sparklines` answered 500 on the account page. It was not investigated, and
-      it is unrelated to #714.
+  - **The summary-job picker offers the App's own checks; the plan now refuses them.** The owner left the decision to
+    me. The picker offers every name in `Repository_PullRequestChecks`: the App's own checks ("Backport targets",
+    "PR size"), and also the renamed-away `build`.
+    - **Why it matters.** An App check picked as the summary job is a broken setup, not merely a cluttered list.
+      `SummaryJobShape` would write rulesets that require no CI job at all. The next setup would then see no summary job
+      for `coverage/patch`, because `SummaryJobOf` skips `AppCheckNames`. For "PR size", which is not in that list, it
+      would read that name back as the job.
+    - **The fix.** `MergeQueueRulesetPlanner.Plan` adds a blocker when the summary job is in `AppCheckNames`, or is
+      reported by the App's own id (`choices.CheckApps[job] == state.AppId`, Dec4's data). The confirmation shows the
+      blocker, and nothing is written. This also covers a name typed through "Add new". Evidence:
+      `MergeQueueRulesetPlannerTests.A_check_the_App_reports_itself_is_refused_as_the_summary_job`, red for both cases
+      (`coverage/patch` by name, "PR size" by App id) before the fix and green after.
+    - **The picker stays shared.** `ForgeCheckActions` is forge-neutral and cannot tell which checks are the App's
+      without a forge call (`AppIdAsync`). A hard-coded list of names would drift: "PR size" and "Backport targets" are
+      not in `AppCheckNames`. The dead `build` stays too, because Dec6's prefill already leaves the field empty and
+      highlighted, and lists the names reported on the head.
+  - **`api/browse/accounts/github/MintPlayer/sparklines` answers 500, filed as #723.** Anonymous requests gave 500 for
+    MintPlayer and 200 for two other accounts. The suspected cause is an ordinal `GroupBy` on the commits' repository id
+    against a case-insensitive lookup, which yields a duplicate `FullName` key in `ToDictionary`. It is unconfirmed,
+    because the production log was not read. It is unrelated to #714, so it is not in this pull request.
+  - **The sandbox's two S2 branches** were deleted after both pull requests merged.
