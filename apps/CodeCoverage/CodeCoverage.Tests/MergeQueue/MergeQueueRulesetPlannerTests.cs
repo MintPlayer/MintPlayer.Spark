@@ -478,6 +478,23 @@ public class MergeQueueRulesetPlannerTests
         PinOf(created[LineChecksName], LinePolicyCheckName).Should().Be(AppId);
     }
 
+    /// <summary>
+    /// #714, S2 on the sandbox (2026-11-28): the summary-job picker offers every check seen on a pull request, the App's own
+    /// among them. One of those as the summary job would leave no CI job required, and the next setup would not see a
+    /// summary job at all (<see cref="MergeQueueRulesetPlanner.SummaryJobOf"/>), so the plan refuses it.
+    /// </summary>
+    [Theory]
+    [InlineData("coverage/patch")]
+    [InlineData("PR size")]
+    public void A_check_the_App_reports_itself_is_refused_as_the_summary_job(string pick)
+    {
+        var plan = Plan(new ForgeRulesetState(AppId, [], null), new MergeQueueRulesetChoices(0, ["build", "coverage/patch"],
+            SummaryJob: pick,
+            CheckApps: new Dictionary<string, long> { ["PR size"] = AppId, ["build"] = GitHubActions }));
+
+        plan.Blockers.Should().ContainSingle().Which.Should().Contain($"\"{pick}\"").And.Contain("summary job");
+    }
+
     [Fact]
     public void Without_a_summary_job_the_picks_stay_and_a_name_without_a_known_App_keeps_its_pin()
     {
